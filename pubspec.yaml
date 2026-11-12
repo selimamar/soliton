@@ -1,0 +1,32 @@
+name: models_app
+description: Monitor your deep learning training runs from your phone.
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  # material_ui needs Flutter 3.47 / Dart 3.13.
+  sdk: ^3.13.0
+  flutter: '>=3.47.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Path-based web URLs (/runs/x instead of /#/runs/x). Part of the Flutter SDK.
+  flutter_web_plugins:
+    sdk: flutter
+  # Charts (line + bar charts with touch tooltips).
+  fl_chart: ^1.3.1
+  # State management and dependency injection.
+  flutter_riverpod: ^3.5.0
+  # Declarative navigation (URL-style routes such as /runs/:runId).
+  go_router: ^18.1.4
+  # Material widgets (replaces the deprecated package:flutter/material.dart).
+  material_ui: ^1.11.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
