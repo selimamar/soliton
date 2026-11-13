@@ -291,7 +291,7 @@ def test_fields_from_pytorch(tmp_path):
 
 
 @pytest.mark.parametrize("prediction, target, message", [
-    (np.zeros((4, 4, 4)), None, "1D or 2D"),
+    (np.zeros((2, 3, 4, 5)), None, "1D, 2D or 3D"),
     (np.zeros((4, 4)), np.zeros((4, 5)), "different shapes"),
     (np.zeros(0), None, "empty"),
     ("text", None, "expected an array"),
@@ -300,3 +300,149 @@ def test_fields_that_cannot_be_shown_are_refused(tmp_path, prediction, target, m
     with offline(tmp_path) as run:
         with pytest.raises((ValueError, TypeError), match=message):
             run.log_field("u", prediction, target)
+
+
+def field_records(run):
+    return [r for r in records(run) if r["type"] == "field"]
+
+
+def decode_frames(record, key="prediction"):
+    values = decode_field({**record, "shape": [record["frames"], *record["shape"]]}, key)
+    return values
+
+
+def test_a_rollout_keeps_its_frames_times_and_errors_per_frame(tmp_path):
+    x = np.linspace(0, 1, 50)
+    t = np.linspace(0, 2, 10)
+    target = np.sin(2 * np.pi * (x[None, :] - t[:, None]))       # [time, x]
+    prediction = target + 0.01 * t[:, None]                        # Error grows with time.
+    with offline(tmp_path) as run:
+        run.log_rollout("u", prediction[:, None], target[:, None], step=4, times=t)
+    record = field_records(run)[0]
+    assert (record["frames"], record["shape"]) == (10, [50])
+    assert record["times"] == pytest.approx(list(t))
+    errors = record["frameStats"]["relL2"]
+    assert len(errors) == 10 and errors[0] == 0 and errors == sorted(errors)
+    assert record["stats"]["maxError"] == pytest.approx(0.02)
+    assert np.abs(decode_frames(record) - prediction).max() < 1e-3
+
+
+def test_a_rollout_with_time_last_and_too_many_frames(tmp_path):
+    field = np.random.default_rng(0).random((16, 16, 300))  # [x, y, time]
+    with offline(tmp_path) as run:
+        run.log_rollout("w", field, field, time_axis=-1, max_frames=20)
+    record = field_records(run)[0]
+    assert record["shape"] == [16, 16]
+    assert record["frames"] == 20
+    assert record["times"][0] == 0 and record["times"][-1] == 299, "first and last kept"
+    with pytest.raises(ValueError, match="times has 3 entries"):
+        run2 = offline(tmp_path, name="other")
+        run2.log_rollout("w", field, times=[0, 1, 2], time_axis=-1)
+
+
+def test_3d_fields_are_averaged_down_to_64_per_axis(tmp_path):
+    rng = np.random.default_rng(1)
+    target = rng.random((128, 96, 64))
+    with offline(tmp_path) as run:
+        run.log_field("p", target + 0.1, target, step=0)
+    record = field_records(run)[0]
+    assert record["shape"] == [64, 48, 64]
+    assert record["originalShape"] == [128, 96, 64]
+    assert record["stats"]["rmse"] == pytest.approx(0.1)
+    assert decode_field(record).shape == (64, 48, 64)
+
+
+def test_snapshots_stay_under_the_server_limit():
+    from modelsapp._fields import MAX_POINTS, shrink
+
+    small = shrink(np.zeros((4, 64, 64, 64)), 64, first_axis=1, max_points=4 * 32 ** 3)
+    assert small.shape == (4, 32, 32, 32)
+    assert np.prod(shrink(np.zeros((300, 300)), 512).shape) <= MAX_POINTS
+
+
+def test_names_for_layers_are_kept_apart(tmp_path):
+    with offline(tmp_path) as run:
+        with pytest.raises(ValueError, match="layers/"):
+            run.log_field("layers/x", np.zeros(4))
+
+
+@pytest.mark.parametrize("shape, axis", [
+    ([32, 64, 64], 0),        # Channels-first (Conv2d).
+    ([64, 64, 32], 2),        # Channels-last (Linear on a grid).
+    ([64, 64, 1], 2),         # One channel, last.
+    ([1, 64, 64], 0),
+    ([16, 128], 0),           # 1D, channels-first: the shorter axis.
+    ([128, 16], 1),
+    ([8, 32, 32, 32], 0),     # 3D, channels-first.
+    ([100], None),            # Just features.
+])
+def test_the_channel_axis_is_guessed_from_the_shape(shape, axis):
+    from modelsapp._fields import channel_axis
+
+    assert channel_axis(shape) == axis
+
+
+class TinyFNO:
+    """Built lazily: torch is optional."""
+
+    @staticmethod
+    def make():
+        torch = pytest.importorskip("torch")
+        from torch import nn
+
+        class Block(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.w = nn.Conv2d(8, 8, 1)
+
+            def forward(self, x):
+                return torch.relu(self.w(x))
+
+        class Net(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.lifting = nn.Linear(3, 8)
+                self.blocks = nn.ModuleList([Block(), Block()])
+                self.projection = nn.Linear(8, 1)
+
+            def forward(self, x):  # [batch, H, W, 3] -> [batch, H, W, 1]
+                x = self.lifting(x).permute(0, 3, 1, 2)
+                for block in self.blocks:
+                    x = block(x)
+                return self.projection(x.permute(0, 2, 3, 1))
+
+        return torch, Net()
+
+
+def test_capture_layers_records_each_layer_in_order(tmp_path):
+    torch, net = TinyFNO.make()
+    with offline(tmp_path) as run:
+        with run.capture_layers(net, step=9):
+            out = net(torch.randn(4, 24, 24, 3))
+    layers = field_records(run)
+    assert [r["name"] for r in layers] == [
+        "layers/lifting", "layers/blocks.0", "layers/blocks.1", "layers/projection"
+    ]
+    assert [r["position"] for r in layers] == [0, 1, 2, 3]
+    assert {r["kind"] for r in layers} == {"layer"}
+    lifting, block, _, projection = layers
+    assert lifting["layerShape"] == [24, 24, 8] and lifting["reduction"] == "mean of 8 channels"
+    assert block["layerShape"] == [8, 24, 24] and block["shape"] == [24, 24]
+    assert projection["reduction"] == "1 channel"
+    assert projection["target"] is None and projection["step"] == 9
+    # The projection's field is the model's output for the first sample.
+    assert np.abs(decode_field(projection) - out[0, :, :, 0].detach().numpy()).max() < 1e-3
+    assert all(not m._forward_hooks for m in net.modules()), "hooks are removed"
+
+
+def test_capture_layers_by_name_and_channel_axis(tmp_path):
+    torch, net = TinyFNO.make()
+    with offline(tmp_path) as run:
+        with run.capture_layers(net, layers=["blocks.1.w"], channel_axis=0, reduce="norm"):
+            net(torch.randn(1, 8, 8, 3))
+        with pytest.raises(ValueError, match="no such layers"):
+            with run.capture_layers(net, layers=["nope"]):
+                pass
+    (record,) = field_records(run)
+    assert record["layer"] == "blocks.1.w"
+    assert record["reduction"] == "norm over 8 channels"

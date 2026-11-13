@@ -115,15 +115,27 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
 {"type": "field", "step": 1200, "name": "vorticity", "shape": [128, 128],
  "originalShape": [256, 256], "min": -3.1, "max": 2.8, "prediction": "<base64>",
  "target": "<base64>", "stats": {"relL2": 0.031, "rmse": 0.02, "maxError": 0.4}}
+{"type": "field", "step": 1200, "name": "u", "shape": [64, 64], "frames": 20,
+ "times": [0.1, 0.2, ...], "frameStats": {"relL2": [0.01, 0.012, ...]}, ...}
+{"type": "field", "step": 1200, "name": "layers/blocks.0", "kind": "layer",
+ "layer": "blocks.0", "position": 1, "reduction": "mean of 32 channels",
+ "layerShape": [32, 64, 64], "shape": [64, 64], "target": null, ...}
 {"type": "status", "status": "crashed", "message": "RuntimeError: CUDA out of memory"}
 ```
 
-**Field snapshots** (`run.log_field(...)` in the logger): a 1D or 2D array
-of at most 512 points per axis, row by row, each point a little-endian
-unsigned 16-bit code: 0 is `min`, 65534 is `max`, 65535 is NaN. `target`
-(the true field, same shape and scale) may be `null`. `stats` are computed
-by the logger on the full-resolution arrays. A snapshot is keyed by run,
-field name and step, like a metric point.
+**Field snapshots** (`run.log_field`, `run.log_rollout` and
+`run.capture_layers` in the logger): each frame a 1D, 2D or 3D array of at
+most 512 points per axis, row by row (the last axis fastest), frames one
+after the other; at most 1,048,576 values in all. Each value is a
+little-endian unsigned 16-bit code: 0 is `min`, 65534 is `max`, 65535 is
+NaN. `target` (the true field, same shape and scale) may be `null`. `stats`
+are computed by the logger on the full-resolution arrays. A rollout has
+`frames` > 1, `times` (one per frame) and `frameStats` (e.g. `relL2` per
+frame). A layer snapshot has `kind: "layer"`, is named `layers/<layer>`, and
+has `layer`, `position` (its order in the model), `reduction` (e.g. "mean of
+32 channels") and `layerShape` (the layer's output for one sample). A
+snapshot is keyed by run, field name and step, like a metric point.
+`GET .../fields` lists output fields by name, then layers in model order.
 
 **Tags and notes** (`PATCH /api/runs/{id}` with `{"tags": ["baseline"], "notes": "..."}`;
 leave a field out to keep it): up to 20 tags of 1–40 characters (trimmed,

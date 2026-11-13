@@ -411,16 +411,26 @@ def test_numbers_in_json_are_never_bare_nan(client):
 # Field snapshots ----------------------------------------------------------------
 
 
-def field(step, name="u", shape=(2, 3), target=True, **stats):
+def field(step, name="u", shape=(2, 3), target=True, frames=1, **stats):
     import base64
     import struct
 
-    count = math.prod(shape)
-    data = base64.b64encode(struct.pack(f"<{count}H", *range(count))).decode()
-    return {"type": "field", "step": step, "name": name, "shape": list(shape),
-            "originalShape": [s * 2 for s in shape], "min": -1.0, "max": 1.0,
+    count = frames * math.prod(shape)
+    data = base64.b64encode(struct.pack(f"<{count}H", *(i % 65535 for i in range(count)))).decode()
+    return {"type": "field", "step": step, "name": name, "kind": "output", "shape": list(shape),
+            "originalShape": [s * 2 for s in shape], "frames": frames, "min": -1.0, "max": 1.0,
             "prediction": data, "target": data if target else None,
             "stats": stats or {"relL2": 0.5 / (step + 1)}}
+
+
+def layer_field(step, layer, position):
+    event = field(step, name=f"layers/{layer}", target=False)
+    event.update(kind="layer", layer=layer, position=position, reduction="mean of 32 channels",
+                 layerShape=[32, 2, 3], stats={})
+    return event
+
+
+SUMMARY = {"kind": "output", "shape": [2, 3], "frames": 1, "layer": None, "position": None}
 
 
 def test_field_snapshots_are_listed_without_their_data(client):
@@ -428,8 +438,8 @@ def test_field_snapshots_are_listed_without_their_data(client):
     send(client, [field(0), field(100), field(100, name="p", target=False, relL2="NaN")])
     fields = client.get("/api/runs/tiny-1/fields").json()
     assert fields == [
-        {"name": "p", "shape": [2, 3], "steps": [{"step": 100, "stats": {"relL2": "NaN"}}]},
-        {"name": "u", "shape": [2, 3], "steps": [
+        {"name": "p", **SUMMARY, "steps": [{"step": 100, "stats": {"relL2": "NaN"}}]},
+        {"name": "u", **SUMMARY, "steps": [
             {"step": 0, "stats": {"relL2": 0.5}},
             {"step": 100, "stats": {"relL2": 0.5 / 101}},
         ]},
@@ -442,7 +452,9 @@ def test_a_field_snapshot_reads_back_whole(client):
     sent = field(100)
     send(client, [field(0), sent])
     latest = client.get("/api/runs/tiny-1/fields/snapshot", params={"name": "u"}).json()
-    assert latest == {k: v for k, v in sent.items() if k != "type"}
+    defaults = {"times": None, "frameStats": {}, "layer": None, "position": None,
+                "reduction": None, "layerShape": None}
+    assert latest == {**defaults, **{k: v for k, v in sent.items() if k != "type"}}
     first = client.get("/api/runs/tiny-1/fields/snapshot", params={"name": "u", "step": 0})
     assert first.json()["step"] == 0
     missing = client.get("/api/runs/tiny-1/fields/snapshot", params={"name": "u", "step": 5})
@@ -462,8 +474,12 @@ def test_a_resent_snapshot_replaces_itself(client):
 
 @pytest.mark.parametrize("change", [
     {"shape": [2, 4]},                 # Data too short for the shape.
-    {"shape": [1, 2, 3]},              # 3D.
+    {"shape": [1, 1, 2, 3]},           # 4D.
     {"shape": [513, 1]},               # Too big.
+    {"frames": 2},                     # Data for one frame only.
+    {"times": [0.0, 1.0]},             # Two times, one frame.
+    {"frameStats": {"relL2": [1, 2]}},
+    {"kind": "layer"},                 # Without its layer.
     {"prediction": "not base64!"},
     {"target": "AAAA"},                # Target of another size.
 ])
@@ -479,3 +495,32 @@ def test_deleting_a_run_deletes_its_fields(client):
     client.delete("/api/runs/tiny-1")
     create_run(client)
     assert client.get("/api/runs/tiny-1/fields").json() == []
+
+
+def test_rollouts_and_3d_fields(client):
+    create_run(client)
+    rollout = {**field(0, name="u(t)", frames=4), "times": [0, 0.1, 0.2, 0.3],
+               "frameStats": {"relL2": [0.01, 0.02, 0.04, "NaN"]}}
+    volume = field(0, name="p", shape=(4, 5, 6))
+    send(client, [rollout, volume])
+    fields = {f["name"]: f for f in client.get("/api/runs/tiny-1/fields").json()}
+    assert (fields["u(t)"]["frames"], fields["p"]["shape"]) == (4, [4, 5, 6])
+    back = client.get("/api/runs/tiny-1/fields/snapshot", params={"name": "u(t)"}).json()
+    assert back["times"] == [0, 0.1, 0.2, 0.3]
+    assert back["frameStats"] == {"relL2": [0.01, 0.02, 0.04, "NaN"]}
+    huge = field(1, name="big", shape=(512, 512), frames=5, target=False)
+    assert client.post("/api/runs/tiny-1/events", json={"events": [huge]}).status_code == 422
+
+
+def test_layer_snapshots_come_after_outputs_in_model_order(client):
+    create_run(client)
+    send(client, [layer_field(0, "projection", 5), field(0), layer_field(0, "lifting", 0),
+                  layer_field(0, "blocks.0", 1)])
+    fields = client.get("/api/runs/tiny-1/fields").json()
+    assert [f["name"] for f in fields] == ["u", "layers/lifting", "layers/blocks.0",
+                                           "layers/projection"]
+    assert fields[1]["layer"] == "lifting" and fields[1]["kind"] == "layer"
+    snapshot = client.get("/api/runs/tiny-1/fields/snapshot",
+                          params={"name": "layers/blocks.0"}).json()
+    assert snapshot["reduction"] == "mean of 32 channels"
+    assert snapshot["layerShape"] == [32, 2, 3]

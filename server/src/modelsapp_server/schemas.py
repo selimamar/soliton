@@ -124,29 +124,52 @@ class LayersEvent(_In):
 
 
 FIELD_MAX_SIZE = 512  # Points per axis.
+FIELD_MAX_POINTS = 1 << 20  # Values per array, all frames together.
+FIELD_MAX_FRAMES = 256
 FieldStat = Annotated[str, StringConstraints(max_length=40)]
+Axis = Annotated[int, Field(ge=1, le=FIELD_MAX_SIZE)]
 
 
 class FieldEvent(_In):
     """A snapshot of a predicted field and its target (see the logger's
-    _fields.py): base64 16-bit codes between [min] and [max]."""
+    _fields.py): base64 16-bit codes between [min] and [max], frame after
+    frame, each frame row by row. [kind] "layer" is a layer's output inside
+    the model (named "layers/<layer>"), with no target."""
 
     type: Literal["field"]
     step: int = Field(ge=0)
     epoch: Optional[int] = Field(default=None, ge=0)
     time: Time = None
     name: Name
-    shape: list[Annotated[int, Field(ge=1, le=FIELD_MAX_SIZE)]] = Field(min_length=1, max_length=2)
-    originalShape: Optional[list[Annotated[int, Field(ge=1)]]] = Field(default=None, max_length=2)
+    kind: Literal["output", "layer"] = "output"
+    shape: list[Axis] = Field(min_length=1, max_length=3)
+    originalShape: Optional[list[Annotated[int, Field(ge=1)]]] = Field(default=None, max_length=3)
+    frames: int = Field(default=1, ge=1, le=FIELD_MAX_FRAMES)
+    times: Optional[list[JsonFloat]] = Field(default=None, max_length=FIELD_MAX_FRAMES)
     min: JsonFloat
     max: JsonFloat
-    prediction: str = Field(max_length=FIELD_MAX_SIZE**2 * 3)
-    target: Optional[str] = Field(default=None, max_length=FIELD_MAX_SIZE**2 * 3)
+    prediction: str = Field(max_length=FIELD_MAX_POINTS * 3)
+    target: Optional[str] = Field(default=None, max_length=FIELD_MAX_POINTS * 3)
     stats: dict[FieldStat, JsonFloat] = Field(default_factory=dict, max_length=20)
+    # Per frame of a rollout, e.g. {"relL2": [0.01, 0.02, ...]}.
+    frameStats: dict[FieldStat, list[JsonFloat]] = Field(default_factory=dict, max_length=10)
+    layer: Optional[str] = Field(default=None, max_length=200)
+    position: Optional[int] = Field(default=None, ge=0)  # The layer's order in the model.
+    reduction: Optional[str] = Field(default=None, max_length=100)  # E.g. "mean of 32 channels".
+    layerShape: Optional[list[Annotated[int, Field(ge=1)]]] = Field(default=None, max_length=8)
 
     @model_validator(mode="after")
     def _sizes_match(self) -> "FieldEvent":
-        expected = 2 * math.prod(self.shape)
+        points = self.frames * math.prod(self.shape)
+        if points > FIELD_MAX_POINTS:
+            raise ValueError(f"at most {FIELD_MAX_POINTS} values per snapshot, not {points}")
+        if self.times is not None and len(self.times) != self.frames:
+            raise ValueError(f"{len(self.times)} times for {self.frames} frames")
+        for key, values in self.frameStats.items():
+            if len(values) != self.frames:
+                raise ValueError(f"frameStats.{key} has {len(values)} values for {self.frames} frames")
+        if self.kind == "layer" and self.layer is None:
+            raise ValueError("a layer snapshot needs its layer")
         for label, data in (("prediction", self.prediction), ("target", self.target)):
             if data is None:
                 continue
@@ -154,8 +177,11 @@ class FieldEvent(_In):
                 size = len(base64.b64decode(data, validate=True))
             except (binascii.Error, ValueError):
                 raise ValueError(f"{label} is not base64") from None
-            if size != expected:
-                raise ValueError(f"{label} has {size} bytes, but shape {self.shape} needs {expected}")
+            if size != 2 * points:
+                raise ValueError(
+                    f"{label} has {size} bytes, but {self.frames} frame(s) of shape "
+                    f"{self.shape} need {2 * points}"
+                )
         return self
 
 

@@ -124,33 +124,73 @@ counts is sent along.
 
 With DistributedDataParallel, log from rank 0 only.
 
-### `run.log_field(name, prediction, target=None, step=None, max_size=128)`
+### Fields: `run.log_field`, `run.log_rollout`, `run.capture_layers`
 
 For neural operators and other models that predict a field (a PDE solution
-on a grid): a snapshot of the prediction next to the true field. The app's
-**Fields** tab shows the prediction, the target and their difference as
-heatmaps (2D) or lines (1D), with a slider through the logged steps and the
+on a grid). The app's **Fields** tab shows the prediction next to the true
+field and their difference, with a slider through the logged steps and the
 relative L2 error over training.
 
 ```python
-if step % 500 == 0:                      # e.g. at each validation
+if step % 500 == 0:                          # e.g. at each validation
     with torch.no_grad():
-        pred = model(val_a[:1])          # The same sample each time.
-    run.log_field("vorticity", pred[0, 0], val_u[0, 0], step=step)
+        pred = model(val_a[:1])              # The same sample each time.
+    run.log_field("vorticity", pred[0, ..., 0], val_u[0, ..., 0], step=step)
 ```
 
-- Arrays are NumPy arrays or PyTorch tensors (any device). They must be 1D
-  or 2D once dimensions of size 1 are dropped: log one sample and one
-  channel, and one slice of a 3D field (`u[0, 0, :, :, depth // 2]`). For
-  several variables, log each under its own name (`"u"`, `"v"`, `"p"`).
-- The relative L2 error, RMSE and largest pointwise error are computed on the
-  full arrays (ignoring NaN). The snapshot itself is averaged down to at most
-  `max_size` points per axis (up to 512) and sent as 16-bit values: about
-  90 KB for 128 × 128 with its target.
+**`run.log_field(name, prediction, target=None, step=None, max_size=None)`**
+logs one snapshot. Arrays are NumPy arrays or PyTorch tensors (any device),
+**1D, 2D or 3D** once dimensions of size 1 are dropped: log one sample and
+one channel; for several variables, one name each (`"u"`, `"v"`, `"p"`).
+2D fields show as heatmaps, 1D as lines, and 3D as slices: pick the axis to
+cut across and move the slice with a slider (by default across the shortest
+axis, e.g. time in an FNO-3D's (x, y, t) output).
+
+**`run.log_rollout(name, prediction, target=None, step=None, times=None,
+time_axis=0, max_size=None, max_frames=64)`** logs a field over time, e.g.
+an autoregressive rollout of shape `[frames, x, y]` (`time_axis` says which
+axis counts frames; `times` gives each frame's time). The app plays it, shows
+the relative L2 error frame by frame (how error builds up along the rollout),
+and draws 1D rollouts as space-time maps. At most `max_frames` frames are
+kept, evenly spread, always the first and the last.
+
+```python
+traj = rollout(model, val_u[:1, 0], steps=20)          # [20, 1, 64, 64]
+run.log_rollout("u", traj[:, 0], val_u[0, 1:21], step=step, times=t[1:21])
+```
+
+**`with run.capture_layers(model, step=None, layers=None, channel_axis=None,
+reduce="mean", max_size=64):`** records what each layer outputs during the
+forward pass in the block, so the app can show the field as it goes through
+the network (a filmstrip, input to output; tap a layer to see it large):
+
+```python
+with torch.no_grad(), run.capture_layers(model, step=step):
+    model(val_a[:1])
+```
+
+- Only the first sample, and each layer's first call, are kept.
+- `layers`: module names, or a function `(name, module) -> bool`. Default:
+  the model's top-level modules, with `ModuleList` and `Sequential` opened
+  one level (for an FNO: lifting, each block, projection).
+- Each output's channels are averaged (`reduce="norm"`: their L2 norm) to
+  leave a 1D to 3D field. The channel axis is guessed: the first or last axis
+  of a sample, whichever differs from the spatial axes between them (so
+  `[32, 64, 64]` and `[64, 64, 32]` both work). Say it with
+  `channel_axis=0` (channels-first) or `-1` (channels-last), counted without
+  the batch axis.
+
+All three:
+
+- Errors (relative L2, RMSE, largest pointwise error) are computed on the
+  full arrays, ignoring NaN. The snapshot itself is averaged down to at most
+  `max_size` points per axis (default 128, or 64 for 3D, rollouts and
+  layers; up to 512) and to at most about a million values, and sent as
+  16-bit values: about 90 KB for 128 × 128 with its target.
 - `step` defaults to the latest step logged, so a field logged right after
   `run.log(..., step=step)` lands on the same step.
-- Snapshots are much larger than metrics: log one every few hundred steps,
-  not every step. Needs NumPy.
+- Snapshots are much larger than metrics: log them every few hundred steps,
+  not every step. They need NumPy.
 
 ### All `init()` options
 

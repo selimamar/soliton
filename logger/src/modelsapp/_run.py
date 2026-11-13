@@ -9,10 +9,11 @@ import sys
 import threading
 import warnings
 import weakref
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Optional
+from typing import Any, Iterable, Mapping, Optional, Sequence
 
-from ._fields import field_event
+from ._fields import capture, field_event, layer_event
 from ._system import SystemMonitor, framework_versions, system_info
 from ._upload import ApiClient, RunFiles, Uploader
 from ._util import (
@@ -166,31 +167,104 @@ class Run:
                     self._files.append({"type": "layers", "step": step, "time": now, "layers": layers})
 
     def log_field(self, name: str, prediction: Any, target: Any = None,
-                  step: Optional[int] = None, *, max_size: int = 128) -> None:
+                  step: Optional[int] = None, *, max_size: Optional[int] = None) -> None:
         """Logs a snapshot of a predicted field, e.g. a PDE solution, with the
         true one ([target]) to compare it with, at [step] (default: the
         latest step logged).
 
-        Arrays may be NumPy arrays or PyTorch tensors, 1D or 2D once
-        dimensions of size 1 are removed: log one sample, one channel (and
-        one slice of a 3D field). Log the same validation sample each time,
-        so the app can show it improving. The app shows the prediction, the
-        target and their difference, and the relative L2 error over time;
-        the errors are computed on the full arrays, but the snapshot is
-        averaged down to at most [max_size] points per axis.
+        Arrays may be NumPy arrays or PyTorch tensors, 1D, 2D or 3D once
+        dimensions of size 1 are removed: log one sample and one channel.
+        Log the same validation sample each time, so the app can show it
+        improving. The app shows the prediction, the target and their
+        difference (3D fields as slices), and the relative L2 error over
+        training; the errors are computed on the full arrays, but the
+        snapshot is averaged down to at most [max_size] points per axis
+        (default 128, or 64 in 3D).
 
         Snapshots are larger than metrics: log one every few hundred steps
         (or every validation), not every step.
         """
         if self._finished:
             return
-        name = str(name).strip()[:200]
-        if not name:
-            raise ValueError("a field needs a name")
-        event, warning = field_event(name, prediction, target, max_size)
+        event, warning = field_event(_field_name(name), prediction, target, max_size=max_size)
+        self._append_field(event, step, warning)
+
+    def log_rollout(self, name: str, prediction: Any, target: Any = None,
+                    step: Optional[int] = None, *, times: Optional[Sequence[float]] = None,
+                    time_axis: int = 0, max_size: Optional[int] = None,
+                    max_frames: int = 64) -> None:
+        """Logs a rollout: a field over time, e.g. an autoregressive
+        prediction of [frames, x, y] next to the true trajectory.
+
+        [time_axis] is the axis of the arrays that counts frames (other axes
+        of size 1 are dropped, leaving 1D to 3D per frame); [times] the time
+        of each frame (default 0, 1, 2, ...). The app plays the rollout, and
+        charts its error frame by frame, the usual way error builds up over
+        a rollout. At most [max_frames] frames are kept, spread evenly
+        (always the first and the last), each averaged down to at most
+        [max_size] points per axis (default 64).
+        """
+        if self._finished:
+            return
+        event, warning = field_event(_field_name(name), prediction, target, max_size=max_size,
+                                     rollout=True, time_axis=time_axis, times=times,
+                                     max_frames=max_frames)
+        self._append_field(event, step, warning)
+
+    @contextmanager
+    def capture_layers(self, model, step: Optional[int] = None, *, layers: LayerFilter = None,
+                       channel_axis: Optional[int] = None, reduce: str = "mean",
+                       max_size: int = 64):
+        """Records what each layer outputs during the forward passes in the
+        `with` block, so the app can show the field as it goes through the
+        network:
+
+            with run.capture_layers(model, step=step):
+                prediction = model(val_input[:1])
+
+        Only the first sample of the batch, and each layer's first call, are
+        kept. [layers]: module names, or a function (name, module) -> bool;
+        default: the model's top-level modules, with ModuleList and
+        Sequential opened one level (e.g. lifting, blocks.0-3, projection).
+
+        Each output's channels are averaged ([reduce]="norm": their L2 norm)
+        so what's left is 1D to 3D. Which axis holds the channels is
+        guessed (the first or the last axis of a sample, whichever differs
+        from the spatial axes between them); [channel_axis] says it, counted
+        without the batch axis (0: channels-first, -1: channels-last).
+        """
+        if self._finished:
+            yield
+            return
+        if reduce not in ("mean", "norm"):
+            raise ValueError("reduce must be 'mean' or 'norm'")
+        outputs = []
+
+        def keep(position, name, output):
+            if hasattr(output, "detach"):
+                output = output.detach()
+                if output.ndim >= 2:
+                    output = output[:1]
+                output = output.clone()  # In-place layers may change it later.
+            outputs.append((position, name, output))
+
+        with capture(model, layers, keep):
+            yield
+        for position, name, output in outputs:
+            try:
+                event = layer_event(position, name, output, max_size=max_size,
+                                    axis=channel_axis, reduce=reduce)
+            except (TypeError, ValueError) as error:
+                self._warn_once(f"layer:{name}", f"not showing layer {name!r}: {error}")
+                continue
+            self._append_field(event, step, None)
+
+    def _append_field(self, event: dict, step: Optional[int], warning: Optional[str]) -> None:
         if warning:
-            self._warn_once(f"field:{name}", warning)
+            self._warn_once(f"field:{event['name']}", warning)
         with self._lock:
+            if self._finished:
+                return
             step = max(self._last_step, 0) if step is None else int(step)
             if step < 0:
                 raise ValueError("step must be 0 or more")
@@ -288,6 +362,15 @@ class Run:
         if key not in self._warned:
             self._warned.add(key)
             warnings.warn(f"modelsapp: {message}", stacklevel=3)
+
+
+def _field_name(name: Any) -> str:
+    text = str(name).strip()[:200]
+    if not text:
+        raise ValueError("a field needs a name")
+    if text.startswith("layers/"):
+        raise ValueError("field names starting with 'layers/' are kept for capture_layers")
+    return text
 
 
 def _system_info() -> dict:

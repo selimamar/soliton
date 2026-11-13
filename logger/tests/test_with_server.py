@@ -197,3 +197,23 @@ def test_field_snapshots_reach_the_server(tmp_path, database_url):
         snapshot = server.get(f"/api/runs/{run.id}/fields/snapshot?name=u")
         assert snapshot["step"] == 100
         assert snapshot["originalShape"] == [256, 256]
+
+
+def test_rollouts_3d_fields_and_layers_reach_the_server(tmp_path, database_url):
+    np = pytest.importorskip("numpy")
+    torch = pytest.importorskip("torch")
+    net = torch.nn.Sequential(torch.nn.Conv2d(1, 4, 3, padding=1), torch.nn.Conv2d(4, 1, 1))
+    with LiveServer(database_url) as server:
+        run = modelsapp.init("fno3", server=server.url, token=TOKEN, dir=str(tmp_path),
+                             system_metrics=False)
+        run.log_rollout("u", np.random.rand(8, 32, 32), np.random.rand(8, 32, 32), step=1)
+        run.log_field("p", np.random.rand(40, 40, 40), np.random.rand(40, 40, 40), step=1)
+        with run.capture_layers(net, step=1):
+            net(torch.randn(1, 1, 16, 16))
+        run.finish()
+        fields = {f["name"]: f for f in server.get(f"/api/runs/{run.id}/fields")}
+        assert list(fields) == ["p", "u", "layers/0", "layers/1"]
+        assert fields["u"]["frames"] == 8
+        assert fields["p"]["shape"] == [40, 40, 40]
+        layer = server.get(f"/api/runs/{run.id}/fields/snapshot?name=layers/0")
+        assert layer["reduction"] == "mean of 4 channels" and layer["shape"] == [16, 16]

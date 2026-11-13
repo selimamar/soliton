@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,8 +18,10 @@ import '../../../shared/widgets/stat_tile.dart';
 import '../widgets/field_heatmap.dart';
 
 /// Snapshots of the fields a run predicts (e.g. a PDE solution), logged with
-/// `run.log_field(...)`: the prediction, the true field and their
-/// difference at any logged step, and the relative L2 error over training.
+/// `run.log_field(...)` and `run.log_rollout(...)`: the prediction, the true
+/// field and their difference at any logged step (over time for a rollout,
+/// in slices for 3D), the relative L2 error over training, and what each
+/// layer makes of the field (`run.capture_layers(...)`).
 class FieldsTab extends ConsumerStatefulWidget {
   const FieldsTab({super.key, required this.runId});
 
@@ -36,9 +39,58 @@ class _FieldsTabState extends ConsumerState<FieldsTab> {
 
   GridPoint? _point;
 
+  /// The frame of a rollout, and whether it is playing.
+  int _frame = 0;
+  Timer? _player;
+
+  /// The axis a 3D field is cut across (null: its shortest, so the cut is
+  /// as large as it gets: for an (x, y, t) volume, a snapshot in time), and
+  /// where along it (null: the middle).
+  int? _axis;
+  int? _slice;
+
+  /// The layer shown large below the filmstrip.
+  String? _layer;
+
   /// The last snapshot loaded, shown while the next one loads (so the
-  /// slider doesn't flash a spinner at every step).
+  /// sliders don't flash a spinner at every step).
   FieldSnapshot? _shown;
+
+  @override
+  void dispose() {
+    _player?.cancel();
+    super.dispose();
+  }
+
+  void _togglePlay(int frames) {
+    if (_player != null) {
+      setState(() {
+        _player!.cancel();
+        _player = null;
+      });
+      return;
+    }
+    setState(() {
+      if (_frame >= frames - 1) _frame = 0;
+      _player = Timer.periodic(const Duration(milliseconds: 160), (timer) {
+        if (!mounted) return timer.cancel();
+        setState(() {
+          final frames = _shown?.frames ?? 1;
+          if (_frame >= frames - 1) {
+            timer.cancel();
+            _player = null;
+          } else {
+            _frame++;
+          }
+        });
+      });
+    });
+  }
+
+  void _stopPlaying() {
+    _player?.cancel();
+    _player = null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +103,16 @@ class _FieldsTabState extends ConsumerState<FieldsTab> {
             if (f.steps.isNotEmpty) f,
         ];
         if (usable.isEmpty) return const _NoFields();
-        final field = usable.firstWhere((f) => f.name == _name, orElse: () => usable.first);
+        final outputs = [
+          for (final f in usable)
+            if (f.kind == FieldKind.output) f,
+        ];
+        final layers = [
+          for (final f in usable)
+            if (f.kind == FieldKind.layer) f,
+        ];
+        final choices = outputs.isEmpty ? layers : outputs;
+        final field = choices.firstWhere((f) => f.name == _name, orElse: () => choices.first);
         final index = _stepIndex(field);
         final step = field.steps[index];
         final key = (runId: widget.runId, name: field.name, step: step.step);
@@ -65,13 +126,17 @@ class _FieldsTabState extends ConsumerState<FieldsTab> {
 
         return SpacedListView(
           children: [
-            if (usable.length > 1)
+            if (choices.length > 1)
               _FieldPicker(
-                names: [for (final f in usable) f.name],
+                fields: choices,
                 selected: field.name,
                 onSelected: (name) => setState(() {
+                  _stopPlaying();
                   _name = name;
                   _point = null;
+                  _frame = 0;
+                  _axis = null;
+                  _slice = null;
                 }),
               ),
             _StepCard(
@@ -87,16 +152,17 @@ class _FieldsTabState extends ConsumerState<FieldsTab> {
               const SectionCard(
                 child: SizedBox(height: 240, child: Center(child: CircularProgressIndicator())),
               )
-            else if (snapshot.is2D)
-              _HeatmapsCard(
-                snapshot: snapshot,
-                loading: loading,
-                point: _clamp(_point, snapshot),
-                onSelect: (point) => setState(() => _point = point),
-              )
             else
-              ..._lineCharts(snapshot),
+              ..._snapshotViews(snapshot, loading),
             if (field.steps.any((s) => s.relL2 != null)) _ErrorOverTraining(field: field),
+            if (outputs.isNotEmpty && layers.isNotEmpty)
+              _LayersCard(
+                runId: widget.runId,
+                layers: layers,
+                atStep: step.step,
+                selected: _layer,
+                onSelected: (layer) => setState(() => _layer = _layer == layer ? null : layer),
+              ),
           ],
         );
       },
@@ -110,27 +176,125 @@ class _FieldsTabState extends ConsumerState<FieldsTab> {
     return i < 0 ? field.steps.length - 1 : i;
   }
 
-  static GridPoint? _clamp(GridPoint? point, FieldSnapshot snapshot) {
-    if (point == null) return null;
-    return (
-      row: point.row.clamp(0, snapshot.rows - 1),
-      column: point.column.clamp(0, snapshot.columns - 1),
-    );
+  List<Widget> _snapshotViews(FieldSnapshot snapshot, bool loading) {
+    final frame = _frame.clamp(0, snapshot.frames - 1);
+    final frameControls = snapshot.isRollout
+        ? _FrameControls(
+            snapshot: snapshot,
+            frame: frame,
+            playing: _player != null,
+            onPlay: () => _togglePlay(snapshot.frames),
+            onChanged: (f) => setState(() {
+              _stopPlaying();
+              _frame = f;
+            }),
+          )
+        : null;
+    final rolloutError = switch (snapshot.frameStats[FieldStatKeys.relL2]) {
+      final errors? => _RolloutError(snapshot: snapshot, errors: errors, frame: frame),
+      null => null,
+    };
+
+    if (snapshot.dimensions == 1 && !snapshot.isRollout) return _lineCharts(snapshot, frame: 0);
+
+    final List<Widget> views;
+    if (snapshot.dimensions == 1) {
+      // A 1D rollout: space-time maps, then the current frame as lines.
+      views = [
+        _MapsCard(
+          snapshot: snapshot,
+          planes: (data) => snapshot.spaceTime(data),
+          subtitle:
+              'Time runs down, from t = ${_formatTime(snapshot.times.first)} '
+              'to ${_formatTime(snapshot.times.last)}',
+          loading: loading,
+          point: _point,
+          onSelect: (p) => setState(() {
+            _stopPlaying();
+            _point = p;
+            _frame = p.row;
+          }),
+          describePoint: (p) =>
+              't = ${_formatTime(snapshot.times[p.row.clamp(0, snapshot.frames - 1)])}, '
+              'x point ${p.column}',
+          markedRow: frame,
+          // Few frames of many points: stretch time so the map is readable.
+          aspectRatio: (snapshot.shape.single / snapshot.frames).clamp(0.5, 1.6),
+        ),
+        ?frameControls,
+        ..._lineCharts(snapshot, frame: frame),
+      ];
+    } else {
+      final axis = (_axis ?? _shortestAxis(snapshot.shape)).clamp(0, snapshot.dimensions - 1);
+      final slice = (_slice ?? snapshot.shape[axis] ~/ 2).clamp(0, snapshot.shape[axis] - 1);
+      views = [
+        if (snapshot.dimensions == 3)
+          _SliceControls(
+            shape: snapshot.shape,
+            axis: axis,
+            index: slice,
+            onAxis: (a) => setState(() {
+              _axis = a;
+              _slice = null;
+              _point = null;
+            }),
+            onIndex: (i) => setState(() => _slice = i),
+          ),
+        ?frameControls,
+        _MapsCard(
+          snapshot: snapshot,
+          planes: (data) => snapshot.plane(data, frame: frame, axis: axis, index: slice),
+          subtitle: [
+            if (snapshot.isRollout) 't = ${_formatTime(snapshot.times[frame])}',
+            if (snapshot.dimensions == 3)
+              'slice ${slice + 1} of ${snapshot.shape[axis]} across axis $axis',
+          ].join(' · '),
+          loading: loading,
+          point: _point,
+          onSelect: (p) => setState(() => _point = p),
+          describePoint: (p) {
+            if (snapshot.dimensions == 2) return 'Row ${p.row}, column ${p.column}';
+            final indices = switch (axis) {
+              0 => [slice, p.row, p.column],
+              1 => [p.row, slice, p.column],
+              _ => [p.row, p.column, slice],
+            };
+            return 'Point (${indices.join(', ')})';
+          },
+        ),
+      ];
+    }
+    return [...views, ?rolloutError];
   }
 
-  static List<Widget> _lineCharts(FieldSnapshot snapshot) {
-    MetricSeries series(String name, Float32List values) => MetricSeries(
-      name: name,
-      points: [for (var i = 0; i < values.length; i++) MetricPoint(i, values[i])],
-    );
+  /// The first of the shortest axes.
+  static int _shortestAxis(List<int> shape) {
+    var best = 0;
+    for (var a = 1; a < shape.length; a++) {
+      if (shape[a] < shape[best]) best = a;
+    }
+    return best;
+  }
+
+  static List<Widget> _lineCharts(FieldSnapshot snapshot, {required int frame}) {
+    MetricSeries series(String name, Float32List data) {
+      final values = snapshot.plane(data, frame: frame).values;
+      return MetricSeries(
+        name: name,
+        points: [for (var i = 0; i < values.length; i++) MetricPoint(i, values[i])],
+      );
+    }
+
+    final when = snapshot.isRollout ? ' at t = ${_formatTime(snapshot.times[frame])}' : '';
     const xAxis = ChartXAxis.positions('Point');
     return [
       LineChartCard(
-        title: snapshot.hasTarget ? 'Prediction and ground truth' : 'Prediction',
+        title: '${snapshot.hasTarget ? 'Prediction and ground truth' : 'Prediction'}$when',
         xAxis: xAxis,
         showLatest: false,
         maxPoints: 512,
         height: 200,
+        yRange: (min: snapshot.valueRange.min, max: snapshot.valueRange.max),
         lines: [
           ChartLine(
             label: 'Prediction',
@@ -147,10 +311,11 @@ class _FieldsTabState extends ConsumerState<FieldsTab> {
       ),
       if (snapshot.error case final error?)
         LineChartCard(
-          title: 'Error (prediction − truth)',
+          title: 'Error (prediction − truth)$when',
           xAxis: xAxis,
           showLatest: false,
           maxPoints: 512,
+          yRange: (min: -snapshot.maxAbsError, max: snapshot.maxAbsError),
           lines: [
             ChartLine(label: 'Error', color: ChartColors.gradient, series: series('error', error)),
           ],
@@ -165,6 +330,19 @@ String formatRelativeError(double fraction) {
   final percent = fraction * 100;
   if (percent == 0) return '0%';
   return '${percent >= 1 ? percent.toStringAsFixed(1) : percent.toStringAsPrecision(2)}%';
+}
+
+/// A frame's time: "0.3", "12", "1.5e-4".
+String _formatTime(double t) {
+  if (!t.isFinite) return formatMetric(t);
+  if (t == t.roundToDouble() && t.abs() < 1e6) return t.toInt().toString();
+  if (t.abs() < 1e-3 || t.abs() >= 1e4) return t.toStringAsExponential(2);
+  // At most 3 decimals, without trailing zeros: 0.30000000000000004 -> "0.3".
+  var text = t.toStringAsFixed(3);
+  while (text.endsWith('0')) {
+    text = text.substring(0, text.length - 1);
+  }
+  return text.endsWith('.') ? text.substring(0, text.length - 1) : text;
 }
 
 class _NoFields extends StatelessWidget {
@@ -185,7 +363,7 @@ class _NoFields extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               'To see a predicted field next to the true one, log snapshots with '
-              'run.log_field("u", prediction, target).',
+              'run.log_field("u", prediction, target), or a rollout with run.log_rollout.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
@@ -199,9 +377,9 @@ class _NoFields extends StatelessWidget {
 }
 
 class _FieldPicker extends StatelessWidget {
-  const _FieldPicker({required this.names, required this.selected, required this.onSelected});
+  const _FieldPicker({required this.fields, required this.selected, required this.onSelected});
 
-  final List<String> names;
+  final List<FieldSummary> fields;
   final String selected;
   final ValueChanged<String> onSelected;
 
@@ -210,11 +388,20 @@ class _FieldPicker extends StatelessWidget {
     spacing: 8,
     runSpacing: 8,
     children: [
-      for (final name in names)
+      for (final field in fields)
         ChoiceChip(
-          label: Text(name),
-          selected: name == selected,
-          onSelected: (_) => onSelected(name),
+          avatar: switch (field) {
+            FieldSummary(isRollout: true) => const Icon(Icons.movie_outlined, size: 18),
+            FieldSummary(shape: [_, _, _]) => const Icon(Icons.view_in_ar_outlined, size: 18),
+            _ => null,
+          },
+          label: Text(field.label),
+          tooltip: [
+            if (field.isRollout) 'Rollout of ${field.frames} frames',
+            '${field.shape.length}D, ${field.shape.join(' × ')}',
+          ].join(', '),
+          selected: field.name == selected,
+          onSelected: (_) => onSelected(field.name),
         ),
     ],
   );
@@ -256,32 +443,13 @@ class _StepCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (steps.length > 1)
-            Row(
-              children: [
-                IconButton(
-                  tooltip: 'Previous snapshot',
-                  icon: const Icon(Icons.chevron_left),
-                  onPressed: index > 0 ? () => onChanged(index - 1) : null,
-                ),
-                Expanded(
-                  child: Slider(
-                    value: index.toDouble(),
-                    max: last.toDouble(),
-                    divisions: last,
-                    label: 'Step ${formatInt(step.step)}',
-                    semanticFormatterCallback: (value) =>
-                        'Step ${formatInt(steps[value.round()].step)}',
-                    onChanged: (value) {
-                      if (value.round() != index) onChanged(value.round());
-                    },
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Next snapshot',
-                  icon: const Icon(Icons.chevron_right),
-                  onPressed: index < last ? () => onChanged(index + 1) : null,
-                ),
-              ],
+            _IndexSlider(
+              index: index,
+              count: steps.length,
+              previous: 'Previous snapshot',
+              next: 'Next snapshot',
+              label: (i) => 'Step ${formatInt(steps[i].step)}',
+              onChanged: onChanged,
             ),
           const SizedBox(height: 8),
           if (hasTarget)
@@ -289,7 +457,7 @@ class _StepCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: StatTile(
-                    label: 'Relative L2',
+                    label: field.isRollout ? 'Relative L2, all frames' : 'Relative L2',
                     value: stat(FieldStatKeys.relL2, formatRelativeError),
                   ),
                 ),
@@ -308,7 +476,9 @@ class _StepCard extends StatelessWidget {
             )
           else
             Text(
-              'No ground truth logged: showing the prediction only.',
+              field.kind == FieldKind.layer
+                  ? 'A layer inside the model: there is no ground truth to compare with.'
+                  : 'No ground truth logged: showing the prediction only.',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -319,20 +489,179 @@ class _StepCard extends StatelessWidget {
   }
 }
 
-/// Prediction, ground truth and error side by side as heatmaps, with the
-/// values at a tapped point.
-class _HeatmapsCard extends StatelessWidget {
-  const _HeatmapsCard({
+/// A slider over [count] positions, with buttons for one back and forward.
+class _IndexSlider extends StatelessWidget {
+  const _IndexSlider({
+    required this.index,
+    required this.count,
+    required this.previous,
+    required this.next,
+    required this.label,
+    required this.onChanged,
+    this.leading,
+  });
+
+  final int index;
+  final int count;
+  final String previous;
+  final String next;
+  final String Function(int index) label;
+  final ValueChanged<int> onChanged;
+  final Widget? leading;
+
+  @override
+  Widget build(BuildContext context) {
+    final last = count - 1;
+    return Row(
+      children: [
+        ?leading,
+        IconButton(
+          tooltip: previous,
+          icon: const Icon(Icons.chevron_left),
+          onPressed: index > 0 ? () => onChanged(index - 1) : null,
+        ),
+        Expanded(
+          child: Slider(
+            value: index.toDouble(),
+            max: last.toDouble(),
+            divisions: last,
+            label: label(index),
+            semanticFormatterCallback: (value) => label(value.round()),
+            onChanged: (value) {
+              if (value.round() != index) onChanged(value.round());
+            },
+          ),
+        ),
+        IconButton(
+          tooltip: next,
+          icon: const Icon(Icons.chevron_right),
+          onPressed: index < last ? () => onChanged(index + 1) : null,
+        ),
+      ],
+    );
+  }
+}
+
+/// Play a rollout, or pick one of its frames.
+class _FrameControls extends StatelessWidget {
+  const _FrameControls({
     required this.snapshot,
-    required this.loading,
-    required this.point,
-    required this.onSelect,
+    required this.frame,
+    required this.playing,
+    required this.onPlay,
+    required this.onChanged,
   });
 
   final FieldSnapshot snapshot;
+  final int frame;
+  final bool playing;
+  final VoidCallback onPlay;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final relL2 = snapshot.frameStats[FieldStatKeys.relL2]?[frame];
+    return SectionCard(
+      title: 'Rollout: t = ${_formatTime(snapshot.times[frame])}',
+      trailing: Text(
+        [
+          'Frame ${frame + 1} of ${snapshot.frames}',
+          if (relL2 != null) 'rel. L2 ${formatRelativeError(relL2)}',
+        ].join(' · '),
+        style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+      ),
+      child: _IndexSlider(
+        index: frame,
+        count: snapshot.frames,
+        previous: 'Previous frame',
+        next: 'Next frame',
+        label: (i) => 't = ${_formatTime(snapshot.times[i])}',
+        onChanged: onChanged,
+        leading: IconButton.filledTonal(
+          tooltip: playing ? 'Pause' : 'Play the rollout',
+          icon: Icon(playing ? Icons.pause : Icons.play_arrow),
+          onPressed: onPlay,
+        ),
+      ),
+    );
+  }
+}
+
+/// Which axis a 3D field is cut across, and where.
+class _SliceControls extends StatelessWidget {
+  const _SliceControls({
+    required this.shape,
+    required this.axis,
+    required this.index,
+    required this.onAxis,
+    required this.onIndex,
+  });
+
+  final List<int> shape;
+  final int axis;
+  final int index;
+  final ValueChanged<int> onAxis;
+  final ValueChanged<int> onIndex;
+
+  @override
+  Widget build(BuildContext context) => SectionCard(
+    title: '3D field: a slice across axis $axis',
+    trailing: Text('${index + 1} of ${shape[axis]}'),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SegmentedButton<int>(
+          segments: [
+            for (var a = 0; a < 3; a++)
+              ButtonSegment(value: a, label: Text('Axis $a (${shape[a]})')),
+          ],
+          selected: {axis},
+          showSelectedIcon: false,
+          onSelectionChanged: (selection) => onAxis(selection.single),
+        ),
+        const SizedBox(height: 8),
+        _IndexSlider(
+          index: index,
+          count: shape[axis],
+          previous: 'Previous slice',
+          next: 'Next slice',
+          label: (i) => 'Slice ${i + 1}',
+          onChanged: onIndex,
+        ),
+      ],
+    ),
+  );
+}
+
+/// Prediction, ground truth and error side by side as heatmaps of the same
+/// 2D cut ([planes]), with the values at a tapped point.
+class _MapsCard extends StatelessWidget {
+  const _MapsCard({
+    required this.snapshot,
+    required this.planes,
+    required this.subtitle,
+    required this.loading,
+    required this.point,
+    required this.onSelect,
+    required this.describePoint,
+    this.markedRow,
+    this.aspectRatio,
+  });
+
+  final FieldSnapshot snapshot;
+  final FieldPlane Function(Float32List data) planes;
+  final String subtitle;
   final bool loading;
   final GridPoint? point;
   final ValueChanged<GridPoint> onSelect;
+  final String Function(GridPoint point) describePoint;
+
+  /// A row to mark (the current frame of a space-time map).
+  final int? markedRow;
+
+  /// Width over height of the maps; default: square grid cells.
+  final double? aspectRatio;
 
   @override
   Widget build(BuildContext context) {
@@ -342,8 +671,16 @@ class _HeatmapsCard extends StatelessWidget {
     final errorScale = snapshot.maxAbsError;
     final shape = snapshot.shape.join(' × ');
     final original = snapshot.originalShape.join(' × ');
+    final prediction = planes(snapshot.prediction);
+    final target = snapshot.target == null ? null : planes(snapshot.target!);
+    final error = snapshot.error == null ? null : planes(snapshot.error!);
+    final rows = prediction.rows, columns = prediction.columns;
+    final picked = switch (point) {
+      final p? => (row: p.row.clamp(0, rows - 1), column: p.column.clamp(0, columns - 1)),
+      null => null,
+    };
 
-    Widget map(String label, Float32List data, Colormap colormap, double low, double high) =>
+    Widget map(String label, FieldPlane plane, Colormap colormap, double low, double high) =>
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -352,17 +689,19 @@ class _HeatmapsCard extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: FieldHeatmap(
-                data: data,
-                rows: snapshot.rows,
-                columns: snapshot.columns,
+                data: plane.values,
+                rows: rows,
+                columns: columns,
                 low: low,
                 high: high,
                 colormap: colormap,
-                selected: point,
+                selected: picked,
                 onSelect: onSelect,
+                markedRow: markedRow,
+                aspectRatio: aspectRatio,
                 semanticLabel:
                     '$label of ${snapshot.name} at step ${formatInt(snapshot.step)}, '
-                    '$shape grid, values ${formatMetric(low)} to ${formatMetric(high)}',
+                    '$rows by $columns, values ${formatMetric(low)} to ${formatMetric(high)}',
               ),
             ),
             const SizedBox(height: 6),
@@ -371,12 +710,20 @@ class _HeatmapsCard extends StatelessWidget {
         );
 
     final maps = [
-      map('Prediction', snapshot.prediction, Colormap.viridis, range.min, range.max),
-      if (snapshot.target case final target?)
-        map('Ground truth', target, Colormap.viridis, range.min, range.max),
-      if (snapshot.error case final error?)
-        map('Error', error, Colormap.diverging, -errorScale, errorScale),
+      map('Prediction', prediction, Colormap.viridis, range.min, range.max),
+      if (target != null) map('Ground truth', target, Colormap.viridis, range.min, range.max),
+      if (error != null) map('Error', error, Colormap.diverging, -errorScale, errorScale),
     ];
+
+    String readout(GridPoint p) {
+      String value(FieldPlane plane) => formatMetric(plane.values[p.row * columns + p.column]);
+      return [
+        describePoint(p),
+        'prediction ${value(prediction)}',
+        if (target != null) 'truth ${value(target)}',
+        if (error != null) 'error ${value(error)}',
+      ].join(' · ');
+    }
 
     return SectionCard(
       title: snapshot.name,
@@ -384,6 +731,7 @@ class _HeatmapsCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (subtitle.isNotEmpty) ...[Text(subtitle, style: muted), const SizedBox(height: 10)],
           LayoutBuilder(
             builder: (context, constraints) {
               const gap = 12.0;
@@ -399,35 +747,41 @@ class _HeatmapsCard extends StatelessWidget {
           const SizedBox(height: 12),
           SizedBox(height: 3, child: loading ? const LinearProgressIndicator() : null),
           const SizedBox(height: 6),
-          _PointReadout(snapshot: snapshot, point: point, style: muted),
+          Text(
+            point == null ? 'Tap a map to read the values at a point.' : readout(picked!),
+            style: muted,
+          ),
         ],
       ),
     );
   }
 }
 
-class _PointReadout extends StatelessWidget {
-  const _PointReadout({required this.snapshot, required this.point, required this.style});
+/// The relative L2 error of each frame of a rollout: how error builds up.
+class _RolloutError extends StatelessWidget {
+  const _RolloutError({required this.snapshot, required this.errors, required this.frame});
 
   final FieldSnapshot snapshot;
-  final GridPoint? point;
-  final TextStyle? style;
+  final List<double> errors;
+  final int frame;
 
   @override
-  Widget build(BuildContext context) {
-    final p = point;
-    if (p == null) return Text('Tap a map to read the values at a point.', style: style);
-    String value(Float32List data) => formatMetric(snapshot.at(data, p.row, p.column));
-    return Text(
-      [
-        'Row ${p.row}, column ${p.column}',
-        'prediction ${value(snapshot.prediction)}',
-        if (snapshot.target case final t?) 'truth ${value(t)}',
-        if (snapshot.error case final e?) 'error ${value(e)}',
-      ].join(' · '),
-      style: style,
-    );
-  }
+  Widget build(BuildContext context) => LineChartCard(
+    title: 'Error along the rollout (step ${formatInt(snapshot.step)})',
+    formatValue: formatRelativeError,
+    xAxis: const ChartXAxis.positions('Frame'),
+    showLatest: false,
+    lines: [
+      ChartLine(
+        label: 'Relative L2',
+        color: ChartColors.validation,
+        series: MetricSeries(
+          name: '${snapshot.name}/frameRelL2',
+          points: [for (final (i, e) in errors.indexed) MetricPoint(i, e)],
+        ),
+      ),
+    ],
+  );
 }
 
 class _SnapshotError extends StatelessWidget {
@@ -454,7 +808,7 @@ class _ErrorOverTraining extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => LineChartCard(
-    title: 'Relative L2 error',
+    title: 'Relative L2 error over training',
     logScale: true,
     formatValue: formatRelativeError,
     lines: [
@@ -471,4 +825,264 @@ class _ErrorOverTraining extends StatelessWidget {
       ),
     ],
   );
+}
+
+// Inside the model ---------------------------------------------------------------
+
+/// The step of [layer] to show next to output step [step]: the latest one
+/// at or before it, else its first.
+int _layerStep(FieldSummary layer, int step) {
+  var chosen = layer.steps.first.step;
+  for (final s in layer.steps) {
+    if (s.step <= step) chosen = s.step;
+  }
+  return chosen;
+}
+
+/// A filmstrip of what each layer outputs, input to output, for the step
+/// shown (or the nearest one before it); tap one to see it large.
+class _LayersCard extends StatelessWidget {
+  const _LayersCard({
+    required this.runId,
+    required this.layers,
+    required this.atStep,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final String runId;
+  final List<FieldSummary> layers;
+  final int atStep;
+  final String? selected;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    final steps = {for (final l in layers) _layerStep(l, atStep)};
+    final open = layers.where((l) => l.name == selected).firstOrNull;
+    return SectionCard(
+      title: 'Inside the model',
+      trailing: Text(
+        steps.length == 1 ? 'Step ${formatInt(steps.single)}' : 'Nearest steps',
+        style: muted,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'What each layer outputs for one sample, in order through the network. '
+            'Channels are averaged; each map has its own colour scale.',
+            style: muted,
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 176,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: layers.length,
+              separatorBuilder: (_, _) => const Padding(
+                padding: EdgeInsets.only(top: 50),
+                child: Icon(Icons.arrow_forward, size: 16),
+              ),
+              itemBuilder: (context, i) => _LayerTile(
+                runId: runId,
+                layer: layers[i],
+                step: _layerStep(layers[i], atStep),
+                selected: layers[i].name == selected,
+                onTap: () => onSelected(layers[i].name),
+              ),
+            ),
+          ),
+          if (open != null) ...[
+            const SizedBox(height: 12),
+            _LayerDetail(runId: runId, layer: open, step: _layerStep(open, atStep)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A layer snapshot as one plane: a 1D output as a strip, 2D as is, the
+/// middle slice of a 3D one.
+FieldPlane _layerPlane(FieldSnapshot s) =>
+    s.plane(s.prediction, axis: 0, index: s.dimensions == 3 ? s.shape[0] ~/ 2 : 0);
+
+class _LayerTile extends ConsumerWidget {
+  const _LayerTile({
+    required this.runId,
+    required this.layer,
+    required this.step,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String runId;
+  final FieldSummary layer;
+  final int step;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final value = ref.watch(fieldSnapshotProvider((runId: runId, name: layer.name, step: step)));
+    final snapshot = value.value;
+    return SizedBox(
+      width: 120,
+      child: Material(
+        color: selected ? theme.colorScheme.secondaryContainer : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  layer.label,
+                  style: theme.textTheme.labelLarge,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 6),
+                SizedBox(
+                  height: 108,
+                  child: switch (snapshot) {
+                    final s? => Center(
+                      child: _LayerMap(snapshot: s, plane: _layerPlane(s)),
+                    ),
+                    null when value.hasError => const Center(child: Icon(Icons.error_outline)),
+                    null => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                  },
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  snapshot?.reduction ?? '',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LayerMap extends StatelessWidget {
+  const _LayerMap({required this.snapshot, required this.plane, this.onSelect, this.selected});
+
+  final FieldSnapshot snapshot;
+  final FieldPlane plane;
+  final ValueChanged<GridPoint>? onSelect;
+  final GridPoint? selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final range = snapshot.valueRange;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(4),
+      child: FieldHeatmap(
+        data: plane.values,
+        rows: plane.rows,
+        columns: plane.columns,
+        low: range.min,
+        high: range.max,
+        colormap: Colormap.viridis,
+        aspectRatio: plane.rows == 1 ? 6 : null,
+        onSelect: onSelect,
+        selected: selected,
+        semanticLabel:
+            'Output of layer ${snapshot.layer ?? snapshot.name}, ${snapshot.reduction ?? ''}, '
+            'values ${formatMetric(range.min)} to ${formatMetric(range.max)}',
+      ),
+    );
+  }
+}
+
+class _LayerDetail extends ConsumerStatefulWidget {
+  const _LayerDetail({required this.runId, required this.layer, required this.step});
+
+  final String runId;
+  final FieldSummary layer;
+  final int step;
+
+  @override
+  ConsumerState<_LayerDetail> createState() => _LayerDetailState();
+}
+
+class _LayerDetailState extends ConsumerState<_LayerDetail> {
+  GridPoint? _point;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    final snapshot = ref
+        .watch(
+          fieldSnapshotProvider((runId: widget.runId, name: widget.layer.name, step: widget.step)),
+        )
+        .value;
+    if (snapshot == null) return const SizedBox(height: 40);
+    final plane = _layerPlane(snapshot);
+    final range = snapshot.valueRange;
+    final point = switch (_point) {
+      final p? => (
+        row: p.row.clamp(0, plane.rows - 1),
+        column: p.column.clamp(0, plane.columns - 1),
+      ),
+      null => null,
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(widget.layer.label, style: theme.textTheme.titleSmall),
+        const SizedBox(height: 2),
+        Text(
+          [
+            if (snapshot.layerShape case final s?) 'output ${s.join(' × ')} per sample',
+            ?snapshot.reduction,
+            if (snapshot.dimensions == 3) 'middle slice across axis 0',
+          ].join(' · '),
+          style: muted,
+        ),
+        const SizedBox(height: 8),
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _LayerMap(
+                  snapshot: snapshot,
+                  plane: plane,
+                  selected: point,
+                  onSelect: (p) => setState(() => _point = p),
+                ),
+                const SizedBox(height: 6),
+                ColorBar(colormap: Colormap.viridis, low: range.min, high: range.max),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          point == null
+              ? 'Tap the map to read a value.'
+              : 'Row ${point.row}, column ${point.column} · '
+                    '${formatMetric(plane.values[point.row * plane.columns + point.column])}',
+          style: muted,
+        ),
+      ],
+    );
+  }
 }

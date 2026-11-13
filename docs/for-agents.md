@@ -45,6 +45,13 @@ fine, don't work around it.
   `run.log({"train/loss": loss, "optim/lr": lr}, step=global_step, epoch=epoch)`.
   If you clip gradients, also log `"optim/grad_norm"`: the value `clip_grad_norm_` returns.
 - After each evaluation: `run.log({"val/loss": ..., "val/accuracy": ...}, step=global_step)`.
+- If the model predicts a field (a neural operator, a PDE surrogate), after each
+  evaluation also log one fixed validation sample, one channel per name:
+  `run.log_field("u", pred[0, 0], target[0, 0])`; for time-dependent problems a
+  rollout, `run.log_rollout("u", pred_frames, true_frames, times=t)` (frames on
+  axis 0); and once in a while the layers, with
+  `with torch.no_grad(), run.capture_layers(model): model(x[:1])`. See
+  logger/README.md, "Fields".
 - Use exactly these names for these quantities. Other names (e.g. `train/accuracy`)
   are fine and show under "Other metrics".
 - `step` is the global optimizer step: keep it increasing across epochs, never

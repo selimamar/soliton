@@ -17,6 +17,13 @@ import 'test_app.dart';
 
 const fno = 'fno-navier-stokes';
 
+/// A tall screen, so whole cards are built (the list is lazy).
+void useTallScreen(WidgetTester tester) {
+  tester.view.physicalSize = const Size(900, 2400);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+}
+
 Future<void> openFieldsTab(WidgetTester tester, String runId) async {
   await openApp(tester, '/runs/$runId');
   await tester.tap(find.text('Fields'));
@@ -46,7 +53,7 @@ void main() {
       expect(snapshot.prediction.sublist(0, 2), [-1, 3]);
       expect(snapshot.prediction[2].isNaN, isTrue);
       expect(snapshot.originalShape, [300]);
-      expect(snapshot.is2D, isFalse);
+      expect(snapshot.dimensions, 1);
       expect(snapshot.error, isNull);
       expect(snapshot.stats['relL2']!.isNaN, isTrue);
     });
@@ -64,8 +71,7 @@ void main() {
       final back = FieldSnapshot.fromJson(
         jsonDecode(jsonEncode(snapshot.toJson())) as Map<String, Object?>,
       );
-      expect(back.rows, 2);
-      expect(back.columns, 3);
+      expect(back.shape, [2, 3]);
       for (var i = 0; i < 5; i++) {
         expect(back.prediction[i], closeTo(prediction[i], 2 / 65534));
         expect(back.target![i], closeTo(target[i], 2 / 65534));
@@ -73,12 +79,66 @@ void main() {
       expect(back.prediction[5].isNaN, isTrue);
       expect(snapshot.valueRange, (min: 0.0, max: 2.0));
       expect(snapshot.maxAbsError, closeTo(0.1, 1e-6));
-      expect(snapshot.at(snapshot.error!, 1, 0), closeTo(-0.1, 1e-6));
+      expect(snapshot.plane(snapshot.error!).values[3], closeTo(-0.1, 1e-6));
     });
 
     test('refuses data that does not match its shape', () {
       expect(
         () => FieldSnapshot(name: 'u', step: 0, shape: const [2, 2], prediction: Float32List(3)),
+        throwsArgumentError,
+      );
+    });
+  });
+
+  group('planes to draw', () {
+    // A 2 × 3 × 4 volume whose value is its own index: 100a + 10b + c.
+    final volume = Float32List.fromList([
+      for (var a = 0; a < 2; a++)
+        for (var b = 0; b < 3; b++)
+          for (var c = 0; c < 4; c++) 100.0 * a + 10 * b + c,
+    ]);
+    final snapshot = FieldSnapshot(name: 'v', step: 0, shape: const [2, 3, 4], prediction: volume);
+
+    test('cut a 3D field across each axis', () {
+      final across0 = snapshot.plane(volume, axis: 0, index: 1);
+      expect((across0.rows, across0.columns), (3, 4));
+      expect(across0.values.sublist(0, 2), [100, 101]);
+      final across1 = snapshot.plane(volume, axis: 1, index: 2);
+      expect((across1.rows, across1.columns), (2, 4));
+      expect(across1.values[4], 120, reason: 'row a = 1, column c = 0');
+      final across2 = snapshot.plane(volume, axis: 2, index: 3);
+      expect((across2.rows, across2.columns), (2, 3));
+      expect(across2.values.last, 123);
+    });
+
+    test('pick a frame of a rollout, or all of a 1D one as space-time', () {
+      final rollout = FieldSnapshot(
+        name: 'u',
+        step: 0,
+        shape: const [3],
+        frames: 2,
+        times: const [0, 0.5],
+        prediction: Float32List.fromList([1, 2, 3, 4, 5, 6]),
+      );
+      expect(rollout.plane(rollout.prediction, frame: 1).values, [4, 5, 6]);
+      final spaceTime = rollout.spaceTime(rollout.prediction);
+      expect((spaceTime.rows, spaceTime.columns), (2, 3));
+      final back = FieldSnapshot.fromJson(
+        jsonDecode(jsonEncode(rollout.toJson())) as Map<String, Object?>,
+      );
+      expect(back.frames, 2);
+      expect(back.times, [0, 0.5]);
+    });
+
+    test('refuses frames that do not match the data', () {
+      expect(
+        () => FieldSnapshot(
+          name: 'u',
+          step: 0,
+          shape: const [3],
+          frames: 3,
+          prediction: Float32List(6),
+        ),
         throwsArgumentError,
       );
     });
@@ -102,7 +162,17 @@ void main() {
 
   test('the demo operator learns: its error falls over training', () async {
     final fields = await MockRunRepository(latency: Duration.zero).fetchFields(fno);
-    expect(fields.map((f) => f.name), ['vorticity', 'vorticity, y = 0.5']);
+    expect(fields.map((f) => f.name).take(5), [
+      'vorticity',
+      'vorticity, y = 0.5',
+      'rollout',
+      'rollout, y = 0.5',
+      'vorticity (x, y, t)',
+    ]);
+    expect(
+      [for (final f in fields.skip(5)) f.layer],
+      ['lifting', 'blocks.0', 'blocks.1', 'blocks.2', 'blocks.3', 'projection'],
+    );
     expect(fields.first.shape, [64, 64]);
     final errors = [for (final s in fields.first.steps) s.relL2!];
     expect(errors.first, greaterThan(0.5));
@@ -119,9 +189,10 @@ void main() {
     final repository = ApiRunRepository(
       server.clientFor(ServerConnection.parse('http://localhost:8000', 'secret')!),
     );
-    final [vorticity, _] = await repository.fetchFields(fno);
+    final vorticity = (await repository.fetchFields(fno)).first;
     final local = await MockRunRepository(latency: Duration.zero).fetchFields(fno);
     expect(vorticity, local.first);
+    expect(await repository.fetchFields(fno), local, reason: 'rollouts, 3D and layers too');
     final step = vorticity.steps.last.step;
     final snapshot = await repository.fetchFieldSnapshot(fno, 'vorticity', step);
     expect(snapshot.step, step);
@@ -178,6 +249,78 @@ void main() {
       expect(find.text('Prediction and ground truth'), findsOneWidget);
       await tester.scrollUntilVisible(
         find.text('Error (prediction − truth)'),
+        200,
+        scrollable: visibleList(),
+      );
+    });
+
+    testWidgets('a rollout plays frame by frame, with its error per frame', (tester) async {
+      await openFieldsTab(tester, fno);
+      await tester.tap(find.text('rollout'));
+      await tester.pumpAndSettle();
+      expect(find.text('Rollout: t = 0'), findsOneWidget);
+      expect(find.byType(FieldHeatmap), findsNWidgets(3));
+      await tester.tap(find.byTooltip('Play the rollout'));
+      await tester.pump(const Duration(milliseconds: 170));
+      await tester.pump(const Duration(milliseconds: 170));
+      expect(find.text('Rollout: t = 0.2'), findsOneWidget);
+      await tester.tap(find.byTooltip('Pause'));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('Rollout: t = 0.2'), findsOneWidget, reason: 'paused');
+      await tester.scrollUntilVisible(
+        find.text('Error along the rollout (step 7,000)'),
+        300,
+        scrollable: visibleList(),
+      );
+    });
+
+    testWidgets('a 1D rollout is drawn as space-time maps', (tester) async {
+      await openFieldsTab(tester, fno);
+      await tester.tap(find.text('rollout, y = 0.5'));
+      await tester.pumpAndSettle();
+      expect(find.text('Time runs down, from t = 0 to 1.5'), findsOneWidget);
+      final map = tester.widget<FieldHeatmap>(find.byType(FieldHeatmap).first);
+      expect((map.rows, map.columns, map.markedRow), (16, 128, 0));
+    });
+
+    testWidgets('a 3D field is cut in slices, by default across its shortest axis', (tester) async {
+      useTallScreen(tester);
+      await openFieldsTab(tester, fno);
+      await tester.tap(find.text('vorticity (x, y, t)'));
+      await tester.pumpAndSettle();
+      expect(find.text('3D field: a slice across axis 2'), findsOneWidget);
+      expect(find.text('9 of 16'), findsOneWidget, reason: 'the middle slice');
+      var map = tester.widget<FieldHeatmap>(find.byType(FieldHeatmap).first);
+      expect((map.rows, map.columns), (32, 32));
+
+      await tester.tap(find.text('Axis 0 (32)'));
+      await tester.pumpAndSettle();
+      map = tester.widget<FieldHeatmap>(find.byType(FieldHeatmap).first);
+      expect((map.rows, map.columns), (32, 16));
+      await tester.tap(find.byTooltip('Next slice'));
+      await tester.pumpAndSettle();
+      expect(find.text('18 of 32'), findsOneWidget);
+    });
+
+    testWidgets('the field through the layers, input to output', (tester) async {
+      useTallScreen(tester);
+      await openFieldsTab(tester, fno);
+      await tester.scrollUntilVisible(
+        find.text('Inside the model'),
+        300,
+        scrollable: visibleList(),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('lifting'), findsOneWidget);
+      expect(find.text('blocks.0'), findsOneWidget);
+      expect(find.text('Step 7,000'), findsNWidgets(2), reason: 'the snapshot, and the layers');
+      // Tap the map itself, not just the name: the map mustn't swallow it.
+      await tester.tap(
+        find.descendant(of: find.byType(ListView).last, matching: find.byType(FieldHeatmap)).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('output 64 × 64 × 32 per sample · mean of 32 channels'),
         200,
         scrollable: visibleList(),
       );

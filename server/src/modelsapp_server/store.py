@@ -112,11 +112,21 @@ def _field_row(run_id: str, event: FieldEvent) -> dict:
         "name": event.name,
         "step": event.step,
         "meta": {
+            "kind": event.kind,
             "shape": list(event.shape),
             "originalShape": list(event.originalShape or event.shape),
+            "frames": event.frames,
+            "times": None if event.times is None else [encode_float(t) for t in event.times],
             "min": encode_float(event.min),
             "max": encode_float(event.max),
             "stats": {k: encode_float(v) for k, v in event.stats.items()},
+            "frameStats": {
+                k: [encode_float(v) for v in values] for k, values in event.frameStats.items()
+            },
+            "layer": event.layer,
+            "position": event.position,
+            "reduction": event.reduction,
+            "layerShape": event.layerShape,
         },
         "prediction": event.prediction,
         "target": event.target,
@@ -410,9 +420,19 @@ class Store:
             fields: dict[str, dict] = {}
             for name, step, meta in result:
                 field = fields.setdefault(name, {"name": name, "steps": []})
-                field["shape"] = meta["shape"]  # The latest step's.
+                # Shape, frames and the layer's place: the latest step's.
+                field.update(
+                    kind=meta.get("kind", "output"),
+                    shape=meta["shape"],
+                    frames=meta.get("frames", 1),
+                    layer=meta.get("layer"),
+                    position=meta.get("position"),
+                )
                 field["steps"].append({"step": step, "stats": meta.get("stats", {})})
-        return list(fields.values())
+        # Outputs by name, then layers in model order.
+        return sorted(fields.values(), key=lambda f: (
+            f["kind"] == "layer", f["position"] if f["position"] is not None else 0, f["name"]
+        ))
 
     def field_snapshot(self, run_id: str, name: str, step: int | None) -> dict:
         """One snapshot; the latest one if [step] is None."""

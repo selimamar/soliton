@@ -26,6 +26,8 @@ class FieldHeatmap extends StatelessWidget {
     required this.semanticLabel,
     this.selected,
     this.onSelect,
+    this.aspectRatio,
+    this.markedRow,
   });
 
   final Float32List data;
@@ -38,11 +40,19 @@ class FieldHeatmap extends StatelessWidget {
   final GridPoint? selected;
   final ValueChanged<GridPoint>? onSelect;
 
+  /// Width over height; default: one square per grid point (a single row
+  /// would be a hairline, so pass e.g. 8 for that).
+  final double? aspectRatio;
+
+  /// A row to mark with a line across the map (e.g. the current frame of a
+  /// space-time map).
+  final int? markedRow;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return AspectRatio(
-      aspectRatio: columns / rows,
+      aspectRatio: aspectRatio ?? columns / rows,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final size = constraints.biggest;
@@ -56,9 +66,11 @@ class FieldHeatmap extends StatelessWidget {
             image: true,
             label: semanticLabel,
             child: GestureDetector(
-              onTapDown: (details) => pick(details.localPosition),
-              onPanDown: (details) => pick(details.localPosition),
-              onPanUpdate: (details) => pick(details.localPosition),
+              // Without [onSelect], leave taps to whatever holds the map
+              // (e.g. a tappable tile).
+              onTapDown: onSelect == null ? null : (details) => pick(details.localPosition),
+              onPanDown: onSelect == null ? null : (details) => pick(details.localPosition),
+              onPanUpdate: onSelect == null ? null : (details) => pick(details.localPosition),
               // The cells repaint only when the data changes, not when the
               // picked point moves.
               child: CustomPaint(
@@ -67,6 +79,7 @@ class FieldHeatmap extends StatelessWidget {
                   rows: rows,
                   columns: columns,
                   selected: selected,
+                  markedRow: markedRow,
                   color: scheme.onSurface,
                 ),
                 child: RepaintBoundary(
@@ -167,16 +180,36 @@ class _PointPainter extends CustomPainter {
     required this.columns,
     required this.selected,
     required this.color,
+    this.markedRow,
   });
 
   final int rows, columns;
   final GridPoint? selected;
   final Color color;
+  final int? markedRow;
 
   @override
   void paint(Canvas canvas, Size size) {
     final dx = size.width / columns;
     final dy = size.height / rows;
+    if (markedRow case final row?) {
+      final y = (row + 0.5) * dy;
+      canvas
+        ..drawLine(
+          Offset(0, y),
+          Offset(size.width, y),
+          Paint()
+            ..color = color.withValues(alpha: 0.35)
+            ..strokeWidth = 4,
+        )
+        ..drawLine(
+          Offset(0, y),
+          Offset(size.width, y),
+          Paint()
+            ..color = color
+            ..strokeWidth = 1.5,
+        );
+    }
     if (selected case final point?) {
       final center = Offset((point.column + 0.5) * dx, (point.row + 0.5) * dy);
       final outline = Paint()
@@ -196,7 +229,11 @@ class _PointPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_PointPainter old) =>
-      old.selected != selected || old.color != color || old.rows != rows || old.columns != columns;
+      old.selected != selected ||
+      old.markedRow != markedRow ||
+      old.color != color ||
+      old.rows != rows ||
+      old.columns != columns;
 }
 
 /// A horizontal colour bar with the values at both ends (and zero, for a

@@ -87,7 +87,11 @@ What it does:
   by the number of training and validation samples and the loss; a network
   diagram and the module tree), Metrics (loss, accuracy, learning rate,
   gradient norms, any other metric), Layers (activation histograms, dead
-  units, gradient norms per layer) and System (below).
+  units, gradient norms per layer), Fields and System (below).
+- **Fields**, for neural operators and other models that predict a field:
+  the prediction, the true field and their difference as heatmaps or lines
+  at any logged step; rollouts played over time with their error frame by
+  frame; 3D fields in slices; and the field through each layer of the model.
 - **Live updates**: charts and the list refresh as the server receives data.
 - **Compare**: pick up to six runs on the runs list to overlay their curves.
 - **Chart options**: log scale (loss, learning rate, gradient norm), and
