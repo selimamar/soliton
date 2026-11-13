@@ -13,6 +13,7 @@ dev = [
   "numpy>=2.2.6",         # keeps torch from warning that it's missing
   "psycopg[binary]>=3.2", # Postgres driver for the server tests
   "pgserver>=0.1",        # a throwaway Postgres for the server tests
+  "pillow>=12.3.0",
 ]
 
 [tool.pytest.ini_options]
