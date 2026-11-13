@@ -1,16 +1,20 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/compare/compare_screen.dart';
 import '../features/not_found/not_found_screen.dart';
 import '../features/run_detail/run_detail_screen.dart';
 import '../features/runs_list/runs_list_screen.dart';
+import '../features/settings/server_screen.dart';
 import '../features/settings/settings_screen.dart';
 
 /// All routes of the app (build locations with `AppRoutes`):
 ///
-///   /               runs list
-///   /runs/:runId    run detail (Overview, Metrics, Layers tabs)
-///   /settings       settings
+///   /                     runs list
+///   /runs/:runId          run detail (Overview, Metrics, Layers tabs)
+///   /compare?runs=a,b     runs side by side
+///   /settings             settings
+///   /settings/server      connect to a server
 ///
 /// Any other path shows [NotFoundScreen].
 final routerProvider = Provider<GoRouter>((ref) {
@@ -28,7 +32,20 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: 'runs/:runId',
             builder: (context, state) => RunDetailScreen(runId: state.pathParameters['runId']!),
           ),
-          GoRoute(path: 'settings', builder: (context, state) => const SettingsScreen()),
+          GoRoute(
+            path: 'compare',
+            builder: (context, state) => CompareScreen(
+              runIds: [
+                for (final id in (state.uri.queryParameters['runs'] ?? '').split(','))
+                  if (id.isNotEmpty) id,
+              ],
+            ),
+          ),
+          GoRoute(
+            path: 'settings',
+            builder: (context, state) => const SettingsScreen(),
+            routes: [GoRoute(path: 'server', builder: (context, state) => const ServerScreen())],
+          ),
         ],
       ),
     ],

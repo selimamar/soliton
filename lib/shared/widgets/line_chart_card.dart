@@ -17,12 +17,33 @@ class ChartLine {
   final MetricSeries series;
 }
 
+/// What a chart's x-axis counts: training steps, or epochs.
+class ChartXAxis {
+  const ChartXAxis.steps() : stepsPerEpoch = null;
+
+  /// Epochs, assuming the same number of steps in each.
+  const ChartXAxis.epochs(double this.stepsPerEpoch);
+
+  final double? stepsPerEpoch;
+
+  String get label => stepsPerEpoch == null ? 'Step' : 'Epoch';
+
+  double position(int step) => stepsPerEpoch == null ? step.toDouble() : step / stepsPerEpoch!;
+
+  /// "1,200" for steps, "3.4" for epochs.
+  String describe(double x) {
+    if (stepsPerEpoch == null) return formatInt(x.round());
+    final text = x.toStringAsFixed(2);
+    return text.replaceFirst(RegExp(r'\.?0+$'), '');
+  }
+}
+
 /// A titled card with an interactive line chart (drag to read values).
 ///
-/// The x-axis is the training step. Each line is downsampled to [maxPoints]
-/// (keeping spikes) so charts stay smooth on long runs. Non-finite values
-/// (NaN, ±∞, as logged by a diverging run) leave a gap in the line and are
-/// ignored for the axis range.
+/// Each line is downsampled to [maxPoints] (keeping spikes) so charts stay
+/// smooth on long runs. Non-finite values (NaN, ±∞, as logged by a
+/// diverging run) leave a gap in the line and are ignored for the axis
+/// range; on a [logScale], so are zero and negative values.
 class LineChartCard extends StatelessWidget {
   const LineChartCard({
     super.key,
@@ -32,6 +53,8 @@ class LineChartCard extends StatelessWidget {
     this.formatTick = formatAxisTick,
     this.height = 180,
     this.maxPoints = 300,
+    this.logScale = false,
+    this.xAxis = const ChartXAxis.steps(),
   });
 
   final String title;
@@ -40,20 +63,40 @@ class LineChartCard extends StatelessWidget {
   /// Formats values in the header and the tooltip.
   final String Function(double value) formatValue;
 
-  /// Formats y-axis tick labels, given the tick spacing.
+  /// Formats y-axis tick labels, given the tick spacing (linear scale only).
   final String Function(double value, double interval) formatTick;
 
   final double height;
   final int maxPoints;
 
+  /// A logarithmic y-axis, with ticks at 1, 2 and 5 times powers of ten.
+  final bool logScale;
+
+  final ChartXAxis xAxis;
+
+  /// The value's height on the chart, or null if it can't be drawn.
+  double? _plotY(double value) {
+    if (!value.isFinite) return null;
+    if (!logScale) return value;
+    return value > 0 ? math.log(value) / math.ln10 : null;
+  }
+
+  double _valueAt(double y) => logScale ? math.pow(10, y).toDouble() : y;
+
   @override
   Widget build(BuildContext context) {
     final hasData = lines.any((line) => !line.series.isEmpty);
+    final hasFinite = lines.any((line) => line.series.points.any((p) => p.value.isFinite));
     final plottable = [
       for (final line in lines)
-        if (line.series.points.any((p) => p.value.isFinite)) line,
+        if (line.series.points.any((p) => _plotY(p.value) != null)) line,
     ];
     final latest = plottable.isEmpty ? null : plottable.first.series.latest;
+    final emptyText = !hasData
+        ? 'No data yet'
+        : hasFinite && logScale
+        ? 'No positive values to plot on a log scale'
+        : 'No finite values to plot';
 
     return SectionCard(
       title: title,
@@ -69,7 +112,7 @@ class LineChartCard extends StatelessWidget {
           SizedBox(
             height: height,
             child: plottable.isEmpty
-                ? Center(child: Text(hasData ? 'No finite values to plot' : 'No data yet'))
+                ? Center(child: Text(emptyText))
                 : Semantics(
                     container: true,
                     label: _semanticSummary(plottable),
@@ -86,7 +129,7 @@ class LineChartCard extends StatelessWidget {
 
   /// "Loss chart. Train: latest 0.501, range 0.25 to 2.3. Validation: ..."
   String _semanticSummary(List<ChartLine> lines) {
-    final parts = ['$title chart.'];
+    final parts = ['$title chart${logScale ? ', log scale' : ''}.'];
     for (final line in lines) {
       final finite = [
         for (final p in line.series.points)
@@ -112,7 +155,10 @@ class LineChartCard extends StatelessWidget {
         LineChartBarData(
           spots: [
             for (final p in s.points)
-              p.value.isFinite ? FlSpot(p.step.toDouble(), p.value) : FlSpot.nullSpot,
+              if (_plotY(p.value) case final y?)
+                FlSpot(xAxis.position(p.step), y)
+              else
+                FlSpot.nullSpot,
           ],
           color: lines[i].color,
           barWidth: 2,
@@ -121,32 +167,34 @@ class LineChartCard extends StatelessWidget {
         ),
     ];
 
-    // Axes with round bounds and tick spacing. The small padding keeps lines
-    // off the top and bottom edges.
     final ys = [
       for (final s in series)
-        for (final p in s.points)
-          if (p.value.isFinite) p.value,
+        for (final p in s.points) ?_plotY(p.value),
     ];
-    final minY = ys.reduce(math.min);
-    final maxY = ys.reduce(math.max);
-    final pad = (maxY - minY) * 0.04;
-    final yAxis = niceAxis(minY - pad, maxY + pad);
+    final y = logScale
+        ? _LogYAxis(ys.reduce(math.min), ys.reduce(math.max))
+        : _LinearYAxis(ys.reduce(math.min), ys.reduce(math.max), formatTick);
 
-    final minX = series.map((s) => s.points.first.step).reduce(math.min).toDouble();
-    final maxX = series.map((s) => s.points.last.step).reduce(math.max).toDouble();
+    // Lines need not start at the same step (e.g. a resumed run).
+    final xs = [
+      for (final s in series)
+        if (s.points.isNotEmpty) ...[s.points.first.step, s.points.last.step],
+    ];
+    final minX = xAxis.position(xs.reduce(math.min));
+    final maxX = xAxis.position(xs.reduce(math.max));
     final xInterval = maxX > minX ? niceInterval((maxX - minX) / 4) : 1.0;
 
     return LineChartData(
       minX: minX,
       maxX: maxX,
-      minY: yAxis.min,
-      maxY: yAxis.max,
+      minY: y.min,
+      maxY: y.max,
       lineBarsData: bars,
       borderData: FlBorderData(show: false),
       gridData: FlGridData(
         drawVerticalLine: false,
-        horizontalInterval: yAxis.interval,
+        horizontalInterval: y.interval,
+        checkToShowHorizontalLine: (value) => y.label(value) != null,
         getDrawingHorizontalLine: (_) =>
             FlLine(color: scheme.outlineVariant.withValues(alpha: 0.6), strokeWidth: 0.5),
       ),
@@ -157,9 +205,11 @@ class LineChartCard extends StatelessWidget {
           sideTitles: SideTitles(
             showTitles: true,
             reservedSize: 52,
-            interval: yAxis.interval,
-            getTitlesWidget: (value, meta) =>
-                _axisLabel(value, meta, formatTick(value, yAxis.interval), labelStyle),
+            interval: y.interval,
+            getTitlesWidget: (value, meta) => switch (y.label(value)) {
+              final text? => _axisLabel(value, meta, text, labelStyle),
+              null => const SizedBox.shrink(),
+            },
           ),
         ),
         bottomTitles: AxisTitles(
@@ -181,8 +231,8 @@ class LineChartCard extends StatelessWidget {
                 _tooltipText(
                   spot,
                   lines[spot.barIndex].label,
-                  headerStep: i == 0 ? spot.x : null,
-                  firstStep: spots.first.x,
+                  headerX: i == 0 ? spot.x : null,
+                  firstX: spots.first.x,
                 ),
                 TextStyle(color: scheme.onInverseSurface, fontSize: 12),
               ),
@@ -197,12 +247,12 @@ class LineChartCard extends StatelessWidget {
   String _tooltipText(
     LineBarSpot spot,
     String label, {
-    required double? headerStep,
-    required double firstStep,
+    required double? headerX,
+    required double firstX,
   }) {
-    final header = headerStep == null ? '' : 'Step ${formatInt(headerStep.round())}\n';
-    final ownStep = spot.x == firstStep ? '' : ' (step ${formatInt(spot.x.round())})';
-    return '$header$label: ${formatValue(spot.y)}$ownStep';
+    final header = headerX == null ? '' : '${xAxis.label} ${xAxis.describe(headerX)}\n';
+    final own = spot.x == firstX ? '' : ' (${xAxis.label.toLowerCase()} ${xAxis.describe(spot.x)})';
+    return '$header$label: ${formatValue(_valueAt(spot.y))}$own';
   }
 
   /// Axis tick label. The extreme ticks are hidden: they usually collide
@@ -216,6 +266,74 @@ class LineChartCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Text(text, style: style, maxLines: 1),
     );
+  }
+}
+
+/// The y-axis bounds, the spacing at which fl_chart asks for ticks and grid
+/// lines, and which of those get a label.
+sealed class _YAxis {
+  double get min;
+  double get max;
+  double get interval;
+
+  /// The label at [value], or null for no tick (and no grid line) there.
+  String? label(double value);
+}
+
+/// Round bounds and evenly spaced ticks. The small padding keeps lines off
+/// the top and bottom edges.
+class _LinearYAxis implements _YAxis {
+  _LinearYAxis(double low, double high, this._format) {
+    final pad = (high - low) * 0.04;
+    final scale = niceAxis(low - pad, high + pad);
+    min = scale.min;
+    max = scale.max;
+    interval = scale.interval;
+  }
+
+  final String Function(double value, double interval) _format;
+
+  @override
+  late final double min;
+  @override
+  late final double max;
+  @override
+  late final double interval;
+
+  @override
+  String? label(double value) => _format(value, interval);
+}
+
+/// Plotted in log10 units. fl_chart only spaces ticks evenly, so it is
+/// asked at a fine spacing, and only the spots nearest a round value
+/// (1, 2, 5 × 10ⁿ) get a label and a grid line.
+class _LogYAxis implements _YAxis {
+  _LogYAxis(double lowLog, double highLog) {
+    final scale = logAxis(math.pow(10, lowLog).toDouble(), math.pow(10, highLog).toDouble());
+    min = _log10(scale.min);
+    max = _log10(scale.max);
+    interval = (max - min) / _steps;
+    _ticks = [for (final t in scale.ticks) (_log10(t), t)];
+  }
+
+  static const _steps = 200;
+
+  @override
+  late final double min;
+  @override
+  late final double max;
+  @override
+  late final double interval;
+  late final List<(double, double)> _ticks;
+
+  static double _log10(double value) => math.log(value) / math.ln10;
+
+  @override
+  String? label(double value) {
+    for (final (position, tick) in _ticks) {
+      if ((value - position).abs() <= interval / 2) return formatLogTick(tick);
+    }
+    return null;
   }
 }
 

@@ -12,10 +12,13 @@ import '../../../shared/widgets/status_chip.dart';
 /// One run in the runs list: name, status, where it runs, a loss sparkline
 /// and its progress.
 class RunCard extends StatelessWidget {
-  const RunCard({super.key, required this.run, this.onTap});
+  const RunCard({super.key, required this.run, this.onTap, this.selected});
 
   final Run run;
   final VoidCallback? onTap;
+
+  /// Non-null while picking runs to compare: whether this one is picked.
+  final bool? selected;
 
   @override
   Widget build(BuildContext context) {
@@ -26,11 +29,20 @@ class RunCard extends StatelessWidget {
 
     return SectionCard(
       onTap: onTap,
+      selected: selected,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
+              if (selected case final isSelected?) ...[
+                Icon(
+                  isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
+                  size: 20,
+                  color: isSelected ? theme.colorScheme.primary : muted,
+                ),
+                const SizedBox(width: 8),
+              ],
               Expanded(
                 child: Text(
                   run.name,

@@ -209,6 +209,6 @@ void main() {
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
     expect(locationOf(tester), '/settings');
-    expect(find.text('Version 0.1.0 (first draft)'), findsOneWidget);
+    expect(find.text('Version 0.2.0'), findsOneWidget);
   });
 }

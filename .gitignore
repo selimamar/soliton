@@ -46,3 +46,15 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Project-local environment (see env.sh): Python, caches, local data
+/.venv/
+/.cache/
+/.data/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+# Runs the logger saved while offline (see logger/README.md)
+modelsapp-runs/
+# Local launch config with machine-specific paths
+/.claude/launch.json

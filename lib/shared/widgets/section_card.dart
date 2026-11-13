@@ -9,6 +9,7 @@ class SectionCard extends StatelessWidget {
     required this.child,
     this.onTap,
     this.padding = const EdgeInsets.all(16),
+    this.selected,
   });
 
   final String? title;
@@ -20,6 +21,10 @@ class SectionCard extends StatelessWidget {
   final VoidCallback? onTap;
   final EdgeInsetsGeometry padding;
 
+  /// Non-null for a card that can be picked (e.g. runs to compare): a
+  /// picked card gets an outline, and screen readers announce the state.
+  final bool? selected;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -27,7 +32,12 @@ class SectionCard extends StatelessWidget {
 
     final card = Material(
       color: theme.colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(16),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: selected ?? false
+            ? BorderSide(color: theme.colorScheme.primary, width: 2)
+            : BorderSide.none,
+      ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
@@ -63,6 +73,8 @@ class SectionCard extends StatelessWidget {
     // A tappable card is one control for screen readers: one focus stop that
     // reads all of its text, announced as a button.
     if (onTap == null) return card;
-    return MergeSemantics(child: Semantics(button: true, child: card));
+    return MergeSemantics(
+      child: Semantics(button: true, selected: selected, child: card),
+    );
   }
 }

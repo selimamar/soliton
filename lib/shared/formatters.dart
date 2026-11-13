@@ -60,6 +60,18 @@ String formatAxisTick(double value, double interval) {
 String formatPercentAxisTick(double fraction, double interval) =>
     '${formatAxisTick(fraction * 100, interval * 100)}%';
 
+/// A log-axis tick (1, 2 or 5 times a power of ten): 0.5 -> "0.5",
+/// 2 -> "2", 0.002 -> "0.002", 5e-5 -> "5e-5", 20000 -> "20k".
+String formatLogTick(double tick) {
+  if (tick >= 1000) return formatCount(tick);
+  if (tick >= 1e-3) {
+    var text = tick.toStringAsFixed(3);
+    if (text.contains('.')) text = text.replaceFirst(RegExp(r'\.?0+$'), '');
+    return text;
+  }
+  return tick.toStringAsExponential(0);
+}
+
 /// Durations as "2d 4h", "3h 12m", "12m 5s" or "42s".
 String formatDuration(Duration d) {
   if (d.inDays > 0) return '${d.inDays}d ${d.inHours % 24}h';

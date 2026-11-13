@@ -1,0 +1,97 @@
+from __future__ import annotations
+
+import json
+import math
+from argparse import Namespace
+
+import pytest
+
+import modelsapp
+from modelsapp._util import detect_host, encode_float, flatten_config, new_run_id, slugify
+
+
+def records(run):
+    lines = (run.directory / "events.jsonl").read_text().splitlines()
+    return [json.loads(line) for line in lines]
+
+
+def offline(tmp_path, name="tiny", **kwargs):
+    return modelsapp.init(name, mode="offline", dir=str(tmp_path), host="test", **kwargs)
+
+
+# Helpers ----------------------------------------------------------------------
+
+
+def test_non_finite_numbers_become_strings():
+    assert [encode_float(v) for v in (1.5, math.nan, math.inf, -math.inf)] == [
+        1.5, "NaN", "Infinity", "-Infinity"
+    ]
+
+
+def test_hyperparameters_are_flattened_to_strings():
+    config = {"optim": {"lr": 3e-4, "betas": (0.9, 0.95)}, "amp": True, "layers": 12}
+    assert flatten_config(config) == {
+        "optim.lr": "0.0003", "optim.betas": "0.9, 0.95", "amp": "true", "layers": "12",
+    }
+    assert flatten_config(Namespace(batch_size=64)) == {"batch_size": "64"}
+
+
+def test_run_ids_are_readable_and_valid():
+    assert slugify("ResNet-50 / CIFAR 10") == "ResNet-50-CIFAR-10"
+    run_id = new_run_id("my run")
+    assert run_id.startswith("my-run-") and len(run_id) == len("my-run-") + 6
+
+
+def test_the_host_is_detected():
+    assert detect_host({"SLURM_CLUSTER_NAME": "sherlock"}) == "Sherlock"
+    assert detect_host({"MODELSAPP_HOST": "AWS", "SLURM_CLUSTER_NAME": "sherlock"}) == "AWS"
+    assert detect_host({}) != ""
+
+
+# Runs -------------------------------------------------------------------------
+
+
+def test_an_offline_run_is_saved_to_disk(tmp_path):
+    run = offline(tmp_path, config={"lr": 0.1}, total_steps=10, total_epochs=2)
+    run.log({"train/loss": 1.0}, step=0, epoch=0)
+    run.log({"train/loss": float("nan"), "bad": "text"})  # step 1; "bad" is skipped
+    run.finish()
+
+    first, m0, m1, status = records(run)
+    assert first["type"] == "run" and first["id"] == run.id
+    assert first["hyperparameters"] == {"lr": "0.1"}
+    assert (first["totalSteps"], first["totalEpochs"], first["host"]) == (10, 2, "test")
+    assert m0 == {"type": "metrics", "step": 0, "time": m0["time"], "values": {"train/loss": 1.0}, "epoch": 0}
+    assert m1["step"] == 1 and m1["values"] == {"train/loss": "NaN"} and m1["epoch"] == 0
+    assert status["type"] == "status" and status["status"] == "finished"
+
+
+def test_finishing_twice_and_logging_after_finish_are_ignored(tmp_path):
+    run = offline(tmp_path)
+    run.finish()
+    run.finish("crashed")
+    run.log({"x": 1})
+    assert [r["type"] for r in records(run)] == ["run", "status"]
+
+
+def test_an_exception_marks_the_run_crashed(tmp_path):
+    with pytest.raises(ValueError):
+        with offline(tmp_path) as run:
+            raise ValueError("CUDA out of memory\nmore details")
+    status = records(run)[-1]
+    assert status["status"] == "crashed"
+    assert status["message"] == "ValueError: CUDA out of memory"
+
+
+def test_disabled_runs_do_nothing(tmp_path):
+    run = modelsapp.init("x", mode="disabled", dir=str(tmp_path))
+    run.log({"x": 1})
+    run.finish()
+    assert not any(tmp_path.iterdir())
+
+
+def test_online_mode_needs_a_server_and_token(tmp_path, monkeypatch):
+    monkeypatch.delenv("MODELSAPP_SERVER", raising=False)
+    monkeypatch.delenv("MODELSAPP_TOKEN", raising=False)
+    with pytest.raises(ValueError, match="server and a token"):
+        modelsapp.init("x", mode="online", dir=str(tmp_path))

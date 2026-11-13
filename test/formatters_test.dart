@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:models_app/shared/formatters.dart';
+import 'package:models_app/shared/widgets/line_chart_card.dart';
 
 void main() {
   test('formatCount', () {
@@ -85,5 +86,23 @@ void main() {
     expect(formatTimeAgo(now.subtract(const Duration(minutes: 5)), now: now), '5m ago');
     expect(formatTimeAgo(now.subtract(const Duration(hours: 3)), now: now), '3h ago');
     expect(formatTimeAgo(now.subtract(const Duration(days: 2)), now: now), '2d ago');
+  });
+
+  test('formatLogTick', () {
+    expect(formatLogTick(0.5), '0.5');
+    expect(formatLogTick(2), '2');
+    expect(formatLogTick(100), '100');
+    expect(formatLogTick(0.002), '0.002');
+    expect(formatLogTick(5e-5), '5e-5');
+    expect(formatLogTick(20000), '20k');
+  });
+
+  test('epoch positions read as short numbers', () {
+    const epochs = ChartXAxis.epochs(500);
+    expect(epochs.position(1250), 2.5);
+    expect(epochs.describe(2.5), '2.5');
+    expect(epochs.describe(3), '3');
+    expect(epochs.describe(3.456), '3.46');
+    expect(const ChartXAxis.steps().describe(1200), '1,200');
   });
 }

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../data/run_repository.dart';
+import '../../data/services/api_client.dart';
 
 /// Renders an [AsyncValue] with consistent loading and error states, so
 /// screens only have to describe the "data" case.
@@ -78,6 +79,21 @@ class _ErrorView extends StatelessWidget {
     title: 'Run not found',
     message: 'There is no run called "$runId". It may have been deleted, or the link is wrong.',
     canRetry: false,
+  ),
+  UnauthorizedException() => (
+    title: 'Not allowed',
+    message: 'The server rejected the token. Check it in Settings → Server.',
+    canRetry: false,
+  ),
+  ServerUnreachableException(:final address) => (
+    title: "Can't reach the server",
+    message: 'Check your connection, and that the server at $address is running.',
+    canRetry: true,
+  ),
+  ServerErrorException(:final statusCode) => (
+    title: 'Server error',
+    message: 'The server had a problem (HTTP $statusCode). Try again in a moment.',
+    canRetry: true,
   ),
   _ => (
     title: "Couldn't load data",

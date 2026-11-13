@@ -4,6 +4,7 @@ import 'package:models_app/app/theme.dart';
 import 'package:models_app/features/run_detail/widgets/layer_grad_norm_chart.dart';
 import 'package:models_app/models/layer_stats.dart';
 import 'package:models_app/models/metric_series.dart';
+import 'package:models_app/shared/widgets/histogram_view.dart';
 import 'package:models_app/shared/widgets/line_chart_card.dart';
 import 'package:models_app/shared/widgets/sparkline.dart';
 
@@ -130,5 +131,60 @@ void main() {
     );
     expect(tester.takeException(), isNull);
     expect(find.bySemanticsLabel(RegExp('1 layer has no finite value')), findsOneWidget);
+  });
+
+  testWidgets('a histogram with nothing to draw says why', (tester) async {
+    await pumpInApp(
+      tester,
+      const Column(
+        children: [
+          HistogramView(
+            histogram: Histogram(min: double.nan, max: double.nan, counts: [0, 0, 0]),
+            color: ChartColors.activation,
+          ),
+          HistogramView(
+            histogram: Histogram(min: 0, max: 0, counts: [0, 0], zeroCount: 64),
+            color: ChartColors.activation,
+          ),
+        ],
+      ),
+    );
+    expect(find.text('No finite values'), findsOneWidget);
+    expect(find.text('All values are zero'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a log-scale chart skips values it cannot draw', (tester) async {
+    await pumpInApp(
+      tester,
+      LineChartCard(
+        title: 'Loss',
+        logScale: true,
+        lines: [
+          ChartLine(
+            label: 'Train',
+            color: ChartColors.train,
+            series: series([2.3, 0, -1, 0.5, double.nan, 0.25]),
+          ),
+        ],
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.bySemanticsLabel(RegExp(r'^Loss chart, log scale\.')), findsOneWidget);
+    expect(find.text('0.5'), findsWidgets, reason: 'a round log tick');
+  });
+
+  testWidgets('a log-scale chart of only zeros says so', (tester) async {
+    await pumpInApp(
+      tester,
+      LineChartCard(
+        title: 'Loss',
+        logScale: true,
+        lines: [
+          ChartLine(label: 'Train', color: ChartColors.train, series: series([0, 0])),
+        ],
+      ),
+    );
+    expect(find.text('No positive values to plot on a log scale'), findsOneWidget);
   });
 }

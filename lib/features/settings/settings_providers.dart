@@ -1,28 +1,21 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
-// App settings. They live in memory for now; persisting them (e.g. with
-// shared_preferences) is a later step.
+import '../../data/services/settings_store.dart';
 
-/// One in-memory setting: its value, plus [set] to change it.
-class Setting<T> extends Notifier<T> {
-  Setting(this._initial);
-
-  final T _initial;
-
-  @override
-  T build() => _initial;
-
-  void set(T value) => state = value;
-}
+// App settings, saved on the device (see `Setting`). The server login is
+// `connectionProvider` in data/providers.dart; chart options are in
+// shared/chart_settings.dart.
 
 final themeModeProvider = NotifierProvider<Setting<ThemeMode>, ThemeMode>(
-  () => Setting(ThemeMode.system),
+  () => Setting.choice('themeMode', ThemeMode.system, ThemeMode.values),
 );
 
-/// Address of the backend server. Not used yet: the app runs on demo data.
-final backendUrlProvider = NotifierProvider<Setting<String>, String>(() => Setting(''));
+/// In-app alerts when a run finishes or crashes (while the app is open).
+final notifyOnFinishProvider = NotifierProvider<Setting<bool>, bool>(
+  () => Setting.boolean('notifyOnFinish', true),
+);
 
-final notifyOnFinishProvider = NotifierProvider<Setting<bool>, bool>(() => Setting(true));
-
-final notifyOnCrashProvider = NotifierProvider<Setting<bool>, bool>(() => Setting(true));
+final notifyOnCrashProvider = NotifierProvider<Setting<bool>, bool>(
+  () => Setting.boolean('notifyOnCrash', true),
+);

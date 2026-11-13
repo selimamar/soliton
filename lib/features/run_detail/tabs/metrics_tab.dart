@@ -4,8 +4,11 @@ import 'package:material_ui/material_ui.dart';
 import '../../../app/theme.dart';
 import '../../../data/providers.dart';
 import '../../../models/metric_series.dart';
+import '../../../models/run.dart';
+import '../../../shared/chart_settings.dart';
 import '../../../shared/formatters.dart';
 import '../../../shared/widgets/async_value_view.dart';
+import '../../../shared/widgets/chart_controls.dart';
 import '../../../shared/widgets/line_chart_card.dart';
 import '../../../shared/widgets/section_card.dart';
 import '../../../shared/widgets/spaced_list_view.dart';
@@ -21,6 +24,11 @@ class MetricsTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final gradNorms = ref.watch(layerGradNormsProvider(runId));
+    final log = ref.watch(logScaleProvider);
+    final stepsPerEpoch = _stepsPerEpoch(ref.watch(runProvider(runId)).value);
+    final xAxis = stepsPerEpoch != null && ref.watch(xAxisUnitProvider) == XAxisUnit.epochs
+        ? ChartXAxis.epochs(stepsPerEpoch)
+        : const ChartXAxis.steps();
 
     return AsyncValueView(
       value: ref.watch(runMetricsProvider(runId)),
@@ -35,8 +43,11 @@ class MetricsTab extends ConsumerWidget {
 
         return SpacedListView(
           children: [
+            ChartControls(epochsAvailable: stepsPerEpoch != null),
             LineChartCard(
               title: 'Loss',
+              logScale: log,
+              xAxis: xAxis,
               lines: [
                 if (trainLoss != null)
                   ChartLine(label: 'Train', color: ChartColors.train, series: trainLoss),
@@ -47,6 +58,7 @@ class MetricsTab extends ConsumerWidget {
             if (accuracy != null)
               LineChartCard(
                 title: 'Validation accuracy',
+                xAxis: xAxis,
                 formatValue: formatPercent,
                 formatTick: formatPercentAxisTick,
                 lines: [
@@ -57,6 +69,8 @@ class MetricsTab extends ConsumerWidget {
               LineChartCard(
                 title: 'Learning rate',
                 height: 140,
+                logScale: log,
+                xAxis: xAxis,
                 lines: [
                   ChartLine(
                     label: 'Learning rate',
@@ -69,6 +83,8 @@ class MetricsTab extends ConsumerWidget {
               LineChartCard(
                 title: 'Gradient norm (global)',
                 height: 140,
+                logScale: log,
+                xAxis: xAxis,
                 lines: [
                   ChartLine(label: 'Grad norm', color: ChartColors.gradient, series: gradNorm),
                 ],
@@ -90,6 +106,7 @@ class MetricsTab extends ConsumerWidget {
               LineChartCard(
                 title: entry.key,
                 height: 140,
+                xAxis: xAxis,
                 lines: [ChartLine(label: entry.key, color: ChartColors.other, series: entry.value)],
               ),
           ],
@@ -97,6 +114,12 @@ class MetricsTab extends ConsumerWidget {
       },
     );
   }
+}
+
+/// Steps per epoch, if the run says how many epochs it has.
+double? _stepsPerEpoch(Run? run) {
+  if (run == null || run.totalEpochs <= 0 || run.totalSteps <= 0) return null;
+  return run.totalSteps / run.totalEpochs;
 }
 
 class _SectionTitle extends StatelessWidget {

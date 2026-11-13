@@ -1,3 +1,5 @@
+import 'dart:ui' show Tristate;
+
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
@@ -33,6 +35,27 @@ void main() {
       handle.dispose();
     });
   }
+
+  for (final location in ['/settings/server', '/compare?runs=resnet50-cifar,unet-seg']) {
+    testWidgets('$location meets accessibility guidelines', (tester) async {
+      final handle = tester.ensureSemantics();
+      await openApp(tester, location);
+      await expectGuidelines(tester);
+      handle.dispose();
+    });
+  }
+
+  testWidgets('a picked run card says it is selected', (tester) async {
+    final handle = tester.ensureSemantics();
+    await openApp(tester);
+    await tester.tap(find.byTooltip('Compare runs'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('resnet50-cifar'));
+    await tester.pumpAndSettle();
+    final card = tester.getSemantics(find.text('resnet50-cifar')).getSemanticsData();
+    expect(card.flagsCollection.isSelected, Tristate.isTrue);
+    handle.dispose();
+  });
 
   testWidgets('a run card is one button that reads its content', (tester) async {
     final handle = tester.ensureSemantics();

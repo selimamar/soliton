@@ -44,4 +44,38 @@ void main() {
   test('niceAxis accepts swapped bounds', () {
     expect(niceAxis(10, 0), niceAxis(0, 10));
   });
+
+  group('logAxis', () {
+    test('a loss from 2.3 to 0.25 gets 1-2-5 ticks', () {
+      final axis = logAxis(0.25, 2.3);
+      expect(axis.min, closeTo(0.2, 1e-12));
+      expect(axis.max, closeTo(5, 1e-12));
+      expect(axis.ticks.map((t) => double.parse(t.toStringAsPrecision(6))), [0.2, 0.5, 1, 2, 5]);
+    });
+
+    test('wide ranges only tick powers of ten', () {
+      final axis = logAxis(0.003, 40);
+      expect(axis.ticks.map((t) => double.parse(t.toStringAsPrecision(6))), [
+        0.001,
+        0.01,
+        0.1,
+        1,
+        10,
+        100,
+      ]);
+    });
+
+    test('very wide ranges skip powers of ten, keeping about six ticks', () {
+      final axis = logAxis(3e-12, 5e3);
+      expect(axis.ticks.length, lessThanOrEqualTo(8));
+      expect(axis.min, lessThanOrEqualTo(3e-12));
+      expect(axis.max, greaterThanOrEqualTo(5e3));
+    });
+
+    test('a flat line opens up to the neighbouring ticks', () {
+      final axis = logAxis(1, 1);
+      expect(axis.min, lessThan(1));
+      expect(axis.max, greaterThan(1));
+    });
+  });
 }

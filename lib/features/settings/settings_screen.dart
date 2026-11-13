@@ -1,7 +1,10 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../app/constants.dart';
+import '../../app/routes.dart';
+import '../../data/providers.dart';
 import '../../shared/widgets/spaced_list_view.dart';
 import 'settings_providers.dart';
 
@@ -11,7 +14,7 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
-    final backendUrl = ref.watch(backendUrlProvider);
+    final connection = ref.watch(connectionProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -46,19 +49,18 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
             const _SectionHeader('Data source'),
-            const ListTile(
-              leading: Icon(Icons.science_outlined),
-              title: Text('Demo data'),
-              subtitle: Text('The app shows generated runs until a server is connected.'),
-            ),
             ListTile(
-              leading: const Icon(Icons.dns_outlined),
-              title: const Text('Server address'),
-              subtitle: Text(backendUrl.isEmpty ? 'Not set' : backendUrl),
+              leading: Icon(connection == null ? Icons.science_outlined : Icons.dns_outlined),
+              title: Text(connection == null ? 'Demo data' : 'Server'),
+              subtitle: Text(
+                connection == null
+                    ? 'Generated runs. Connect to your server to see your own.'
+                    : connection.address,
+              ),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => _editBackendUrl(context, ref, backendUrl),
+              onTap: () => context.go(AppRoutes.server),
             ),
-            const _SectionHeader('Notifications'),
+            const _SectionHeader('Alerts'),
             SwitchListTile(
               secondary: const Icon(Icons.flag_outlined),
               title: const Text('When a run finishes'),
@@ -71,63 +73,22 @@ class SettingsScreen extends ConsumerWidget {
               value: ref.watch(notifyOnCrashProvider),
               onChanged: (v) => ref.read(notifyOnCrashProvider.notifier).set(v),
             ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(72, 0, 16, 8),
+              child: Text(
+                'Shown while the app is open. For notifications when it is closed, turn on '
+                'ntfy on the server (see the server README).',
+              ),
+            ),
             const _SectionHeader('About'),
             const ListTile(
               leading: Icon(Icons.info_outline),
               title: Text(appName),
-              subtitle: Text('Version $appVersion (first draft)'),
+              subtitle: Text('Version $appVersion'),
             ),
           ],
         ),
       ),
-    );
-  }
-
-  Future<void> _editBackendUrl(BuildContext context, WidgetRef ref, String current) async {
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => _BackendUrlDialog(initialValue: current),
-    );
-    if (result != null) ref.read(backendUrlProvider.notifier).set(result);
-  }
-}
-
-/// Text-field dialog. Stateful so it owns (and disposes) its controller.
-class _BackendUrlDialog extends StatefulWidget {
-  const _BackendUrlDialog({required this.initialValue});
-
-  final String initialValue;
-
-  @override
-  State<_BackendUrlDialog> createState() => _BackendUrlDialogState();
-}
-
-class _BackendUrlDialogState extends State<_BackendUrlDialog> {
-  late final _controller = TextEditingController(text: widget.initialValue);
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Server address'),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        keyboardType: TextInputType.url,
-        decoration: const InputDecoration(hintText: 'https://my-server.example.com'),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
-          child: const Text('Save'),
-        ),
-      ],
     );
   }
 }

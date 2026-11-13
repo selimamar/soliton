@@ -32,9 +32,19 @@ class HistogramView extends StatelessWidget {
       color: theme.colorScheme.onSurfaceVariant,
     );
 
+    // Nothing to draw when every value was zero, NaN or infinite (e.g. after
+    // a run diverged): say so instead of leaving a blank space.
+    final empty = histogram.counts.every((c) => c == 0);
     final bars = SizedBox(
       height: height,
-      child: CustomPaint(painter: _HistogramPainter(histogram.counts, color)),
+      child: empty
+          ? Center(
+              child: Text(
+                histogram.zeroCount > 0 ? 'All values are zero' : 'No finite values',
+                style: labelStyle,
+              ),
+            )
+          : CustomPaint(painter: _HistogramPainter(histogram.counts, color)),
     );
 
     return Column(

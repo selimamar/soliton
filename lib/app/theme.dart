@@ -33,6 +33,16 @@ abstract final class ChartColors {
   static const gradient = Color(0xFF7F77DD);
   static const activation = Color(0xFF1D9E75);
   static const other = Color(0xFF888780);
+
+  /// One per run on the compare screen, in order.
+  static const runs = [
+    Color(0xFF378ADD),
+    Color(0xFFD85A30),
+    Color(0xFF1D9E75),
+    Color(0xFF7F77DD),
+    Color(0xFFBA7517),
+    Color(0xFFD4537E),
+  ];
 }
 
 /// Colour and label for each [RunStatus].

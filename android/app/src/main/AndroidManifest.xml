@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- The app talks to the ModelsApp server. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="models_app"
         android:name="${applicationName}"
