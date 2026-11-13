@@ -11,7 +11,8 @@ abstract final class AppTheme {
   static ThemeData dark() => _build(Brightness.dark);
 
   static ThemeData _build(Brightness brightness) {
-    final scheme = ColorScheme.fromSeed(seedColor: seedColor, brightness: brightness);
+    var scheme = ColorScheme.fromSeed(seedColor: seedColor, brightness: brightness);
+    if (brightness == Brightness.light) scheme = _paperNeutrals(scheme);
     return ThemeData(
       colorScheme: scheme,
       scaffoldBackgroundColor: scheme.surface,
@@ -22,6 +23,25 @@ abstract final class AppTheme {
       ),
     );
   }
+
+  /// Cool grey neutrals for the light theme, matching selimamar.github.io:
+  /// a #ECEEF0 page with lighter #F6F7F8 panels (cards sit on
+  /// surfaceContainerLow), slate text and #CFD4DA hairlines. The seeded
+  /// accent colours are left alone.
+  static ColorScheme _paperNeutrals(ColorScheme scheme) => scheme.copyWith(
+    surface: const Color(0xFFECEEF0),
+    surfaceDim: const Color(0xFFD9DDE1),
+    surfaceBright: const Color(0xFFF6F7F8),
+    surfaceContainerLowest: const Color(0xFFFBFBFC),
+    surfaceContainerLow: const Color(0xFFF6F7F8),
+    surfaceContainer: const Color(0xFFE6E9EC),
+    surfaceContainerHigh: const Color(0xFFE1E5E9),
+    surfaceContainerHighest: const Color(0xFFDBE0E5),
+    onSurface: const Color(0xFF252A31),
+    onSurfaceVariant: const Color(0xFF59616B),
+    outline: const Color(0xFF8A929C),
+    outlineVariant: const Color(0xFFCFD4DA),
+  );
 }
 
 /// Colours that carry the same meaning in every chart of the app.
@@ -60,6 +80,7 @@ extension RunStatusStyle on RunStatus {
     RunStatus.live =>
       scheme.brightness == Brightness.light ? const Color(0xFF0A6649) : const Color(0xFF6FDDB5),
     RunStatus.finished => scheme.onSurfaceVariant,
-    RunStatus.crashed => scheme.error,
+    RunStatus.crashed =>
+      scheme.brightness == Brightness.light ? const Color(0xFF981B2B) : scheme.error,
   };
 }
