@@ -10,6 +10,7 @@ import re
 import secrets
 import socket
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Union
 
 JsonNumber = Union[float, int, str]
@@ -142,14 +143,58 @@ def _changed_settings(module: Any) -> str:
     return ", ".join(changed)
 
 
-def detect_host(env: Mapping[str, str] = os.environ) -> str:
-    """Where the job runs, e.g. "Sherlock" for a Slurm job on Sherlock."""
+# Platforms that say so in their containers' environment, checked in order.
+PLATFORM_VARIABLES = (
+    ("MODAL_TASK_ID", "Modal"),          # Set in every Modal container.
+    ("RUNPOD_POD_ID", "RunPod"),
+    ("COLAB_RELEASE_TAG", "Colab"),
+    ("KAGGLE_KERNEL_RUN_TYPE", "Kaggle"),
+    ("SM_TRAINING_ENV", "SageMaker"),    # SageMaker training jobs.
+    ("AWS_BATCH_JOB_ID", "AWS Batch"),
+)
+
+# Cloud VMs, by the vendor their firmware reports (/sys/class/dmi/id).
+CLOUD_VENDORS = (
+    ("Amazon EC2", "AWS"),
+    ("Google", "GCP"),
+    ("Microsoft Corporation", "Azure"),
+    ("DigitalOcean", "DigitalOcean"),
+    ("Hetzner", "Hetzner"),
+    ("OracleCloud", "Oracle Cloud"),
+    ("Vultr", "Vultr"),
+    ("Linode", "Linode"),
+)
+
+
+def detect_host(env: Mapping[str, str] = os.environ, root: Path = Path("/")) -> str:
+    """Where the job runs: "Sherlock" for a Slurm job there, "Modal" in a Modal
+    container, "AWS" on an EC2 machine, ..., else the machine's name.
+    MODELSAPP_HOST overrides it."""
     if env.get("MODELSAPP_HOST"):
         return env["MODELSAPP_HOST"]
     cluster = env.get("SLURM_CLUSTER_NAME")
     if cluster:
         return cluster.capitalize()
+    for variable, platform in PLATFORM_VARIABLES:
+        if env.get(variable):
+            return platform
     hostname = socket.gethostname()
     if hostname.endswith(".sherlock.stanford.edu"):
         return "Sherlock"
+    vendor = _read_dmi(root, "sys_vendor")
+    product = _read_dmi(root, "product_name")
+    for name, cloud in CLOUD_VENDORS:
+        if vendor.startswith(name) and (cloud != "Azure" or product == "Virtual Machine"):
+            return cloud
+    if product == "Google Compute Engine":
+        return "GCP"
+    if env.get("KUBERNETES_SERVICE_HOST"):
+        return "Kubernetes"
     return hostname.split(".")[0] or "unknown"
+
+
+def _read_dmi(root: Path, name: str) -> str:
+    try:
+        return (root / "sys/class/dmi/id" / name).read_text().strip()
+    except OSError:
+        return ""

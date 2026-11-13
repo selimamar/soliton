@@ -95,9 +95,11 @@ Samples are stored at the step training is at. GPUs come from `nvidia-smi`
 (only the job's: it follows `CUDA_VISIBLE_DEVICES`). In a Slurm job, memory and
 CPU are the whole job's (DataLoader workers included), read from its cgroup:
 the memory is what Slurm's `--mem` limit applies to, so a run creeping towards
-100% is about to be killed. Elsewhere they come from psutil if it's
-installed, else they cover this process only. `system_metrics=False` turns the
-sampling off (the machine is still recorded).
+100% is about to be killed. In a container (Modal, Docker, Kubernetes) they
+are the container's, measured against its memory limit and CPU quota (e.g.
+`docker run --cpus 2` counts as 2 cores). Elsewhere they come from psutil if
+it's installed, else they cover this process only. `system_metrics=False`
+turns the sampling off (the machine is still recorded).
 
 ### `run.watch(model, every=100, layers=None, max_layers=64)`
 
@@ -134,11 +136,48 @@ With DistributedDataParallel, log from rank 0 only.
 | `train_samples`, `val_samples` | none | How many samples are trained and validated on: a number, a dataset, or a DataLoader (its dataset is counted, not its batches) |
 | `loss` | none | The loss: the criterion module (shown with the settings that differ from the defaults, e.g. `CrossEntropyLoss(label_smoothing=0.1)`), a function, or a string |
 | `total_steps`, `total_epochs` | 0 | Progress bar, time left, epochs on the x-axis |
-| `host` | detected | Where it runs: `MODELSAPP_HOST`, else the Slurm cluster (e.g. "Sherlock"), else the host name |
+| `host` | detected | Where it runs: `MODELSAPP_HOST`, else the Slurm cluster (e.g. "Sherlock"), the platform (Modal, RunPod, Colab, Kaggle, SageMaker, AWS Batch), the cloud (AWS, GCP, Azure, DigitalOcean, Hetzner, Oracle Cloud, Vultr, Linode), Kubernetes, else the machine's name |
 | `id` | new | Pass a previous run's id to continue it |
 | `server`, `token` | `MODELSAPP_SERVER`, `MODELSAPP_TOKEN` | |
 | `mode` | `MODELSAPP_MODE`, else `online` if a server is set | `online`, `offline` (save only) or `disabled` |
 | `dir` | `MODELSAPP_DIR`, else `./modelsapp-runs` | Where runs are saved |
+
+## Running elsewhere: Modal, cloud machines, containers
+
+The logger only needs Python and outgoing HTTPS to the server, so jobs on
+any of them report to the same server, next to your Sherlock runs. The server
+must be reachable from the internet (not the test server inside Sherlock).
+The host is detected (table above), and memory and CPU are measured against
+the container's own limits.
+
+On [Modal](https://modal.com/docs), keep the address and token in a secret
+(`modal secret create modelsapp MODELSAPP_SERVER=https://... MODELSAPP_TOKEN=...`)
+and add the logger to the image, roughly (check Modal's docs for the current
+API):
+
+```python
+image = (
+    modal.Image.debian_slim()
+    .pip_install("torch")
+    .add_local_dir("logger", "/opt/modelsapp-logger", copy=True)  # from this repository
+    .run_commands("pip install /opt/modelsapp-logger")
+)
+app = modal.App("train", image=image)
+
+
+@app.function(gpu="A100", secrets=[modal.Secret.from_name("modelsapp")], timeout=6 * 3600)
+def train():
+    import modelsapp
+
+    with modelsapp.init("resnet50-modal", ...) as run:
+        ...
+```
+
+A container's disk disappears with it, and with it the logger's local copy
+of the run. That's fine while the server is reachable (everything is already
+uploaded); as a fallback for when it isn't, point `MODELSAPP_DIR` at a
+persistent volume (on Modal, a `modal.Volume`) and run `modelsapp sync` on it
+later.
 
 ## Offline, and uploading later
 

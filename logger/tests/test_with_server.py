@@ -109,7 +109,7 @@ def test_a_run_survives_the_server_being_down_and_syncs_later(tmp_path, database
     port = free_port()
     url = f"http://127.0.0.1:{port}"  # Nothing is listening yet.
     run = modelsapp.init("offline-first", server=url, token=TOKEN, dir=str(tmp_path / "runs"),
-                         host="test")
+                         host="test", system_metrics=False)  # Exact record counts below.
     for step in range(50):
         run.log({"train/loss": 1.0 / (step + 1)}, step=step)
     run.finish(timeout=1)

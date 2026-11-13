@@ -4,10 +4,11 @@ Standard library only:
 
 - GPUs through `nvidia-smi` (on every machine with an NVIDIA driver,
   including Sherlock's GPU nodes), limited to the job's GPUs.
-- Memory and CPU of the whole Slurm job (DataLoader workers included)
-  through its cgroup, which is also what Slurm enforces its memory limit
-  on. Outside Slurm, through psutil if it's installed, else for this
-  process only (/proc on Linux, `ps` on macOS).
+- Memory and CPU through the cgroup that limits them: the whole Slurm job
+  (DataLoader workers included; what Slurm enforces --mem on), or the
+  container (Modal, Docker, Kubernetes: its memory limit and CPU quota).
+  Elsewhere, through psutil if it's installed, else for this process only
+  (/proc on Linux, `ps` on macOS).
 """
 
 from __future__ import annotations
@@ -94,34 +95,41 @@ def _number(text: Optional[str]) -> Optional[float]:
 # Memory and CPU ---------------------------------------------------------------
 
 
-class SlurmCgroup:
-    """The Slurm job's cgroup (v1 or v2): memory in use, its limit, and the
-    CPU time of every process in the job."""
+class Cgroup:
+    """The cgroup (v1 or v2) that limits this process: a Slurm job's, or a
+    container's. Memory in use and its limit, CPU time of every process in
+    it, and its CPU quota."""
 
     UNLIMITED = 1 << 60
 
-    def __init__(self, memory_dir: Path, cpu_dir: Optional[Path], v2: bool) -> None:
-        self.memory_dir, self.cpu_dir, self.v2 = memory_dir, cpu_dir, v2
+    def __init__(self, memory_dir: Path, cpu_dir: Optional[Path], v2: bool,
+                 kind: str = "slurm") -> None:
+        self.memory_dir, self.cpu_dir, self.v2, self.kind = memory_dir, cpu_dir, v2, kind
 
     @classmethod
-    def find(cls, env: Mapping[str, str] = os.environ, root: Path = Path("/")) -> Optional["SlurmCgroup"]:
-        job = env.get("SLURM_JOB_ID")
-        if not job:
-            return None
+    def find(cls, env: Mapping[str, str] = os.environ, root: Path = Path("/")) -> Optional["Cgroup"]:
+        """The Slurm job's cgroup, or a container's; None on an ordinary
+        machine, where a cgroup spans unrelated processes (e.g. a login session)."""
         try:
             lines = (root / "proc/self/cgroup").read_text().splitlines()
         except OSError:
             return None
+        job = env.get("SLURM_JOB_ID")
         base = root / "sys/fs/cgroup"
         paths = {}
         for line in lines:
-            _, controllers, path = line.split(":", 2)
+            parts = line.split(":", 2)
+            if len(parts) != 3:
+                continue
+            _, controllers, path = parts
             for controller in controllers.split(",") if controllers else [""]:
-                paths[controller] = _job_level(path, job)
+                paths[controller] = _job_level(path, job) if job else path
+        found = None
         if "" in paths and (base / "cgroup.controllers").exists():  # v2
             directory = base / paths[""].lstrip("/")
-            return cls(directory, directory, v2=True)
-        if "memory" in paths:  # v1
+            found = cls(directory, directory, v2=True)
+            at_root = paths[""] == "/"
+        elif "memory" in paths:  # v1
             memory = base / "memory" / paths["memory"].lstrip("/")
             cpu = None
             for name in ("cpu,cpuacct", "cpuacct,cpu", "cpuacct"):
@@ -129,7 +137,16 @@ class SlurmCgroup:
                 if "cpuacct" in paths and candidate.exists():
                     cpu = candidate
                     break
-            return cls(memory, cpu, v2=False) if memory.exists() else None
+            found = cls(memory, cpu, v2=False) if memory.exists() else None
+            at_root = paths["memory"] == "/"
+        if found is None:
+            return None
+        if job:
+            return found
+        # Not Slurm: only a container's (a namespace root, or limited).
+        if at_root or found.memory_limit() is not None or found.cpu_limit() is not None:
+            found.kind = "container"
+            return found
         return None
 
     def memory_used(self) -> Optional[int]:
@@ -142,16 +159,30 @@ class SlurmCgroup:
         return max(usage - inactive, 0)
 
     def memory_limit(self) -> Optional[int]:
-        """The tightest limit on the way up to the job (None if unlimited)."""
+        """The tightest limit on the way up (None if unlimited)."""
         name = "memory.max" if self.v2 else "memory.limit_in_bytes"
-        limits = []
-        directory = self.memory_dir
-        for _ in range(4):
-            value = _read_int(directory / name)
-            if value is not None and value < self.UNLIMITED:
-                limits.append(value)
-            directory = directory.parent
+        limits = [v for v in (_read_int(d / name) for d in self._upwards(self.memory_dir))
+                  if v is not None and v < self.UNLIMITED]
         return min(limits) if limits else None
+
+    def cpu_limit(self) -> Optional[float]:
+        """Cores' worth of CPU quota, e.g. 2.0 for `docker run --cpus 2`; None
+        without a quota (Slurm limits cores with CPU affinity instead)."""
+        quotas = []
+        if self.v2:
+            for directory in self._upwards(self.memory_dir):
+                try:
+                    quota, period = (directory / "cpu.max").read_text().split()
+                except (OSError, ValueError):
+                    continue
+                if quota != "max" and int(period) > 0:
+                    quotas.append(int(quota) / int(period))
+        elif self.cpu_dir is not None:
+            quota = _read_int(self.cpu_dir / "cpu.cfs_quota_us")
+            period = _read_int(self.cpu_dir / "cpu.cfs_period_us")
+            if quota is not None and quota > 0 and period:
+                quotas.append(quota / period)
+        return min(quotas) if quotas else None
 
     def cpu_seconds(self) -> Optional[float]:
         if self.cpu_dir is None:
@@ -161,6 +192,14 @@ class SlurmCgroup:
             return usage / 1e6 if usage is not None else None
         nanoseconds = _read_int(self.cpu_dir / "cpuacct.usage")
         return nanoseconds / 1e9 if nanoseconds is not None else None
+
+    @staticmethod
+    def _upwards(directory: Path, levels: int = 4):
+        for _ in range(levels):
+            yield directory
+            if directory.name == "cgroup":  # The hierarchy's root.
+                return
+            directory = directory.parent
 
 
 def _job_level(path: str, job: str) -> str:
@@ -178,7 +217,7 @@ def _read_int(path: Path) -> Optional[int]:
     except OSError:
         return None
     if text == "max":
-        return SlurmCgroup.UNLIMITED
+        return Cgroup.UNLIMITED
     try:
         return int(text)
     except ValueError:
@@ -289,11 +328,11 @@ class SystemMonitor(threading.Thread):
         self._env = env
         self._stopped = threading.Event()
         self._gpus = True  # Until nvidia-smi says otherwise.
-        self._cgroup = SlurmCgroup.find(env)
+        self._cgroup = Cgroup.find(env)
         self._process = _ProcessUsage()
         self._limit = self._cgroup.memory_limit() if self._cgroup else None
         self._total = self._limit or total_memory()
-        self._cores = available_cores()
+        self._cores = cores(self._cgroup)
         self._last_cpu: Optional[tuple] = None
 
     def run(self) -> None:
@@ -355,16 +394,24 @@ class SystemMonitor(threading.Thread):
 # What it runs on ----------------------------------------------------------------
 
 
-def system_info(env: Mapping[str, str] = os.environ) -> dict:
+def cores(cgroup: Optional[Cgroup]) -> float:
+    """Cores' worth of CPU the run may use: a container's quota, else the
+    cores it may run on (a Slurm job's allocation)."""
+    quota = cgroup.cpu_limit() if cgroup is not None else None
+    return min(quota, available_cores()) if quota else float(available_cores())
+
+
+def system_info(env: Mapping[str, str] = os.environ, root: Path = Path("/")) -> dict:
     """The machine, software and Slurm job, as the app shows them."""
+    cgroup = Cgroup.find(env, root)
+    allowed = cores(cgroup)
     info: dict = {
         "hostname": socket.gethostname(),
         "os": _os_name(),
         "python": platform.python_version(),
         "cpu": _cpu_model(),
-        "cpuCores": available_cores(),
+        "cpuCores": int(allowed) if allowed == int(allowed) else round(allowed, 1),
     }
-    cgroup = SlurmCgroup.find(env)
     memory = (cgroup.memory_limit() if cgroup else None) or total_memory()
     if memory:
         info["memoryGb"] = round(memory / GB, 1)

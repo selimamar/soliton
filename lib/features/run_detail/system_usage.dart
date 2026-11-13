@@ -77,10 +77,7 @@ List<(String, String)> describeSystem(SystemInfo info) {
     if (info.gpus.isNotEmpty) (info.gpus.length == 1 ? 'GPU' : 'GPUs', describeGpus(info.gpus)),
     if (info.gpuDriver case final v?) ('GPU driver', v),
     if (info.cpu != null || info.cpuCores != null)
-      (
-        'CPU',
-        [?info.cpu, if (info.cpuCores case final n?) n == 1 ? '1 core' : '$n cores'].join(' · '),
-      ),
+      ('CPU', [?info.cpu, if (info.cpuCores case final n?) describeCores(n)].join(' · ')),
     if (info.memoryGb case final v?) ('Memory', formatCapacity(v)),
     if (software.isNotEmpty) ('Software', software.join(' · ')),
     if (info.os case final v?) ('OS', v),
@@ -91,6 +88,12 @@ List<(String, String)> describeSystem(SystemInfo info) {
     if (slurm['partition'] case final v?) ('Partition', v),
     if (slurm['cluster'] case final v?) ('Cluster', v),
   ];
+}
+
+/// "16 cores", "1 core", "0.5 cores".
+String describeCores(double cores) {
+  final count = cores == cores.roundToDouble() ? '${cores.round()}' : '$cores';
+  return cores == 1 ? '1 core' : '$count cores';
 }
 
 /// "1 × NVIDIA A100-SXM4-80GB (80 GB)", "4 × NVIDIA A10G (24 GB)", or each

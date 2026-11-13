@@ -54,10 +54,40 @@ def test_run_ids_are_readable_and_valid():
     assert run_id.startswith("my-run-") and len(run_id) == len("my-run-") + 6
 
 
-def test_the_host_is_detected():
-    assert detect_host({"SLURM_CLUSTER_NAME": "sherlock"}) == "Sherlock"
-    assert detect_host({"MODELSAPP_HOST": "AWS", "SLURM_CLUSTER_NAME": "sherlock"}) == "AWS"
-    assert detect_host({}) != ""
+def test_the_host_is_detected(tmp_path):
+    nowhere = tmp_path / "plain"  # No cloud vendor files.
+    assert detect_host({"SLURM_CLUSTER_NAME": "sherlock"}, nowhere) == "Sherlock"
+    assert detect_host({"MODELSAPP_HOST": "Lab box", "SLURM_CLUSTER_NAME": "sherlock"}) == "Lab box"
+    assert detect_host({}, nowhere) != ""
+
+
+@pytest.mark.parametrize("variable, platform", [
+    ("MODAL_TASK_ID", "Modal"), ("RUNPOD_POD_ID", "RunPod"), ("COLAB_RELEASE_TAG", "Colab"),
+    ("KAGGLE_KERNEL_RUN_TYPE", "Kaggle"), ("SM_TRAINING_ENV", "SageMaker"),
+    ("AWS_BATCH_JOB_ID", "AWS Batch"),
+])
+def test_platforms_are_recognized_by_their_environment(tmp_path, variable, platform):
+    assert detect_host({variable: "x"}, tmp_path) == platform
+    assert detect_host({variable: "x", "MODELSAPP_HOST": "Mine"}, tmp_path) == "Mine"
+
+
+def vendor(tmp_path, sys_vendor, product=""):
+    dmi = tmp_path / "sys/class/dmi/id"
+    dmi.mkdir(parents=True, exist_ok=True)
+    (dmi / "sys_vendor").write_text(sys_vendor + "\n")
+    (dmi / "product_name").write_text(product + "\n")
+    return tmp_path
+
+
+def test_cloud_machines_are_recognized_by_their_vendor(tmp_path):
+    assert detect_host({}, vendor(tmp_path / "a", "Amazon EC2", "m7g.large")) == "AWS"
+    assert detect_host({}, vendor(tmp_path / "g", "Google", "Google Compute Engine")) == "GCP"
+    assert detect_host({}, vendor(tmp_path / "z", "Microsoft Corporation", "Virtual Machine")) == "Azure"
+    assert detect_host({}, vendor(tmp_path / "s", "Microsoft Corporation", "Surface Laptop")) != "Azure"
+    # A Kubernetes pod on GKE: the cloud says more than "Kubernetes".
+    k8s = {"KUBERNETES_SERVICE_HOST": "10.0.0.1"}
+    assert detect_host(k8s, vendor(tmp_path / "k", "Google", "Google Compute Engine")) == "GCP"
+    assert detect_host(k8s, tmp_path / "none") == "Kubernetes"
 
 
 class DataLoader:

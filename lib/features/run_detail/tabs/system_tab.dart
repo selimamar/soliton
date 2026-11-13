@@ -201,7 +201,7 @@ class _UsageCharts extends ConsumerWidget {
           ),
         if (usage.cpu case final cpu?)
           LineChartCard(
-            title: cores == null ? 'CPU (%)' : 'CPU (% of $cores ${cores == 1 ? 'core' : 'cores'})',
+            title: cores == null ? 'CPU (%)' : 'CPU (% of ${describeCores(cores)})',
             lines: [ChartLine(label: 'CPU', color: ChartColors.train, series: cpu)],
             xAxis: xAxis,
             yRange: _percent,

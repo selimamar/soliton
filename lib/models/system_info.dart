@@ -24,7 +24,7 @@ class SystemInfo {
     os: json['os'] as String?,
     python: json['python'] as String?,
     cpu: json['cpu'] as String?,
-    cpuCores: (json['cpuCores'] as num?)?.toInt(),
+    cpuCores: (json['cpuCores'] as num?)?.toDouble(),
     memoryGb: (json['memoryGb'] as num?)?.toDouble(),
     gpus: List.unmodifiable([
       for (final gpu in (json['gpus'] as List?) ?? const [])
@@ -50,8 +50,9 @@ class SystemInfo {
   /// CPU model, e.g. `AMD EPYC 7543 32-Core Processor`.
   final String? cpu;
 
-  /// Cores the job may use (its Slurm allocation), not the whole node's.
-  final int? cpuCores;
+  /// Cores the job may use (its Slurm allocation, or a container's CPU
+  /// quota, e.g. 0.5), not the whole machine's.
+  final double? cpuCores;
 
   /// Memory the job may use: its Slurm limit, else the machine's RAM.
   final double? memoryGb;

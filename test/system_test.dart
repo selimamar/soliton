@@ -82,6 +82,14 @@ void main() {
       expect(describeSystem(const SystemInfo(python: '3.9.18')), [('Software', 'Python 3.9.18')]);
     });
 
+    test('cores read naturally, including a container\'s fraction of one', () {
+      expect(describeCores(16), '16 cores');
+      expect(describeCores(1), '1 core');
+      expect(describeCores(0.5), '0.5 cores');
+      final info = SystemInfo.fromJson({'cpu': 'AMD EPYC 7R13', 'cpuCores': 1.5});
+      expect(describeSystem(info).first, ('CPU', 'AMD EPYC 7R13 · 1.5 cores'));
+    });
+
     test('GPUs are counted by kind', () {
       expect(
         describeGpus(const [

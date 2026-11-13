@@ -11,10 +11,11 @@ import time
 import pytest
 
 from modelsapp._system import (
-    SlurmCgroup,
+    Cgroup,
     SystemMonitor,
     _cudnn,
     _job_level,
+    cores,
     parse_nvidia_smi,
     system_info,
     visible_gpus,
@@ -97,7 +98,7 @@ def test_a_slurm_job_is_measured_through_its_cgroup_v2(tmp_path):
     write(cgroup / "system.slice/slurmstepd.scope/memory.max", "max")
     write(cgroup / job.lstrip("/") / "cpu.stat", "usage_usec 4500000\nuser_usec 1\n")
 
-    found = SlurmCgroup.find({"SLURM_JOB_ID": "42"}, root=tmp_path)
+    found = Cgroup.find({"SLURM_JOB_ID": "42"}, root=tmp_path)
     assert found is not None and found.v2
     assert found.memory_used() == 8 * 2**30, "minus file cache the kernel can drop"
     assert found.memory_limit() == 32 * 2**30
@@ -115,15 +116,83 @@ def test_a_slurm_job_is_measured_through_its_cgroup_v1(tmp_path):
     write(cgroup / "memory/slurm/memory.limit_in_bytes", "9223372036854771712")
     write(cgroup / "cpu,cpuacct" / job.lstrip("/") / "cpuacct.usage", "2500000000")
 
-    found = SlurmCgroup.find({"SLURM_JOB_ID": "7"}, root=tmp_path)
+    found = Cgroup.find({"SLURM_JOB_ID": "7"}, root=tmp_path)
     assert found is not None and not found.v2
     assert found.memory_used() == 4 * 2**30
     assert found.memory_limit() == 16 * 2**30
     assert found.cpu_seconds() == 2.5
 
 
-def test_outside_slurm_there_is_no_cgroup(tmp_path):
-    assert SlurmCgroup.find({}, root=tmp_path) is None
+def test_a_container_is_measured_against_its_own_limits(tmp_path):
+    """Modal, Docker, Kubernetes on cgroup v2: the container is the namespace root."""
+    write(tmp_path / "proc/self/cgroup", "0::/\n")
+    cgroup = tmp_path / "sys/fs/cgroup"
+    write(cgroup / "cgroup.controllers", "cpu memory\n")
+    write(cgroup / "memory.current", str(3 * 2**30))
+    write(cgroup / "memory.stat", f"inactive_file {2**30}\n")
+    write(cgroup / "memory.max", str(8 * 2**30))
+    write(cgroup / "cpu.max", "200000 100000\n")
+    write(cgroup / "cpu.stat", "usage_usec 1500000\n")
+
+    found = Cgroup.find({}, root=tmp_path)
+    assert found is not None and found.kind == "container"
+    assert found.memory_used() == 2 * 2**30
+    assert found.memory_limit() == 8 * 2**30
+    assert found.cpu_limit() == 2.0
+    assert found.cpu_seconds() == 1.5
+    info = system_info({}, root=tmp_path)
+    assert info["memoryGb"] == 8.0, "the container's limit, not the machine's memory"
+    assert info["cpuCores"] == min(2, os.cpu_count()), "the CPU quota"
+
+
+def test_an_unlimited_container_still_counts_all_its_processes(tmp_path):
+    write(tmp_path / "proc/self/cgroup", "0::/\n")
+    cgroup = tmp_path / "sys/fs/cgroup"
+    write(cgroup / "cgroup.controllers", "cpu memory\n")
+    write(cgroup / "memory.current", str(2**30))
+    write(cgroup / "memory.max", "max\n")
+    write(cgroup / "cpu.max", "max 100000\n")
+    found = Cgroup.find({}, root=tmp_path)
+    assert found is not None and found.memory_used() == 2**30
+    assert (found.memory_limit(), found.cpu_limit()) == (None, None)
+
+
+def test_a_docker_container_on_cgroup_v1(tmp_path):
+    write(tmp_path / "proc/self/cgroup", "12:memory:/docker/abc\n4:cpu,cpuacct:/docker/abc\n")
+    cgroup = tmp_path / "sys/fs/cgroup"
+    write(cgroup / "memory/docker/abc/memory.usage_in_bytes", str(2**30))
+    write(cgroup / "memory/docker/abc/memory.limit_in_bytes", str(4 * 2**30))
+    write(cgroup / "cpu,cpuacct/docker/abc/cpuacct.usage", "1000000000")
+    write(cgroup / "cpu,cpuacct/docker/abc/cpu.cfs_quota_us", "150000")
+    write(cgroup / "cpu,cpuacct/docker/abc/cpu.cfs_period_us", "100000")
+    found = Cgroup.find({}, root=tmp_path)
+    assert found is not None and found.kind == "container"
+    assert (found.memory_limit(), found.cpu_limit()) == (4 * 2**30, 1.5)
+    assert cores(found) == min(1.5, os.cpu_count())
+
+
+def test_an_ordinary_login_session_is_not_a_container(tmp_path):
+    """Its cgroup holds the whole session, not just the run: measure the process."""
+    write(tmp_path / "proc/self/cgroup", "0::/user.slice/user-1000.slice/session-2.scope\n")
+    cgroup = tmp_path / "sys/fs/cgroup"
+    write(cgroup / "cgroup.controllers", "cpu memory\n")
+    write(cgroup / "user.slice/user-1000.slice/session-2.scope/memory.max", "max\n")
+    write(cgroup / "user.slice/user-1000.slice/session-2.scope/cpu.max", "max 100000\n")
+    assert Cgroup.find({}, root=tmp_path) is None
+
+
+def test_slurm_limits_cores_by_affinity_not_quota(tmp_path):
+    job = "/slurm/job_5"
+    write(tmp_path / "proc/self/cgroup", f"0::{job}/step_0\n")
+    cgroup = tmp_path / "sys/fs/cgroup"
+    write(cgroup / "cgroup.controllers", "cpu memory\n")
+    write(cgroup / job.lstrip("/") / "cpu.max", "max 100000\n")
+    found = Cgroup.find({"SLURM_JOB_ID": "5"}, root=tmp_path)
+    assert found is not None and found.kind == "slurm" and found.cpu_limit() is None
+
+
+def test_outside_slurm_and_containers_there_is_no_cgroup(tmp_path):
+    assert Cgroup.find({}, root=tmp_path) is None
     assert _job_level("/slurm/uid_1/job_9/step_0", "9") == "/slurm/uid_1/job_9"
 
 
