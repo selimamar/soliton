@@ -11,7 +11,7 @@ from conftest import AUTH, TOKEN
 RUN_KEYS = {
     "id", "name", "project", "host", "status", "startedAt", "endedAt", "currentStep",
     "totalSteps", "currentEpoch", "totalEpochs", "hyperparameters", "architecture",
-    "lossPreview", "statusMessage", "tags", "notes",
+    "lossPreview", "statusMessage", "tags", "notes", "system",
 }
 LAYER_KEYS = {
     "layerName", "activationMean", "activationStd", "gradNorm", "activationHistogram",
@@ -215,6 +215,38 @@ def test_deleting_a_run(client):
     assert client.get("/api/runs").json() == []
     create_run(client)  # The id is free again, with no leftover data.
     assert client.get("/api/runs/tiny-1/metrics").json() == []
+
+
+# What the run trains on ---------------------------------------------------------
+
+SYSTEM = {
+    "hostname": "sh03-12n07.int", "os": "Rocky Linux 8.10 (Linux 4.18.0)", "python": "3.12.4",
+    "cpu": "AMD EPYC 7543 32-Core Processor", "cpuCores": 8, "memoryGb": 64.0,
+    "gpus": [{"name": "NVIDIA A100-SXM4-80GB", "memoryGb": 80.0}], "gpuDriver": "550.54.15",
+    "torch": "2.5.1", "cuda": "12.4", "slurm": {"jobId": "12345678", "partition": "gpu"},
+}
+
+
+def test_the_system_a_run_trains_on_is_kept(client):
+    assert create_run(client)["system"] is None, "an older logger sends none"
+    assert create_run(client, system=SYSTEM)["system"] == SYSTEM
+    # A description without it (e.g. from an older logger) keeps it.
+    assert create_run(client)["system"] == SYSTEM
+    newer = {**SYSTEM, "torch": "2.6.0"}
+    assert create_run(client, system=newer)["system"]["torch"] == "2.6.0"
+    assert client.get("/api/runs").json()[0]["system"] == newer
+
+
+def test_system_metrics_are_ordinary_metrics(client):
+    create_run(client)
+    send(client, [metrics(0, **{"system/gpu.0.utilization": 97.0, "system/memory_gb": 12.5})])
+    names = {s["name"] for s in client.get("/api/runs/tiny-1/metrics").json()}
+    assert names == {"system/gpu.0.utilization", "system/memory_gb"}
+
+
+def test_a_huge_system_description_is_rejected(client):
+    body = {"name": "tiny", "system": {"cpu": "x" * 30_000}}
+    assert client.put("/api/runs/tiny-1", json=body).status_code == 422
 
 
 # Tags and notes ---------------------------------------------------------------

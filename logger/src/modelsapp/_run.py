@@ -12,6 +12,7 @@ import weakref
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional
 
+from ._system import SystemMonitor, framework_versions, system_info
 from ._upload import ApiClient, RunFiles, Uploader
 from ._util import (
     RUN_ID,
@@ -52,6 +53,8 @@ class Run:
         loss: Any = None,
         tags: Optional[Iterable[str]] = None,
         notes: str = "",
+        system_metrics: bool = True,
+        system_interval: float = 15,
         total_steps: int = 0,
         total_epochs: int = 0,
         host: Optional[str] = None,
@@ -92,6 +95,7 @@ class Run:
             "architecture": None,
             "tags": _clean_tags(tags),
             "notes": str(notes or "")[:10_000],
+            "system": _system_info() if mode != "disabled" else None,
         }
         self._files = RunFiles(self.directory)
         self._lock = threading.RLock()
@@ -101,8 +105,11 @@ class Run:
         self._warned: set = set()
         self._finished = mode == "disabled"
         self._uploader: Optional[Uploader] = None
+        self._monitor: Optional[SystemMonitor] = None
         if self._finished:
             return
+        if system_interval < 1:
+            raise ValueError("system_interval must be at least 1 second")
 
         self._files.append(self._description)
         if mode == "online":
@@ -111,6 +118,9 @@ class Run:
         else:
             _say(f"saving run {run_id} to {self.directory} (offline); upload it with "
                  "`modelsapp sync`")
+        if system_metrics:
+            self._monitor = SystemMonitor(self._log_system, interval=system_interval)
+            self._monitor.start()
         _register(self)
 
     # Logging --------------------------------------------------------------
@@ -166,11 +176,29 @@ class Run:
         with self._lock:
             if self._watcher is not None:
                 self._watcher.remove()
+            if self._description.get("system") is not None:
+                # PyTorch is imported by now: add its version if init() came first.
+                self._description["system"].update(framework_versions())
             tree = architecture(model)
             self._watcher = Watcher(model, every=every, layers=layers, max_layers=max_layers,
                                     on_traced=lambda flow: self._add_flow(tree, flow))
             self._description["architecture"] = tree
             self._files.append(self._description)  # Updated description, with the model.
+
+    def _log_system(self, values: Mapping[str, float]) -> None:
+        """System metrics, at the step training is at (they're sampled in time)."""
+        with self._lock:
+            if self._finished:
+                return
+            event = {
+                "type": "metrics",
+                "step": max(self._last_step, 0),
+                "time": utc_now_iso(),
+                "values": {name: encode_float(float(v)) for name, v in values.items()},
+            }
+            if self._epoch is not None:
+                event["epoch"] = self._epoch
+            self._files.append(event)
 
     def _add_flow(self, tree: dict, flow: dict) -> None:
         """After the model's first forward pass: the layers in the order they
@@ -193,6 +221,8 @@ class Run:
             if self._finished:
                 return
             self._finished = True
+            if self._monitor is not None:
+                self._monitor.stop()
             event = {"type": "status", "status": status, "time": utc_now_iso()}
             if message:
                 event["message"] = message[:2000]
@@ -222,6 +252,13 @@ class Run:
         if key not in self._warned:
             self._warned.add(key)
             warnings.warn(f"modelsapp: {message}", stacklevel=3)
+
+
+def _system_info() -> dict:
+    try:
+        return system_info()
+    except Exception:  # Never let this stop a run from starting.
+        return {}
 
 
 def _clean_tags(tags: Optional[Iterable[str]]) -> list:

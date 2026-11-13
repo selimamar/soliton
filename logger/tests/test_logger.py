@@ -26,6 +26,8 @@ def records(run):
 
 
 def offline(tmp_path, name="tiny", **kwargs):
+    # No usage sampling unless asked: its records would land between the ones tests count.
+    kwargs.setdefault("system_metrics", False)
     return modelsapp.init(name, mode="offline", dir=str(tmp_path), host="test", **kwargs)
 
 

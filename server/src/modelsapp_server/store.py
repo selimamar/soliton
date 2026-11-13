@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from .db import LayerPointRow, LayerRow, MetricPointRow, RunNotesRow, RunRow
+from .db import LayerPointRow, LayerRow, MetricPointRow, RunNotesRow, RunRow, RunSystemRow
 from .floats import decode_float, downsample, encode_float, from_columns, to_columns
 from .schemas import LayersEvent, MetricsEvent, RunIn, RunNotesIn, StatusEvent
 
@@ -141,6 +141,12 @@ class Store:
             row.total_epochs = body.totalEpochs
             row.hyperparameters = dict(body.hyperparameters)
             row.architecture = body.architecture or _default_architecture(body.name)
+            if body.system is not None:
+                system = session.get(RunSystemRow, run_id)
+                if system is None:
+                    session.add(RunSystemRow(run_id=run_id, info=body.system))
+                else:
+                    system.info = body.system
             if (body.tags or body.notes) and session.get(RunNotesRow, run_id) is None:
                 session.add(RunNotesRow(run_id=run_id, tags=list(body.tags), notes=body.notes,
                                         updated_at=now))
@@ -176,7 +182,7 @@ class Store:
         with self._sessions.begin() as session:
             row = self._find(session, run_id)
             change = _change(row, "deleted")
-            for table in (MetricPointRow, LayerPointRow, LayerRow, RunNotesRow):
+            for table in (MetricPointRow, LayerPointRow, LayerRow, RunNotesRow, RunSystemRow):
                 session.execute(delete(table).where(table.run_id == run_id))
             session.delete(row)
             return change
@@ -381,6 +387,7 @@ class Store:
         ]
         preview = downsample(losses, LOSS_PREVIEW_POINTS, lambda v: v)
         notes = session.get(RunNotesRow, row.id)
+        system = session.get(RunSystemRow, row.id)
         return {
             "id": row.id,
             "name": row.name,
@@ -399,4 +406,5 @@ class Store:
             "statusMessage": row.status_message,
             "tags": list(notes.tags) if notes else [],
             "notes": notes.notes if notes else "",
+            "system": system.info if system else None,
         }

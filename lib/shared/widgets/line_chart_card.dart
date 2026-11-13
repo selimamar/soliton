@@ -55,6 +55,7 @@ class LineChartCard extends StatelessWidget {
     this.maxPoints = 300,
     this.logScale = false,
     this.xAxis = const ChartXAxis.steps(),
+    this.yRange,
   });
 
   final String title;
@@ -73,6 +74,10 @@ class LineChartCard extends StatelessWidget {
   final bool logScale;
 
   final ChartXAxis xAxis;
+
+  /// A y-axis that always shows this range (widened if the data goes
+  /// outside it), e.g. 0 to 100 for a percentage. Linear scale only.
+  final ({double min, double max})? yRange;
 
   /// The value's height on the chart, or null if it can't be drawn.
   double? _plotY(double value) {
@@ -171,9 +176,16 @@ class LineChartCard extends StatelessWidget {
       for (final s in series)
         for (final p in s.points) ?_plotY(p.value),
     ];
-    final y = logScale
-        ? _LogYAxis(ys.reduce(math.min), ys.reduce(math.max))
-        : _LinearYAxis(ys.reduce(math.min), ys.reduce(math.max), formatTick);
+    final y = switch ((logScale, yRange)) {
+      (true, _) => _LogYAxis(ys.reduce(math.min), ys.reduce(math.max)),
+      (false, final range?) => _LinearYAxis(
+        math.min(range.min, ys.reduce(math.min)),
+        math.max(range.max, ys.reduce(math.max)),
+        formatTick,
+        pad: false,
+      ),
+      (false, null) => _LinearYAxis(ys.reduce(math.min), ys.reduce(math.max), formatTick),
+    };
 
     // Lines need not start at the same step (e.g. a resumed run).
     final xs = [
@@ -283,9 +295,9 @@ sealed class _YAxis {
 /// Round bounds and evenly spaced ticks. The small padding keeps lines off
 /// the top and bottom edges.
 class _LinearYAxis implements _YAxis {
-  _LinearYAxis(double low, double high, this._format) {
-    final pad = (high - low) * 0.04;
-    final scale = niceAxis(low - pad, high + pad);
+  _LinearYAxis(double low, double high, this._format, {bool pad = true}) {
+    final padding = pad ? (high - low) * 0.04 : 0.0;
+    final scale = niceAxis(low - padding, high + padding);
     min = scale.min;
     max = scale.max;
     interval = scale.interval;

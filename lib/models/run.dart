@@ -1,6 +1,7 @@
 import 'layer_info.dart';
 import 'model_flow.dart';
 import 'model_helpers.dart';
+import 'system_info.dart';
 
 enum RunStatus { live, finished, crashed }
 
@@ -29,6 +30,7 @@ class Run {
     this.statusMessage,
     this.tags = const [],
     this.notes = '',
+    this.system,
   });
 
   factory Run.fromJson(Map<String, Object?> json) => Run(
@@ -56,6 +58,10 @@ class Run {
     // Older servers don't send these.
     tags: List.unmodifiable([for (final tag in (json['tags'] as List?) ?? const []) tag as String]),
     notes: json['notes'] as String? ?? '',
+    system: switch (json['system']) {
+      final Map<String, Object?> system => SystemInfo.fromJson(system),
+      _ => null,
+    },
   );
 
   final String id;
@@ -96,6 +102,10 @@ class Run {
   /// Free text left on the run, e.g. what was tried; edited in the app.
   final String notes;
 
+  /// The machine, GPUs, software and Slurm job it trains on; null if the
+  /// logger didn't say (an older logger).
+  final SystemInfo? system;
+
   int get parameterCount => architecture.totalParameters;
 
   double? get latestLoss => lossPreview.isEmpty ? null : lossPreview.last;
@@ -135,6 +145,7 @@ class Run {
     'statusMessage': statusMessage,
     'tags': tags,
     'notes': notes,
+    'system': system?.toJson(),
   };
 
   @override
@@ -157,7 +168,8 @@ class Run {
       sameDoubles(other.lossPreview, lossPreview) &&
       other.statusMessage == statusMessage &&
       deepListEquals(other.tags, tags) &&
-      other.notes == notes;
+      other.notes == notes &&
+      other.system == system;
 
   @override
   int get hashCode => Object.hash(
@@ -180,5 +192,6 @@ class Run {
     statusMessage,
     Object.hashAll(tags),
     notes,
+    system,
   );
 }

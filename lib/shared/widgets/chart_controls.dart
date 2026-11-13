@@ -6,12 +6,20 @@ import '../chart_settings.dart';
 /// Chart options above a list of charts: steps or epochs on the x-axis,
 /// and a log scale. Both are saved settings.
 class ChartControls extends ConsumerWidget {
-  const ChartControls({super.key, this.showXAxis = true, this.epochsAvailable = true});
+  const ChartControls({
+    super.key,
+    this.showXAxis = true,
+    this.epochsAvailable = true,
+    this.showLogScale = true,
+  });
 
   final bool showXAxis;
 
   /// False for runs that don't say how many epochs they have.
   final bool epochsAvailable;
+
+  /// Off where no chart can use it (e.g. usage percentages).
+  final bool showLogScale;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -36,11 +44,12 @@ class ChartControls extends ConsumerWidget {
             onSelectionChanged: (selection) =>
                 ref.read(xAxisUnitProvider.notifier).set(selection.first),
           ),
-        FilterChip(
-          label: const Text('Log scale'),
-          selected: ref.watch(logScaleProvider),
-          onSelected: (value) => ref.read(logScaleProvider.notifier).set(value),
-        ),
+        if (showLogScale)
+          FilterChip(
+            label: const Text('Log scale'),
+            selected: ref.watch(logScaleProvider),
+            onSelected: (value) => ref.read(logScaleProvider.notifier).set(value),
+          ),
       ],
     );
   }

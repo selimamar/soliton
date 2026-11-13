@@ -161,6 +161,8 @@ def test_the_demo_runs_end_to_end(tmp_path, database_url, monkeypatch):
         drawn = [(f["type"], f["width"]) for f in stored["architecture"]["flow"] if f["kind"] == "linear"]
         assert drawn == [("Linear", 128), ("Linear", 128), ("Linear", 64), ("Linear", 10)]
         assert stored["architecture"]["input"]["width"] == 32
+        assert stored["system"]["python"] and stored["system"]["cpuCores"] >= 1
+        assert "system/memory_gb" in names, "sampled as soon as the run starts"
 
 
 def test_a_crashing_demo_is_reported_as_crashed(tmp_path, database_url, monkeypatch):

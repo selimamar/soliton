@@ -107,4 +107,17 @@ abstract final class MetricKeys {
   static const gradNorm = 'optim/grad_norm';
 
   static const all = {trainLoss, valLoss, valAccuracy, learningRate, gradNorm};
+
+  /// GPU, memory and CPU usage, sampled by the logger: `system/cpu`,
+  /// `system/memory` (%), `system/memory_gb`, and per GPU
+  /// `system/gpu.<i>.utilization`, `.memory` (%), `.memory_gb`,
+  /// `.temperature` (°C) and `.power` (W).
+  static bool isSystem(String name) => name.startsWith('system/');
+
+  static const cpu = 'system/cpu';
+  static const memory = 'system/memory';
+  static const memoryGb = 'system/memory_gb';
+
+  /// `system/gpu.<index>.<field>`, e.g. `system/gpu.0.utilization`.
+  static String gpu(int index, String field) => 'system/gpu.$index.$field';
 }

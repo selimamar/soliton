@@ -55,6 +55,20 @@ String formatAxisTick(double value, double interval) {
   return value.toStringAsFixed(math.max(0, -_exponent(interval)));
 }
 
+/// A value already on a 0–100 scale: 87.2 -> "87%", 3.46 -> "3.5%".
+String formatPercentValue(double value) =>
+    '${value.toStringAsFixed(value.abs() < 10 && value != 0 ? 1 : 0)}%';
+
+/// Axis ticks for [formatPercentValue]: (50, 25) -> "50%".
+String formatPercentValueTick(double value, double interval) =>
+    '${formatAxisTick(value, interval)}%';
+
+/// Gigabytes: 61.234 -> "61.2 GB", 0.5 -> "0.50 GB", 1152 -> "1,152 GB".
+String formatGb(double value) {
+  if (value.abs() >= 1000) return '${formatInt(value.round())} GB';
+  return '${value.toStringAsFixed(value.abs() < 10 ? 2 : 1)} GB';
+}
+
 /// Like [formatAxisTick], for fractions shown as percentages:
 /// (0.4, 0.2) -> "40%", (0.95, 0.05) -> "95%", (0.925, 0.005) -> "92.5%".
 String formatPercentAxisTick(double fraction, double interval) =>

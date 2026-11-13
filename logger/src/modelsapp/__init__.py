@@ -39,6 +39,8 @@ def init(
     loss: Any = None,
     tags: Optional[Iterable[str]] = None,
     notes: str = "",
+    system_metrics: bool = True,
+    system_interval: float = 15,
     total_steps: int = 0,
     total_epochs: int = 0,
     host: Optional[str] = None,
@@ -57,7 +59,9 @@ def init(
     ("CrossEntropyLoss(label_smoothing=0.1)"), a function or a string.
     These three are listed first among the hyperparameters. tags, notes:
     to organise runs in the app (e.g. tags=["baseline"]); they only set the
-    starting values, which are then edited in the app. total_steps,
+    starting values, which are then edited in the app. system_metrics:
+    sample GPU, memory and CPU usage every system_interval seconds (the
+    machine, GPUs and Slurm job are recorded either way). total_steps,
     total_epochs: for the
     progress bar and time estimate. host: where it runs (default: detected,
     e.g. "Sherlock"). id: reuse an id to continue a run (default: new).
@@ -75,6 +79,8 @@ def init(
         loss=loss,
         tags=tags,
         notes=notes,
+        system_metrics=system_metrics,
+        system_interval=system_interval,
         total_steps=total_steps,
         total_epochs=total_epochs,
         host=host,

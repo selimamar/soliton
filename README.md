@@ -80,11 +80,14 @@ What it does:
   (folding groups away), tag runs (e.g. `baseline`, `best`) and leave a
   note on each. Tags and notes are saved on the server, so every device
   sees them; the logger can set the first ones.
-- **Run detail**: Overview (progress; tags and notes; hyperparameters, led by the number of
-  training and validation samples and the loss; a network diagram and the
-  module tree), Metrics
-  (loss, accuracy, learning rate, gradient norms, any other metric) and
-  Layers (activation histograms, dead units, gradient norms per layer).
+- **System**: each run's machine (GPUs, CPU, memory, software, Slurm job) and
+  how busy it kept them: GPU use and memory per GPU, CPU, memory, GPU
+  temperature and power, sampled by the logger every 15 seconds.
+- **Run detail**: Overview (progress; tags and notes; hyperparameters, led
+  by the number of training and validation samples and the loss; a network
+  diagram and the module tree), Metrics (loss, accuracy, learning rate,
+  gradient norms, any other metric), Layers (activation histograms, dead
+  units, gradient norms per layer) and System (below).
 - **Live updates**: charts and the list refresh as the server receives data.
 - **Compare**: pick up to six runs on the runs list to overlay their curves.
 - **Chart options**: log scale (loss, learning rate, gradient norm), and

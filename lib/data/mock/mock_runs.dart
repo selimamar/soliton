@@ -5,6 +5,7 @@ import '../../models/layer_stats.dart';
 import '../../models/metric_series.dart';
 import '../../models/model_flow.dart';
 import '../../models/run.dart';
+import '../../models/system_info.dart';
 import 'curve_generator.dart';
 import 'mock_architectures.dart';
 import 'mock_flows.dart';
@@ -31,6 +32,26 @@ List<MockRun> buildMockRuns(DateTime now) => [
     totalEpochs: 100,
     architecture: resnet50Cifar(),
     flow: resnet50CifarFlow(),
+    system: const SystemInfo(
+      hostname: 'sh03-12n07.int',
+      os: 'Rocky Linux 8.10 (Linux 4.18.0)',
+      python: '3.12.4',
+      cpu: 'AMD EPYC 7543 32-Core Processor',
+      cpuCores: 16,
+      memoryGb: 64,
+      gpus: [GpuInfo(name: 'NVIDIA A100-SXM4-80GB', memoryGb: 80)],
+      gpuDriver: '550.54.15',
+      torch: '2.5.1',
+      cuda: '12.4',
+      cudnn: '9.1.0',
+      slurm: {
+        'jobId': '52091377',
+        'jobName': 'resnet50-cifar',
+        'partition': 'gpu',
+        'nodes': 'sh03-12n07',
+        'cluster': 'sherlock',
+      },
+    ),
     hyperparameters: const {
       'Training samples': '50,000',
       'Validation samples': '10,000',
@@ -59,6 +80,24 @@ List<MockRun> buildMockRuns(DateTime now) => [
     totalEpochs: 3,
     architecture: gptTiny(),
     flow: gptTinyFlow(),
+    system: const SystemInfo(
+      hostname: 'ip-172-31-8-41',
+      os: 'Ubuntu 22.04.4 LTS (Linux 6.5.0)',
+      python: '3.11.9',
+      cpu: 'AMD EPYC 7R32',
+      cpuCores: 48,
+      memoryGb: 192,
+      gpus: [
+        GpuInfo(name: 'NVIDIA A10G', memoryGb: 24),
+        GpuInfo(name: 'NVIDIA A10G', memoryGb: 24),
+        GpuInfo(name: 'NVIDIA A10G', memoryGb: 24),
+        GpuInfo(name: 'NVIDIA A10G', memoryGb: 24),
+      ],
+      gpuDriver: '550.90.07',
+      torch: '2.5.1',
+      cuda: '12.4',
+      cudnn: '9.1.0',
+    ),
     hyperparameters: const {
       'Training samples': '8,013,769',
       'Validation samples': '4,007',
@@ -87,6 +126,26 @@ List<MockRun> buildMockRuns(DateTime now) => [
     totalEpochs: 60,
     architecture: unet(),
     flow: unetFlow(),
+    system: const SystemInfo(
+      hostname: 'sh02-14n03.int',
+      os: 'Rocky Linux 8.10 (Linux 4.18.0)',
+      python: '3.12.4',
+      cpu: 'Intel(R) Xeon(R) Gold 5118 CPU @ 2.30GHz',
+      cpuCores: 10,
+      memoryGb: 48,
+      gpus: [GpuInfo(name: 'Tesla V100-SXM2-32GB', memoryGb: 32)],
+      gpuDriver: '550.54.15',
+      torch: '2.4.1',
+      cuda: '12.1',
+      cudnn: '9.1.0',
+      slurm: {
+        'jobId': '52077120',
+        'jobName': 'unet-seg',
+        'partition': 'owners',
+        'nodes': 'sh02-14n03',
+        'cluster': 'sherlock',
+      },
+    ),
     hyperparameters: const {
       'Training samples': '4,580',
       'Validation samples': '508',
@@ -117,6 +176,19 @@ List<MockRun> buildMockRuns(DateTime now) => [
     totalEpochs: 200,
     architecture: vitSmall(),
     flow: vitSmallFlow(),
+    system: const SystemInfo(
+      hostname: 'vit-train-l4-1',
+      os: 'Debian GNU/Linux 12 (bookworm) (Linux 6.1.0)',
+      python: '3.11.9',
+      cpu: 'Intel(R) Xeon(R) CPU @ 2.20GHz',
+      cpuCores: 8,
+      memoryGb: 32,
+      gpus: [GpuInfo(name: 'NVIDIA L4', memoryGb: 24)],
+      gpuDriver: '550.90.07',
+      torch: '2.5.1',
+      cuda: '12.4',
+      cudnn: '9.1.0',
+    ),
     hyperparameters: const {
       'Training samples': '50,000',
       'Validation samples': '10,000',
@@ -148,6 +220,7 @@ MockRun _buildRun({
   required int totalEpochs,
   required LayerInfo architecture,
   ModelFlow? flow,
+  SystemInfo? system,
   required Map<String, String> hyperparameters,
   required double initialLoss,
   required double finalLoss,
@@ -196,13 +269,14 @@ MockRun _buildRun({
     ),
     MetricKeys.gradNorm: gradNorm,
     // A metric without a dedicated chart, to exercise "Other metrics".
-    'system/gpu_memory_gb': curves.approach(
-      'system/gpu_memory_gb',
-      start: 18,
-      end: 21,
+    'train/tokens_per_second': curves.approach(
+      'train/tokens_per_second',
+      start: 9000,
+      end: 11500,
       rate: 40,
-      noise: 0.2,
+      noise: 300,
     ),
+    if (system != null) ..._systemMetrics(curves, system),
   };
 
   final statLayers = _layersForStats(architecture);
@@ -226,11 +300,60 @@ MockRun _buildRun({
     hyperparameters: hyperparameters,
     architecture: architecture,
     flow: flow,
+    system: system,
     lossPreview: [for (final p in trainLoss.downsampled(40).points) p.value],
     statusMessage: statusMessage,
   );
 
   return MockRun(run: run, metrics: metrics, layerStats: layerStats);
+}
+
+/// What the logger's system monitor would have sampled on [system]: GPUs
+/// kept busy, memory filling up early, then steady.
+Map<String, MetricSeries> _systemMetrics(CurveGenerator curves, SystemInfo system) {
+  final series = <String, MetricSeries>{};
+  void add(String name, MetricSeries values, {double low = 0, double high = double.infinity}) {
+    series[name] = MetricSeries(
+      name: name,
+      points: [for (final p in values.points) MetricPoint(p.step, p.value.clamp(low, high))],
+    );
+  }
+
+  for (final (i, gpu) in system.gpus.indexed) {
+    final memory = curves.approach('', start: 1, end: gpu.memoryGb * 0.78, rate: 120, noise: 0.15);
+    add(
+      MetricKeys.gpu(i, 'utilization'),
+      curves.approach('', start: 5, end: 94 - 2.0 * i, rate: 80, noise: 4),
+      high: 100,
+    );
+    add(MetricKeys.gpu(i, 'memory_gb'), memory, high: gpu.memoryGb);
+    add(
+      MetricKeys.gpu(i, 'memory'),
+      MetricSeries(
+        name: '',
+        points: [for (final p in memory.points) MetricPoint(p.step, 100 * p.value / gpu.memoryGb)],
+      ),
+      high: 100,
+    );
+    add(
+      MetricKeys.gpu(i, 'temperature'),
+      curves.approach('', start: 34, end: 70 + 1.0 * i, rate: 25, noise: 1.2),
+    );
+    add(MetricKeys.gpu(i, 'power'), curves.approach('', start: 60, end: 240, rate: 60, noise: 18));
+  }
+  add(MetricKeys.cpu, curves.approach('', start: 12, end: 41, rate: 50, noise: 5), high: 100);
+  final ram = system.memoryGb ?? 32;
+  final used = curves.approach('', start: 2.5, end: ram * 0.3, rate: 60, noise: 0.15);
+  add(MetricKeys.memoryGb, used, high: ram);
+  add(
+    MetricKeys.memory,
+    MetricSeries(
+      name: '',
+      points: [for (final p in used.points) MetricPoint(p.step, 100 * p.value / ram)],
+    ),
+    high: 100,
+  );
+  return series;
 }
 
 /// The layers we pretend to log statistics for: the model's top-level

@@ -7,8 +7,9 @@ import '../../shared/widgets/status_chip.dart';
 import 'tabs/layers_tab.dart';
 import 'tabs/metrics_tab.dart';
 import 'tabs/overview_tab.dart';
+import 'tabs/system_tab.dart';
 
-/// One run, split into three tabs: Overview, Metrics and Layers.
+/// One run, split into four tabs: Overview, Metrics, Layers and System.
 class RunDetailScreen extends ConsumerWidget {
   const RunDetailScreen({super.key, required this.runId});
 
@@ -20,7 +21,7 @@ class RunDetailScreen extends ConsumerWidget {
     final loadedRun = run.value;
 
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         appBar: AppBar(
           title: Text(loadedRun?.name ?? runId),
@@ -39,6 +40,7 @@ class RunDetailScreen extends ConsumerWidget {
                     Tab(text: 'Overview'),
                     Tab(text: 'Metrics'),
                     Tab(text: 'Layers'),
+                    Tab(text: 'System'),
                   ],
                 ),
         ),
@@ -55,6 +57,7 @@ class RunDetailScreen extends ConsumerWidget {
               _KeepAlive(child: OverviewTab(run: run)),
               _KeepAlive(child: MetricsTab(runId: run.id)),
               _KeepAlive(child: LayersTab(runId: run.id)),
+              _KeepAlive(child: SystemTab(run: run)),
             ],
           ),
         ),

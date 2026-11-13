@@ -76,6 +76,26 @@ Runs show "Sherlock" as their host (from Slurm's cluster name). The local
 copy in `$SCRATCH` is only a buffer: the server keeps the run, and Sherlock
 purges `$SCRATCH` files after 90 days without changes.
 
+The run's System tab shows the node, its GPU, the job's cores and memory
+limit, and GPU, memory and CPU use (of the whole job, DataLoader workers
+included). Tested on 2026-11-12 on an RTX 2080 Ti node: the numbers matched
+`nvidia-smi` and Slurm's own `seff` accounting.
+
+**With Sherlock's PyTorch module** instead of your own environment:
+
+```bash
+ml math                        # the category first,
+ml py-pytorch/2.10.0_py314     # then the module, in a separate command
+export PYTHONPATH="$HOME/path/to/src${PYTHONPATH:+:$PYTHONPATH}"   # add to it, don't replace it
+```
+
+`ml math py-pytorch/...` in one command silently loads nothing, and
+replacing `PYTHONPATH` hides the module's packages. PyTorch 2.10 doesn't
+support the older GPUs in the `gpu` partition (TITAN Xp, P100), so ask for
+a newer one with
+`#SBATCH --constraint=GPU_CC:7.0|GPU_CC:7.5|GPU_CC:8.6|GPU_CC:8.9|GPU_CC:9.0`
+(`sh_node_feat -p gpu` lists the features).
+
 ## 5. If a job can't reach your server
 
 Run offline, then upload from a login node:
@@ -111,7 +131,10 @@ server shows the run as "lost contact"; the next sync brings it back to live.
 ## What leaves Sherlock
 
 Only what you log: metric values, hyperparameters, the model's layer names
-and parameter counts, and per-layer summary statistics. No training data or
-model weights. Run names and hyperparameters go to your server, so don't put
+and parameter counts, and per-layer summary statistics. Plus, from the
+logger itself: the node's name, its GPU and CPU models, software versions,
+the Slurm job's id, name and partition, and GPU, memory and CPU use every 15
+seconds (turn the sampling off with `system_metrics=False`). No training data
+or model weights. Run names and hyperparameters go to your server, so don't put
 anything sensitive in them. Sherlock is approved for low- and moderate-risk
 data only.

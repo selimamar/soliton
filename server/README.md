@@ -77,7 +77,8 @@ Run a single process: live updates are pushed from memory, so several
 workers wouldn't see each other's changes. Tables are created on startup.
 There are no migrations yet, so after an upgrade that changes an existing
 table, start from a fresh database. (New tables, like `run_notes` for tags
-and notes, are added to an existing database on startup.)
+and notes or `run_system` for what a run trains on, are added to an
+existing database on startup.)
 
 ## API
 
@@ -118,6 +119,12 @@ each once ignoring case) and a note of up to 10,000 characters. Every run
 response includes `tags` and `notes`. The logger's `tags=` and `notes=` only
 set them when the run is created, so it never overwrites edits made in the
 app.
+
+**System**: the logger's run description includes `system`, what the run
+trains on (machine, GPUs, CPU, memory, software versions, Slurm job; up to
+20,000 characters of JSON). It is returned with every run (`null` from an
+older logger) and replaced whenever the logger sends a newer one. GPU,
+memory and CPU use are ordinary metrics named `system/...`.
 
 A point is keyed by run, metric and step, so a resent batch replaces itself:
 the logger can retry freely. A run marked "lost contact" comes back to life

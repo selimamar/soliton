@@ -39,7 +39,9 @@ class MetricsTab extends ConsumerWidget {
         final accuracy = metrics[MetricKeys.valAccuracy];
         final learningRate = metrics[MetricKeys.learningRate];
         final gradNorm = metrics[MetricKeys.gradNorm];
-        final otherMetrics = metrics.entries.where((e) => !MetricKeys.all.contains(e.key)).toList();
+        final otherMetrics = metrics.entries
+            .where((e) => !MetricKeys.all.contains(e.key) && !MetricKeys.isSystem(e.key))
+            .toList();
 
         return SpacedListView(
           children: [

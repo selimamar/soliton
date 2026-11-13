@@ -71,7 +71,33 @@ The app gives these their own charts: `train/loss`, `val/loss`,
 `val/accuracy`, `optim/lr` and `optim/grad_norm`. Anything else shows up under
 "Other metrics". Values may be Python, NumPy or PyTorch scalars (tensors are
 read with `.item()`), and may be NaN or infinite: that's what a diverging run
-logs, and the app shows it.
+logs, and the app shows it. Names starting with `system/` are the logger's
+own (below) and go to the System tab.
+
+### System: what it trains on, and how busy it keeps it
+
+When a run starts, it records the machine: GPUs (model, memory, driver),
+CPU and the cores the job may use, memory (the job's Slurm limit, else the
+machine's), Python, PyTorch, CUDA and cuDNN versions, the OS, the host name,
+and the Slurm job (id, name, partition, nodes, cluster, array task).
+
+While it runs, every 15 seconds (`system_interval`), it samples:
+
+| Metric | |
+|---|---|
+| `system/gpu.<i>.utilization` | GPU use, % |
+| `system/gpu.<i>.memory_gb`, `system/gpu.<i>.memory` | GPU memory in use, GB and % |
+| `system/gpu.<i>.temperature`, `system/gpu.<i>.power` | °C, W |
+| `system/cpu` | CPU, % of the cores the job may use |
+| `system/memory_gb`, `system/memory` | Memory in use, GB and % of the limit |
+
+Samples are stored at the step training is at. GPUs come from `nvidia-smi`
+(only the job's: it follows `CUDA_VISIBLE_DEVICES`). In a Slurm job, memory and
+CPU are the whole job's (DataLoader workers included), read from its cgroup:
+the memory is what Slurm's `--mem` limit applies to, so a run creeping towards
+100% is about to be killed. Elsewhere they come from psutil if it's
+installed, else they cover this process only. `system_metrics=False` turns the
+sampling off (the machine is still recorded).
 
 ### `run.watch(model, every=100, layers=None, max_layers=64)`
 
@@ -102,6 +128,7 @@ With DistributedDataParallel, log from rank 0 only.
 |---|---|---|
 | `name` | required | Shown in the app |
 | `project` | `""` | Shown under the name; the app can group runs by it |
+| `system_metrics`, `system_interval` | `True`, `15` | Sample GPU, memory and CPU use every `system_interval` seconds (see above) |
 | `tags`, `notes` | none | To organise runs in the app, e.g. `tags=["baseline"]`, `notes="first try with AdamW"`. Only the starting values: they're then edited in the app, and the logger never overwrites them |
 | `config` | none | Hyperparameters: a dict (nested is fine) or argparse namespace |
 | `train_samples`, `val_samples` | none | How many samples are trained and validated on: a number, a dataset, or a DataLoader (its dataset is counted, not its batches) |

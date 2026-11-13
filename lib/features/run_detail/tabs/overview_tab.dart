@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../../models/run.dart';
 import '../../../shared/clock.dart';
 import '../../../shared/formatters.dart';
+import '../../../shared/widgets/key_value_row.dart';
 import '../../../shared/widgets/section_card.dart';
 import '../../../shared/widgets/spaced_list_view.dart';
 import '../../../shared/widgets/stat_tile.dart';
@@ -40,7 +41,7 @@ class OverviewTab extends StatelessWidget {
           child: Column(
             children: [
               for (final entry in run.hyperparameters.entries)
-                _KeyValueRow(label: entry.key, value: entry.value),
+                KeyValueRow(label: entry.key, value: entry.value),
             ],
           ),
         ),
@@ -172,42 +173,6 @@ class _ProgressCard extends StatelessWidget {
             'Step ${formatInt(run.currentStep)} of ${formatInt(run.totalSteps)} · '
             'epoch ${run.currentEpoch} of ${run.totalEpochs}',
             style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _KeyValueRow extends StatelessWidget {
-  const _KeyValueRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
-            ),
           ),
         ],
       ),

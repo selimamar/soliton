@@ -103,6 +103,19 @@ class RunNotesRow(Base):
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime)
 
 
+class RunSystemRow(Base):
+    """What the run trains on (machine, GPUs, software, Slurm job), as the
+    logger describes it. In a table of its own so that older databases get
+    it without a migration."""
+
+    __tablename__ = "run_system"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    info: Mapped[dict] = mapped_column(JSON)
+
+
 class LayerRow(Base):
     """A watched layer, with its latest statistics."""
 

@@ -90,7 +90,7 @@ void main() {
       scrollable: visibleList(),
     );
     await tester.scrollUntilVisible(
-      find.text('system/gpu_memory_gb'),
+      find.text('train/tokens_per_second'),
       300,
       scrollable: visibleList(),
     );

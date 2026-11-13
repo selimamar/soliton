@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import Annotated, Literal, Optional, Union
 
@@ -41,6 +42,15 @@ Tags = Annotated[list[Tag], Field(max_length=20), AfterValidator(_distinct)]
 Notes = Annotated[str, Field(max_length=10_000)]
 
 
+def _small(value: Optional[dict]) -> Optional[dict]:
+    if value is not None and len(json.dumps(value)) > 20_000:
+        raise ValueError("at most 20,000 characters of JSON")
+    return value
+
+
+SystemInfo = Annotated[Optional[dict], AfterValidator(_small)]
+
+
 class _In(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -59,6 +69,8 @@ class RunIn(_In):
     # Only used when the run is created: after that, they're edited in the app.
     tags: Tags = Field(default_factory=list)
     notes: Notes = ""
+    # The machine, GPUs, software and Slurm job (see the logger's _system.py).
+    system: SystemInfo = None
 
 
 class RunNotesIn(_In):
