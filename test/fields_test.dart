@@ -8,6 +8,8 @@ import 'package:models_app/data/mock/mock_run_repository.dart';
 import 'package:models_app/data/run_repository.dart';
 import 'package:models_app/data/services/server_connection.dart';
 import 'package:models_app/features/run_detail/tabs/fields_tab.dart';
+import 'package:models_app/features/run_detail/volume/volume_renderer.dart';
+import 'package:models_app/features/run_detail/volume/volume_view.dart';
 import 'package:models_app/features/run_detail/widgets/field_heatmap.dart';
 import 'package:models_app/models/field_snapshot.dart';
 import 'package:models_app/shared/colormaps.dart';
@@ -162,15 +164,16 @@ void main() {
 
   test('the demo operator learns: its error falls over training', () async {
     final fields = await MockRunRepository(latency: Duration.zero).fetchFields(fno);
-    expect(fields.map((f) => f.name).take(5), [
+    expect(fields.map((f) => f.name).take(6), [
       'vorticity',
       'vorticity, y = 0.5',
       'rollout',
       'rollout, y = 0.5',
       'vorticity (x, y, t)',
+      '3D rollout',
     ]);
     expect(
-      [for (final f in fields.skip(5)) f.layer],
+      [for (final f in fields.skip(6)) f.layer],
       ['lifting', 'blocks.0', 'blocks.1', 'blocks.2', 'blocks.3', 'projection'],
     );
     expect(fields.first.shape, [64, 64]);
@@ -255,11 +258,14 @@ void main() {
     });
 
     testWidgets('a rollout plays frame by frame, with its error per frame', (tester) async {
+      useTallScreen(tester);
       await openFieldsTab(tester, fno);
       await tester.tap(find.text('rollout'));
       await tester.pumpAndSettle();
       expect(find.text('Rollout: t = 0'), findsOneWidget);
-      expect(find.byType(FieldHeatmap), findsNWidgets(3));
+      for (final label in ['Prediction', 'Ground truth', 'Error']) {
+        expect(find.text(label), findsOneWidget);
+      }
       await tester.tap(find.byTooltip('Play the rollout'));
       await tester.pump(const Duration(milliseconds: 170));
       await tester.pump(const Duration(milliseconds: 170));
@@ -288,6 +294,8 @@ void main() {
       await openFieldsTab(tester, fno);
       await tester.tap(find.text('vorticity (x, y, t)'));
       await tester.pumpAndSettle();
+      await tester.tap(find.text('Slices'));
+      await tester.pumpAndSettle();
       expect(find.text('3D field: a slice across axis 2'), findsOneWidget);
       expect(find.text('9 of 16'), findsOneWidget, reason: 'the middle slice');
       var map = tester.widget<FieldHeatmap>(find.byType(FieldHeatmap).first);
@@ -300,6 +308,56 @@ void main() {
       await tester.tap(find.byTooltip('Next slice'));
       await tester.pumpAndSettle();
       expect(find.text('18 of 32'), findsOneWidget);
+    });
+
+    testWidgets('a 3D field opens in 3D: turn it, change how it is drawn', (tester) async {
+      useTallScreen(tester);
+      await openFieldsTab(tester, fno);
+      await tester.tap(find.text('vorticity (x, y, t)'));
+      await tester.pumpAndSettle();
+      expect(find.byType(VolumeView), findsNWidgets(3));
+      expect(find.text('Opacity'), findsOneWidget);
+      final reset = find.widgetWithText(TextButton, 'Reset view');
+      expect(tester.widget<TextButton>(reset).onPressed, isNull, reason: 'not turned yet');
+
+      final before = tester.widget<VolumeView>(find.byType(VolumeView).first).camera;
+      await tester.drag(find.byType(VolumeView).first, const Offset(80, 30));
+      await tester.pumpAndSettle();
+      final views = tester.widgetList<VolumeView>(find.byType(VolumeView)).toList();
+      expect(views.first.camera, isNot(before));
+      expect(views.map((v) => v.camera).toSet(), hasLength(1), reason: 'they turn together');
+      expect(tester.widget<TextButton>(reset).onPressed, isNotNull);
+
+      await tester.tap(find.text('Surface'));
+      await tester.pumpAndSettle();
+      expect(find.text('Level'), findsOneWidget);
+      expect(find.textContaining('±'), findsWidgets, reason: 'a signed field: both signs');
+      expect(
+        tester.widget<VolumeView>(find.byType(VolumeView).first).style.mode,
+        VolumeMode.isosurface,
+      );
+      await tester.tap(find.text('Max'));
+      await tester.pumpAndSettle();
+      expect(find.text('Level'), findsNothing);
+      expect(find.text('Opacity'), findsNothing);
+    });
+
+    testWidgets('a 3D rollout plays in 3D', (tester) async {
+      useTallScreen(tester);
+      await openFieldsTab(tester, fno);
+      await tester.tap(find.text('3D rollout'));
+      await tester.pumpAndSettle();
+      expect(find.byType(VolumeView), findsNWidgets(3));
+      expect(find.text('Rollout: t = 0'), findsOneWidget);
+      final first = tester.widget<VolumeView>(find.byType(VolumeView).first).volume.values;
+      await tester.tap(find.byTooltip('Play the rollout'));
+      await tester.pump(const Duration(milliseconds: 170));
+      final playing = tester.widget<VolumeView>(find.byType(VolumeView).first);
+      expect(playing.draft, isTrue, reason: 'drafts while playing');
+      expect(identical(playing.volume.values, first), isFalse, reason: 'the next frame');
+      await tester.tap(find.byTooltip('Pause'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<VolumeView>(find.byType(VolumeView).first).draft, isFalse);
     });
 
     testWidgets('the field through the layers, input to output', (tester) async {

@@ -15,6 +15,7 @@ import '../../../shared/widgets/line_chart_card.dart';
 import '../../../shared/widgets/section_card.dart';
 import '../../../shared/widgets/spaced_list_view.dart';
 import '../../../shared/widgets/stat_tile.dart';
+import '../volume/volume_card.dart';
 import '../widgets/field_heatmap.dart';
 
 /// Snapshots of the fields a run predicts (e.g. a PDE solution), logged with
@@ -48,6 +49,9 @@ class _FieldsTabState extends ConsumerState<FieldsTab> {
   /// where along it (null: the middle).
   int? _axis;
   int? _slice;
+
+  /// 3D fields: slices instead of the 3D view.
+  bool _sliced = false;
 
   /// The layer shown large below the filmstrip.
   String? _layer;
@@ -227,7 +231,17 @@ class _FieldsTabState extends ConsumerState<FieldsTab> {
     } else {
       final axis = (_axis ?? _shortestAxis(snapshot.shape)).clamp(0, snapshot.dimensions - 1);
       final slice = (_slice ?? snapshot.shape[axis] ~/ 2).clamp(0, snapshot.shape[axis] - 1);
+      final toggle = _ViewToggle(sliced: _sliced, onChanged: (v) => setState(() => _sliced = v));
+      if (snapshot.dimensions == 3 && !_sliced) {
+        return [
+          toggle,
+          ?frameControls,
+          VolumeCard(snapshot: snapshot, frame: frame, playing: _player != null, loading: loading),
+          ?rolloutError,
+        ];
+      }
       views = [
+        if (snapshot.dimensions == 3) toggle,
         if (snapshot.dimensions == 3)
           _SliceControls(
             shape: snapshot.shape,
@@ -586,6 +600,26 @@ class _FrameControls extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 3D fields: the 3D view, or slices.
+class _ViewToggle extends StatelessWidget {
+  const _ViewToggle({required this.sliced, required this.onChanged});
+
+  final bool sliced;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: SegmentedButton<bool>(
+      segments: const [
+        ButtonSegment(value: false, icon: Icon(Icons.view_in_ar_outlined), label: Text('3D view')),
+        ButtonSegment(value: true, icon: Icon(Icons.layers_outlined), label: Text('Slices')),
+      ],
+      selected: {sliced},
+      onSelectionChanged: (selection) => onChanged(selection.single),
+    ),
+  );
 }
 
 /// Which axis a 3D field is cut across, and where.

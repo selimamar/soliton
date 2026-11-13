@@ -340,16 +340,21 @@ def test_a_rollout_with_time_last_and_too_many_frames(tmp_path):
         run2.log_rollout("w", field, times=[0, 1, 2], time_axis=-1)
 
 
-def test_3d_fields_are_averaged_down_to_64_per_axis(tmp_path):
+def test_3d_fields_are_averaged_down_to_128_per_axis(tmp_path):
     rng = np.random.default_rng(1)
-    target = rng.random((128, 96, 64))
+    target = rng.random((200, 96, 64))
     with offline(tmp_path) as run:
         run.log_field("p", target + 0.1, target, step=0)
-    record = field_records(run)[0]
-    assert record["shape"] == [64, 48, 64]
-    assert record["originalShape"] == [128, 96, 64]
-    assert record["stats"]["rmse"] == pytest.approx(0.1)
-    assert decode_field(record).shape == (64, 48, 64)
+        run.log_field("small", target, step=0, max_points=32 ** 3)
+    full, small = field_records(run)
+    assert full["shape"] == [100, 96, 64]
+    assert full["originalShape"] == [200, 96, 64]
+    assert full["stats"]["rmse"] == pytest.approx(0.1)
+    assert decode_field(full).shape == (100, 96, 64)
+    assert np.prod(small["shape"]) <= 32 ** 3
+    with pytest.raises(ValueError, match="max_points"):
+        run2 = offline(tmp_path, name="other")
+        run2.log_field("p", target, max_points=1 << 25)
 
 
 def test_snapshots_stay_under_the_server_limit():

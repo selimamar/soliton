@@ -41,6 +41,9 @@ class Colormap {
   final List<Color> anchors;
   final List<int> _table;
 
+  /// All 257 colours, from 0 to 1, as 0xAARRGGBB.
+  List<int> get table => _table;
+
   /// The colour for [t] in 0..1 (clamped), as 0xAARRGGBB.
   int argbAt(double t) => _table[(t.clamp(0.0, 1.0) * _last).round()];
 

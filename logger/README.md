@@ -142,9 +142,16 @@ if step % 500 == 0:                          # e.g. at each validation
 logs one snapshot. Arrays are NumPy arrays or PyTorch tensors (any device),
 **1D, 2D or 3D** once dimensions of size 1 are dropped: log one sample and
 one channel; for several variables, one name each (`"u"`, `"v"`, `"p"`).
-2D fields show as heatmaps, 1D as lines, and 3D as slices: pick the axis to
-cut across and move the slice with a slider (by default across the shortest
-axis, e.g. time in an FNO-3D's (x, y, t) output).
+2D fields show as heatmaps, 1D as lines, and 3D in a **3D view** you turn
+by dragging (pinch, or Ctrl/⌘ + scroll, to zoom), with prediction, truth and error
+turning together. It draws the field as a see-through volume (values far
+from zero, or from the bottom of the range, show most), as a maximum
+projection, or as isosurfaces at a level you set (at plus and minus the
+level for a signed field). It renders on the device, so 3D views are
+coarser while turning and sharpen when you let go. Switch to **Slices** to
+cut the field along an axis instead (by default across the shortest axis,
+e.g. time in an FNO-3D's (x, y, t) output). 3D rollouts play in either
+view.
 
 **`run.log_rollout(name, prediction, target=None, step=None, times=None,
 time_axis=0, max_size=None, max_frames=64)`** logs a field over time, e.g.
@@ -184,9 +191,11 @@ All three:
 
 - Errors (relative L2, RMSE, largest pointwise error) are computed on the
   full arrays, ignoring NaN. The snapshot itself is averaged down to at most
-  `max_size` points per axis (default 128, or 64 for 3D, rollouts and
-  layers; up to 512) and to at most about a million values, and sent as
-  16-bit values: about 90 KB for 128 × 128 with its target.
+  `max_size` points per axis (default 128, 64 for layers; up to 512) and
+  `max_points` values in all, all frames together (default 4M, up to 16M),
+  and sent as 16-bit values: about 90 KB for 128 × 128 with its target,
+  11 MB per array for 4M values. The app loads a whole snapshot to show it,
+  so very large ones are slow on a phone.
 - `step` defaults to the latest step logged, so a field logged right after
   `run.log(..., step=step)` lands on the same step.
 - Snapshots are much larger than metrics: log them every few hundred steps,

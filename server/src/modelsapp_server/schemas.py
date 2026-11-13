@@ -124,7 +124,7 @@ class LayersEvent(_In):
 
 
 FIELD_MAX_SIZE = 512  # Points per axis.
-FIELD_MAX_POINTS = 1 << 20  # Values per array, all frames together.
+FIELD_MAX_POINTS = 1 << 24  # Values per array, all frames together (~43 MB of JSON).
 FIELD_MAX_FRAMES = 256
 FieldStat = Annotated[str, StringConstraints(max_length=40)]
 Axis = Annotated[int, Field(ge=1, le=FIELD_MAX_SIZE)]

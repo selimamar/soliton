@@ -187,6 +187,28 @@ List<MockField> navierStokesFields({
     ),
   ];
 
+  // A 3D flow over time (like a 3D Navier–Stokes rollout): blobs of
+  // vorticity drifting and decaying in a periodic box.
+  final flow3d = _Flow3d(seed + 1);
+  const cube = 24, cubeFrames = 12;
+  final cubeTimes = List<double>.unmodifiable([for (var f = 0; f < cubeFrames; f++) f * 0.1]);
+  fields.add(
+    MockField._(
+      name: '3D rollout',
+      shape: const [cube, cube, cube],
+      frames: cubeFrames,
+      steps: slowSteps,
+      make: (step) => output(
+        '3D rollout',
+        step,
+        const [cube, cube, cube],
+        frames: cubeFrames,
+        times: cubeTimes,
+        frame: (f, p) => flow3d.grid(cube, cubeTimes[f], p),
+      ),
+    ),
+  );
+
   // Inside the model: the lifting layer sees the input and the (x, y)
   // grid it is given, so a ramp shows; each block moves the field closer to
   // the output, with small-scale texture from channel mixing in between.
@@ -348,6 +370,65 @@ class _Flow {
       for (var i = 0; i < n; i++) {
         values[i] +=
             c.amplitude * math.sin(2 * math.pi * (c.mode.kx * i / n + c.mode.ky * y) + c.phase);
+      }
+    }
+    return Float32List.fromList(values);
+  }
+}
+
+/// A few 3D Fourier modes that drift and decay, and a model of them that
+/// learns slowly and drifts out of phase along a rollout.
+class _Flow3d {
+  _Flow3d(int seed) {
+    final random = math.Random(seed);
+    for (var i = 0; i < 10; i++) {
+      final k = [for (var a = 0; a < 3; a++) random.nextInt(5) - 2];
+      if (k.every((v) => v == 0)) k[0] = 1;
+      final size = math.sqrt(k.fold(0, (sum, v) => sum + v * v));
+      _modes.add((
+        k: k,
+        size: size,
+        amplitude: math.pow(size, -1.2) * (0.6 + random.nextDouble()),
+        phase: random.nextDouble() * 2 * math.pi,
+        speed: (random.nextDouble() - 0.5) * 5,
+        drift: (random.nextDouble() - 0.5) * 3,
+      ));
+    }
+  }
+
+  final _modes =
+      <({List<int> k, double size, double amplitude, double phase, double speed, double drift})>[];
+
+  /// The field on an n³ grid at time [t] (axis 0 slowest): the truth, or
+  /// the prediction at training [progress]. Each mode is a product of
+  /// per-axis complex exponentials, so no trigonometry per point.
+  Float32List grid(int n, double t, double? progress) {
+    final values = Float64List(n * n * n);
+    for (final m in _modes) {
+      var amplitude = m.amplitude * math.exp(-0.04 * m.size * m.size * t);
+      var phase = m.phase + m.speed * t;
+      if (progress != null) {
+        amplitude *= 1 - math.exp(-progress * 25 / m.size);
+        phase += m.drift * t * (0.2 + math.exp(-progress * 8));
+      }
+      List<(double, double)> axis(int k) => [
+        for (var i = 0; i < n; i++)
+          (math.cos(2 * math.pi * k * i / n), math.sin(2 * math.pi * k * i / n)),
+      ];
+      final ax = axis(m.k[0]), ay = axis(m.k[1]), az = axis(m.k[2]);
+      final cp = math.cos(phase), sp = math.sin(phase);
+      for (var i = 0; i < n; i++) {
+        final (c0, s0) = ax[i];
+        final ci = c0 * cp - s0 * sp, si = s0 * cp + c0 * sp;
+        for (var j = 0; j < n; j++) {
+          final (c1, s1) = ay[j];
+          final cij = ci * c1 - si * s1, sij = si * c1 + ci * s1;
+          final row = (i * n + j) * n;
+          for (var k = 0; k < n; k++) {
+            final (c2, s2) = az[k];
+            values[row + k] += amplitude * (sij * c2 + cij * s2); // sin(a + b + c + φ)
+          }
+        }
       }
     }
     return Float32List.fromList(values);

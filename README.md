@@ -91,7 +91,9 @@ What it does:
 - **Fields**, for neural operators and other models that predict a field:
   the prediction, the true field and their difference as heatmaps or lines
   at any logged step; rollouts played over time with their error frame by
-  frame; 3D fields in slices; and the field through each layer of the model.
+  frame; 3D fields (and 3D rollouts) in a 3D view you can turn, as a volume,
+  a maximum projection or isosurfaces, or in slices; and the field through
+  each layer of the model.
 - **Live updates**: charts and the list refresh as the server receives data.
 - **Compare**: pick up to six runs on the runs list to overlay their curves.
 - **Chart options**: log scale (loss, learning rate, gradient norm), and

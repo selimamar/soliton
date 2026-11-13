@@ -4,7 +4,8 @@ A field is a 1D, 2D or 3D array (e.g. a PDE solution on a grid), optionally
 over time (a rollout: several frames). It travels as 16-bit values between
 the snapshot's min and max (base64, little-endian), frame after frame, after
 averaging blocks of grid points down to at most `max_size` per axis: a
-128 x 128 snapshot with its target is about 90 KB of JSON. The error
+128 x 128 snapshot with its target is about 90 KB of JSON, a 128^3 volume
+about 11 MB. The error
 statistics are computed on the full arrays, before any of that.
 
 Layer snapshots (`Run.capture_layers`) are fields too: a layer's output for
@@ -25,7 +26,8 @@ from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 NAN_CODE = 65535  # Quantized values are 0..65534; this one means NaN (or ±inf).
 LEVELS = 65534
 MAX_SIZE = 512  # Largest axis the server accepts.
-MAX_POINTS = 1 << 20  # Most values in one array (all frames), as the server accepts.
+MAX_POINTS = 1 << 24  # Most values in one array (all frames) the server accepts: ~43 MB of JSON.
+DEFAULT_POINTS = 1 << 22  # The default cap: 4M values, ~11 MB of JSON per array.
 MAX_FRAMES = 256
 MAX_LAYERS = 48
 
@@ -139,12 +141,15 @@ def _frame_indices(count: int, max_frames: int) -> List[int]:
 
 def field_event(name: str, prediction: Any, target: Any = None, *, max_size: Optional[int] = None,
                 rollout: bool = False, time_axis: int = 0, times: Optional[Sequence[float]] = None,
-                max_frames: int = 64) -> Tuple[dict, Optional[str]]:
+                max_frames: int = 64, max_points: int = DEFAULT_POINTS,
+                ) -> Tuple[dict, Optional[str]]:
     """The "field" event body (without step and time), and a warning if
     something was off but logged anyway."""
     np = _numpy()
     if not 1 <= max_frames <= MAX_FRAMES:
         raise ValueError(f"max_frames must be between 1 and {MAX_FRAMES}")
+    if not 1024 <= max_points <= MAX_POINTS:
+        raise ValueError(f"max_points must be between 1024 and {MAX_POINTS:,}")
     pred = to_array(prediction, "prediction")
     true = None if target is None else to_array(target, "target")
     if rollout:
@@ -168,9 +173,8 @@ def field_event(name: str, prediction: Any, target: Any = None, *, max_size: Opt
         if len(times) != frame_count:
             raise ValueError(f"times has {len(times)} entries, but the rollout has "
                              f"{frame_count} frames")
-    spatial_dims = pred.ndim - 1
     if max_size is None:
-        max_size = 64 if spatial_dims == 3 or rollout else 128
+        max_size = 128
     if not 8 <= max_size <= MAX_SIZE:
         raise ValueError(f"max_size must be between 8 and {MAX_SIZE}")
 
@@ -184,8 +188,8 @@ def field_event(name: str, prediction: Any, target: Any = None, *, max_size: Opt
         for key in ("relL2", "rmse", "maxError"):
             frame_stats[key] = [s.get(key, math.nan) for s in per_frame]
     original_shape = list(pred.shape[1:])
-    pred = shrink(pred, max_size, first_axis=1)
-    true = None if true is None else shrink(true, max_size, first_axis=1)
+    pred = shrink(pred, max_size, first_axis=1, max_points=max_points)
+    true = None if true is None else shrink(true, max_size, first_axis=1, max_points=max_points)
 
     values = pred if true is None else np.concatenate([pred.ravel(), true.ravel()])
     finite = values[np.isfinite(values)]

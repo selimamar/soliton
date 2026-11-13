@@ -508,7 +508,8 @@ def test_rollouts_and_3d_fields(client):
     back = client.get("/api/runs/tiny-1/fields/snapshot", params={"name": "u(t)"}).json()
     assert back["times"] == [0, 0.1, 0.2, 0.3]
     assert back["frameStats"] == {"relL2": [0.01, 0.02, 0.04, "NaN"]}
-    huge = field(1, name="big", shape=(512, 512), frames=5, target=False)
+    # 65 frames of 512 x 512: over the 16M cap (checked before the data is read).
+    huge = {**field(1, name="big", target=False), "shape": [512, 512], "frames": 65}
     assert client.post("/api/runs/tiny-1/events", json={"events": [huge]}).status_code == 422
 
 

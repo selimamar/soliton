@@ -126,7 +126,7 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
 **Field snapshots** (`run.log_field`, `run.log_rollout` and
 `run.capture_layers` in the logger): each frame a 1D, 2D or 3D array of at
 most 512 points per axis, row by row (the last axis fastest), frames one
-after the other; at most 1,048,576 values in all. Each value is a
+after the other; at most 16,777,216 values in all (about 43 MB of JSON). Each value is a
 little-endian unsigned 16-bit code: 0 is `min`, 65534 is `max`, 65535 is
 NaN. `target` (the true field, same shape and scale) may be `null`. `stats`
 are computed by the logger on the full-resolution arrays. A rollout has

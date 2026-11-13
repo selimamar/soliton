@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
-from ._fields import capture, field_event, layer_event
+from ._fields import DEFAULT_POINTS, capture, field_event, layer_event
 from ._system import SystemMonitor, framework_versions, system_info
 from ._upload import ApiClient, RunFiles, Uploader
 from ._util import (
@@ -167,7 +167,8 @@ class Run:
                     self._files.append({"type": "layers", "step": step, "time": now, "layers": layers})
 
     def log_field(self, name: str, prediction: Any, target: Any = None,
-                  step: Optional[int] = None, *, max_size: Optional[int] = None) -> None:
+                  step: Optional[int] = None, *, max_size: Optional[int] = None,
+                  max_points: int = DEFAULT_POINTS) -> None:
         """Logs a snapshot of a predicted field, e.g. a PDE solution, with the
         true one ([target]) to compare it with, at [step] (default: the
         latest step logged).
@@ -176,23 +177,26 @@ class Run:
         dimensions of size 1 are removed: log one sample and one channel.
         Log the same validation sample each time, so the app can show it
         improving. The app shows the prediction, the target and their
-        difference (3D fields as slices), and the relative L2 error over
-        training; the errors are computed on the full arrays, but the
-        snapshot is averaged down to at most [max_size] points per axis
-        (default 128, or 64 in 3D).
+        difference (3D fields in a rotatable 3D view, or in slices), and the
+        relative L2 error over training; the errors are computed on the full
+        arrays, but the snapshot is averaged down to at most [max_size]
+        points per axis (default 128) and [max_points] values in all
+        (default 4M, at most 16M; 4M is about 11 MB to upload and to load in
+        the app, per array).
 
         Snapshots are larger than metrics: log one every few hundred steps
         (or every validation), not every step.
         """
         if self._finished:
             return
-        event, warning = field_event(_field_name(name), prediction, target, max_size=max_size)
+        event, warning = field_event(_field_name(name), prediction, target, max_size=max_size,
+                                     max_points=max_points)
         self._append_field(event, step, warning)
 
     def log_rollout(self, name: str, prediction: Any, target: Any = None,
                     step: Optional[int] = None, *, times: Optional[Sequence[float]] = None,
                     time_axis: int = 0, max_size: Optional[int] = None,
-                    max_frames: int = 64) -> None:
+                    max_frames: int = 64, max_points: int = DEFAULT_POINTS) -> None:
         """Logs a rollout: a field over time, e.g. an autoregressive
         prediction of [frames, x, y] next to the true trajectory.
 
@@ -202,13 +206,14 @@ class Run:
         charts its error frame by frame, the usual way error builds up over
         a rollout. At most [max_frames] frames are kept, spread evenly
         (always the first and the last), each averaged down to at most
-        [max_size] points per axis (default 64).
+        [max_size] points per axis (default 128), and all frames together to
+        at most [max_points] values (default 4M, at most 16M).
         """
         if self._finished:
             return
         event, warning = field_event(_field_name(name), prediction, target, max_size=max_size,
                                      rollout=True, time_axis=time_axis, times=times,
-                                     max_frames=max_frames)
+                                     max_frames=max_frames, max_points=max_points)
         self._append_field(event, step, warning)
 
     @contextmanager
