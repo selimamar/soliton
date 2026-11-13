@@ -69,9 +69,17 @@ In the app: **Settings → Data source** (or **Connect** on the demo banner), en
 ```bash
 tool/run_web.sh           # in a browser (no Chrome needed; URLs like /runs/gpt-tiny)
 flutter run               # on a connected phone or an open simulator
+flutter run -d macos      # as a Mac app
 flutter test              # unit and widget tests
 flutter analyze           # lints
 ```
+
+It runs on Android phones and tablets, iPhone and iPad (one iOS app for
+both, in every orientation and in iPad Split View), macOS and the web.
+Building for iOS, iPadOS and macOS needs Xcode only: plugins come in through
+Swift Package Manager (set in `pubspec.yaml`), so CocoaPods isn't used and
+`flutter doctor`'s note that it's missing can be ignored. For Android: Android
+Studio (or the Android SDK and a JDK). `flutter doctor` says what's missing.
 
 What it does:
 
@@ -102,7 +110,9 @@ What it does:
   notifications when it is closed, set up ntfy on the server.
 
 Phones need `https://` for a server on the internet. Plain `http://` works for
-a server on your own network (debug builds on Android, any build on iOS).
+a server on your own network (debug builds on Android, any build on iOS,
+iPadOS and macOS). iOS, iPadOS and macOS ask once for permission to use the
+local network.
 
 ### Code layout
 

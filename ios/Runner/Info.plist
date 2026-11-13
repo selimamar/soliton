@@ -66,6 +66,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- iOS asks before an app reaches devices on the local network. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Models App connects to the ModelsApp server you set up, which may be on your local network.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<!-- Plain http:// to servers on your own network (e.g. a laptop

@@ -36,3 +36,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  config:
+    # iOS, iPadOS and macOS plugins come in through Swift Package Manager,
+    # never CocoaPods, whatever a machine's own Flutter settings say.
+    enable-swift-package-manager: true
