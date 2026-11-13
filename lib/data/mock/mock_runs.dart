@@ -473,8 +473,9 @@ List<MockRun> _sweepRuns(DateTime now) => [
       project: 'neural-operators',
       host: 'Sherlock',
       status: RunStatus.finished,
-      startedAt: now.subtract(Duration(days: 1, hours: 6 - i)),
-      endedAt: now.subtract(Duration(hours: 20 - 2 * i)),
+      // Bigger models train longer: 6, 8, 10 and 14 hours.
+      startedAt: now.subtract(Duration(hours: 26 + 2 * i + (i == 3 ? 2 : 0))),
+      endedAt: now.subtract(const Duration(hours: 20)),
       currentStep: 6000,
       totalSteps: 6000,
       totalEpochs: 120,
@@ -491,6 +492,11 @@ List<MockRun> _sweepRuns(DateTime now) => [
         'Dataset': 'Navier–Stokes 2D (FNO benchmark)',
       },
       tags: const ['sweep'],
+      system: const SystemInfo(
+        cpuCores: 8,
+        memoryGb: 32,
+        gpus: [GpuInfo(name: 'NVIDIA A100-PCIE-40GB', memoryGb: 40)],
+      ),
       initialLoss: 0.95,
       finalLoss: 0.02 * (12 / modes) * (32 / width),
       peakLearningRate: 1e-3,

@@ -262,6 +262,7 @@ still large at the highest kept mode suggest more modes would help.
 | `name` | required | Shown in the app |
 | `project` | `""` | Shown under the name; the app can group runs by it |
 | `system_metrics`, `system_interval` | `True`, `15` | Sample GPU, memory and CPU use every `system_interval` seconds (see above) |
+| `price_per_hour` | `MODELSAPP_PRICE_PER_HOUR`, else estimated | What the machine costs in US dollars per hour (all its GPUs), for the app's rounded cost estimate. Without it, the app assumes a typical on-demand cloud price for the GPUs (e.g. about $4/h per H100, $2.50 per A100, $0.80 per L4) or $0.05 per CPU core. `0` hides the estimate (e.g. a cluster you don't pay by the hour for) |
 | `tags`, `notes` | none | To organise runs in the app, e.g. `tags=["baseline"]`, `notes="first try with AdamW"`. Only the starting values: they're then edited in the app, and the logger never overwrites them |
 | `config` | none | Hyperparameters: a dict (nested is fine) or argparse namespace |
 | `train_samples`, `val_samples` | none | How many samples are trained and validated on: a number, a dataset, or a DataLoader (its dataset is counted, not its batches) |

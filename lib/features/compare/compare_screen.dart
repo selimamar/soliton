@@ -11,7 +11,9 @@ import '../../data/providers.dart';
 import '../../models/field_snapshot.dart';
 import '../../models/metric_series.dart';
 import '../../models/run.dart';
+import '../../models/run_cost.dart';
 import '../../shared/chart_settings.dart';
+import '../../shared/clock.dart';
 import '../../shared/colormaps.dart';
 import '../../shared/formatters.dart';
 import '../../shared/widgets/async_value_view.dart';
@@ -142,13 +144,14 @@ class _Comparison extends ConsumerWidget {
 }
 
 /// Per run: status, progress and the headline numbers.
-class _Summary extends StatelessWidget {
+class _Summary extends ConsumerWidget {
   const _Summary({required this.runs});
 
   final List<_ComparedRun> runs;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final now = ref.watch(clockProvider);
     final theme = Theme.of(context);
     final muted = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
     return SectionCard(
@@ -179,7 +182,7 @@ class _Summary extends StatelessWidget {
             const SizedBox(height: 4),
             Padding(
               padding: const EdgeInsets.only(left: 18),
-              child: Text(_numbers(r), style: muted),
+              child: Text(_numbers(r, now), style: muted),
             ),
           ],
         ],
@@ -187,9 +190,10 @@ class _Summary extends StatelessWidget {
     );
   }
 
-  /// "Step 12,000 · train loss 0.412 · best val loss 0.520 · best accuracy 91.3%".
-  /// Best values skip NaN; the latest train loss shows it.
-  static String _numbers(_ComparedRun r) {
+  /// "Step 12,000 · train loss 0.412 · best val loss 0.520 · best accuracy
+  /// 91.3% · cost ≈ $38". Best values skip NaN; the latest train loss shows
+  /// it. The cost is an estimate (see [HourlyPrice]).
+  static String _numbers(_ComparedRun r, DateTime now) {
     final finite = <String, List<double>>{
       for (final key in [MetricKeys.valLoss, MetricKeys.valAccuracy])
         key: [
@@ -206,6 +210,7 @@ class _Summary extends StatelessWidget {
       if (train != null) 'train loss ${formatMetric(train)}',
       if (val.isNotEmpty) 'best val loss ${formatMetric(val.reduce(math.min))}',
       if (accuracy.isNotEmpty) 'best accuracy ${formatPercent(accuracy.reduce(math.max))}',
+      if (estimateCost(r.run, now) case final cost?) 'cost ${formatCost(cost.soFar)}',
     ].join(' · ');
   }
 }

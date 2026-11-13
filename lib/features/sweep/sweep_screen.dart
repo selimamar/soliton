@@ -9,7 +9,9 @@ import '../../app/theme.dart';
 import '../../data/providers.dart';
 import '../../models/metric_series.dart';
 import '../../models/run.dart';
+import '../../models/run_cost.dart';
 import '../../models/run_insights.dart';
+import '../../shared/clock.dart';
 import '../../shared/colormaps.dart';
 import '../../shared/formatters.dart';
 import '../../shared/widgets/async_value_view.dart';
@@ -25,7 +27,11 @@ const sweepMetrics = {
   MetricKeys.valLoss: 'Validation loss',
   MetricKeys.trainLoss: 'Train loss',
   MetricKeys.inferenceSeconds: 'Inference time per sample',
+  sweepCost: 'Training cost (estimated)',
 };
+
+/// Not a logged metric: each run's estimated cost (see [estimateCost]).
+const sweepCost = 'estimate/cost';
 
 /// Runs of one project side by side by what they varied: a grid of a
 /// metric over two hyperparameters (e.g. Fourier modes × width), or a
@@ -51,7 +57,8 @@ class _SweepScreenState extends ConsumerState<SweepScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final names = sweepMetrics.keys.join(',');
+    final names = sweepMetrics.keys.where((k) => k != sweepCost).join(',');
+    final now = ref.watch(clockProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Sweep')),
       body: AsyncValueView(
@@ -119,15 +126,23 @@ class _SweepScreenState extends ConsumerState<SweepScreen> {
               AsyncValueView(
                 value: latest,
                 onRetry: () => ref.invalidate(latestMetricsProvider(names)),
-                data: (values) => _mode == _Mode.grid
-                    ? _Grid(
-                        runs: inProject,
-                        rows: _pick(_rowsParam, params, 0),
-                        columns: _pick(_columnsParam, params, 1),
-                        metric: _metric,
-                        values: values,
-                      )
-                    : _Scatter(runs: inProject, x: _xMetric, y: _yMetric, values: values),
+                data: (logged) {
+                  final values = {
+                    ...logged,
+                    for (final r in inProject)
+                      if (estimateCost(r, now) case final cost?)
+                        r.id: {...?logged[r.id], sweepCost: LatestMetric(latest: cost.soFar)},
+                  };
+                  return _mode == _Mode.grid
+                      ? _Grid(
+                          runs: inProject,
+                          rows: _pick(_rowsParam, params, 0),
+                          columns: _pick(_columnsParam, params, 1),
+                          metric: _metric,
+                          values: values,
+                        )
+                      : _Scatter(runs: inProject, x: _xMetric, y: _yMetric, values: values);
+                },
               ),
             ],
           );
@@ -192,6 +207,7 @@ double? sweepValue(Map<String, Map<String, LatestMetric>> values, String runId, 
 String _formatSweep(String metric, double value) => switch (metric) {
   MetricKeys.relL2 => formatRelativeError(value),
   MetricKeys.inferenceSeconds => formatSeconds(value),
+  sweepCost => formatCost(value),
   _ => formatMetric(value),
 };
 
@@ -514,6 +530,7 @@ class _Scatter extends StatelessWidget {
       logY: decades(points.map((p) => p.$3)),
       formatX: (v) => _formatSweep(x, v),
       formatY: (v) => _formatSweep(y, v),
+      tickPrefix: (x: x == sweepCost ? r'$' : '', y: y == sweepCost ? r'$' : ''),
       height: 220,
       onTap: (i) => context.go(AppRoutes.run(points[i].$1.id)),
       series: [

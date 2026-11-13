@@ -77,6 +77,29 @@ String formatSeconds(double seconds) {
   return '${formatCoordinate(seconds * 1e6)} µs';
 }
 
+/// US dollars rounded to two significant figures, as an estimate should
+/// be: 38.4 -> "$38", 112 -> "$110", 3.84 -> "$3.80", 4 -> "$4", 0.423 ->
+/// "$0.42", 1234 -> "$1,200", 152000 -> "$150k", 0.001 -> "< $0.01".
+String formatDollars(double dollars) {
+  if (!dollars.isFinite) return '—';
+  if (dollars < 0.005) return '< \$0.01';
+  if (dollars < 1) return '\$${dollars.toStringAsFixed(2)}';
+  final step = math.pow(10, _exponent(dollars) - 1).toDouble();
+  final rounded = (dollars / step).round() * step;
+  if (rounded < 10) {
+    final cents = rounded.toStringAsFixed(2);
+    return '\$${cents.endsWith('.00') ? cents.substring(0, cents.length - 3) : cents}';
+  }
+  if (rounded >= 1e5) return '\$${formatCount(rounded)}';
+  return '\$${formatInt(rounded.round())}';
+}
+
+/// An estimated cost: "≈ $38", "< $0.01".
+String formatCost(double dollars) {
+  final text = formatDollars(dollars);
+  return text.startsWith('<') ? text : '≈ $text';
+}
+
 /// 0.913 -> "91.3%".
 String formatPercent(double fraction) => '${(fraction * 100).toStringAsFixed(1)}%';
 

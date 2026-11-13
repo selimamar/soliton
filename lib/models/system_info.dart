@@ -17,6 +17,7 @@ class SystemInfo {
     this.cuda,
     this.cudnn,
     this.slurm = const {},
+    this.pricePerHour,
   });
 
   factory SystemInfo.fromJson(Map<String, Object?> json) => SystemInfo(
@@ -38,6 +39,7 @@ class SystemInfo {
       for (final MapEntry(:key, :value) in ((json['slurm'] as Map?) ?? const {}).entries)
         key as String: '$value',
     }),
+    pricePerHour: (json['pricePerHour'] as num?)?.toDouble(),
   );
 
   /// The node, e.g. `sh03-12n07.int`.
@@ -70,6 +72,11 @@ class SystemInfo {
   /// `arrayTaskId`: whichever Slurm set.
   final Map<String, String> slurm;
 
+  /// What the job's machine costs per hour in US dollars, if the run said
+  /// (`modelsapp.init(price_per_hour=...)`); see `HourlyPrice` for the
+  /// estimate otherwise.
+  final double? pricePerHour;
+
   /// GPU memory across all the job's GPUs, if known.
   double? get gpuMemoryGb => gpus.isEmpty || gpus.any((g) => g.memoryGb <= 0)
       ? null
@@ -88,6 +95,7 @@ class SystemInfo {
     'cuda': ?cuda,
     'cudnn': ?cudnn,
     if (slurm.isNotEmpty) 'slurm': slurm,
+    'pricePerHour': ?pricePerHour,
   };
 
   @override
@@ -104,7 +112,8 @@ class SystemInfo {
       other.torch == torch &&
       other.cuda == cuda &&
       other.cudnn == cudnn &&
-      deepMapEquals(other.slurm, slurm);
+      deepMapEquals(other.slurm, slurm) &&
+      other.pricePerHour == pricePerHour;
 
   @override
   int get hashCode => Object.hash(
@@ -120,6 +129,7 @@ class SystemInfo {
     cuda,
     cudnn,
     Object.hashAllUnordered(slurm.entries.map((e) => Object.hash(e.key, e.value))),
+    pricePerHour,
   );
 }
 

@@ -41,6 +41,7 @@ class XYChartCard extends StatelessWidget {
     this.onTap,
     this.controls,
     this.formatYTick,
+    this.tickPrefix = (x: '', y: ''),
   });
 
   final String title;
@@ -67,6 +68,9 @@ class XYChartCard extends StatelessWidget {
 
   /// Linear y-axis tick labels (default: round numbers), e.g. as percents.
   final String Function(double)? formatYTick;
+
+  /// Put before every tick label on that axis, e.g. a currency sign.
+  final ({String x, String y}) tickPrefix;
 
   double? _x(double v) => !v.isFinite || (logX && v <= 0) ? null : (logX ? _log10(v) : v);
   double? _y(double v) => !v.isFinite || (logY && v <= 0) ? null : (logY ? _log10(v) : v);
@@ -222,7 +226,8 @@ class XYChartCard extends StatelessWidget {
             getTitlesWidget: (v, meta) => _axisLabel(
               v,
               meta,
-              logY ? _logTick(v) : (formatYTick?.call(v) ?? formatAxisTick(v, yInterval)),
+              tickPrefix.y +
+                  (logY ? _logTick(v) : (formatYTick?.call(v) ?? formatAxisTick(v, yInterval))),
               labelStyle,
             ),
           ),
@@ -232,8 +237,12 @@ class XYChartCard extends StatelessWidget {
             showTitles: true,
             reservedSize: 22,
             interval: xInterval,
-            getTitlesWidget: (v, meta) =>
-                _axisLabel(v, meta, logX ? _logTick(v) : formatAxisTick(v, xInterval), labelStyle),
+            getTitlesWidget: (v, meta) => _axisLabel(
+              v,
+              meta,
+              tickPrefix.x + (logX ? _logTick(v) : formatAxisTick(v, xInterval)),
+              labelStyle,
+            ),
           ),
         ),
       ),

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import atexit
+import math
 import os
 import signal
 import sys
@@ -67,6 +68,7 @@ class Run:
         notes: str = "",
         system_metrics: bool = True,
         system_interval: float = 15,
+        price_per_hour: Optional[float] = None,
         total_steps: int = 0,
         total_epochs: int = 0,
         host: Optional[str] = None,
@@ -86,6 +88,7 @@ class Run:
                 "online mode needs a server and a token: pass server=... and token=..., or set "
                 "MODELSAPP_SERVER and MODELSAPP_TOKEN (or use mode='offline')"
             )
+        price = _price_per_hour(price_per_hour)
         run_id = id or new_run_id(name)
         if not RUN_ID.match(run_id):
             raise ValueError(f"invalid run id {run_id!r}: letters, digits, '.', '_' and '-' only")
@@ -107,7 +110,7 @@ class Run:
             "architecture": None,
             "tags": _clean_tags(tags),
             "notes": str(notes or "")[:10_000],
-            "system": _system_info() if mode != "disabled" else None,
+            "system": _system_info(price) if mode != "disabled" else None,
         }
         self._files = RunFiles(self.directory)
         self._lock = threading.RLock()
@@ -469,11 +472,39 @@ def _field_name(name: Any) -> str:
     return text
 
 
-def _system_info() -> dict:
+def _system_info(price_per_hour: Optional[float] = None) -> dict:
     try:
-        return system_info()
+        info = system_info()
     except Exception:  # Never let this stop a run from starting.
-        return {}
+        info = {}
+    if price_per_hour is not None:
+        info["pricePerHour"] = price_per_hour
+    return info
+
+
+def _price_per_hour(value: Optional[float]) -> Optional[float]:
+    """The machine's price in dollars per hour: `value`, else
+    MODELSAPP_PRICE_PER_HOUR, else None (the app estimates one from the
+    GPUs)."""
+    source = "price_per_hour"
+    if value is None:
+        text = os.environ.get("MODELSAPP_PRICE_PER_HOUR", "").strip()
+        if not text:
+            return None
+        source = "MODELSAPP_PRICE_PER_HOUR"
+        try:
+            value = float(text.lstrip("$"))
+        except ValueError:
+            raise ValueError(f"{source} must be a number of dollars per hour, not {text!r}") from None
+    try:
+        if isinstance(value, (bool, str)):
+            raise TypeError
+        value = float(value)  # also NumPy and PyTorch scalars
+    except (TypeError, ValueError):
+        raise ValueError(f"{source} must be a number of dollars per hour, not {value!r}") from None
+    if not math.isfinite(value) or value < 0:
+        raise ValueError(f"{source} must be zero or more dollars per hour, not {value!r}")
+    return round(value, 4)
 
 
 def _clean_tags(tags: Optional[Iterable[str]]) -> list:

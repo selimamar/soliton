@@ -91,6 +91,10 @@ What it does:
 - **System**: each run's machine (GPUs, CPU, memory, software, Slurm job) and
   how busy it kept them: GPU use and memory per GPU, CPU, memory, GPU
   temperature and power, sampled by the logger every 15 seconds.
+- **Cost**: roughly what a run has cost and, while it runs, will cost in
+  all: run time × the machine's price per hour, rounded (e.g. "≈ $38").
+  The price is the run's own (`price_per_hour=`) or a typical cloud price
+  for its GPUs. On the Overview, in Compare, and as a Sweep axis.
 - **Run detail**: Overview (progress; tags and notes; hyperparameters, led
   by the number of training and validation samples and the loss; a network
   diagram and the module tree), Metrics (loss, accuracy, learning rate,

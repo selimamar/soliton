@@ -5,6 +5,7 @@ import '../../../data/providers.dart';
 import '../../../models/metric_series.dart';
 import '../../../app/theme.dart';
 import '../../../models/run.dart';
+import '../../../models/run_cost.dart';
 import '../../../shared/clock.dart';
 import '../../../shared/formatters.dart';
 import '../../../shared/widgets/key_value_row.dart';
@@ -36,6 +37,7 @@ class OverviewTab extends StatelessWidget {
         if (AppTheme.styleOf(context) != AppStyle.ink || run.latestLoss == null)
           _ProgressStrip(run: run),
         _SpeedStrip(runId: run.id),
+        if (HourlyPrice.of(run.system) case final price?) _CostStrip(run: run, price: price),
         RunNotesCard(run: run),
         SectionCard(
           title: 'Hyperparameters',
@@ -79,6 +81,37 @@ class _SpeedStrip extends ConsumerWidget {
         if (solver != null) ('Solver', formatSeconds(solver)),
         ('Speed-up', speedup == null ? 'Solver not logged' : '${formatCount(speedup)}× faster'),
       ],
+    );
+  }
+}
+
+/// Roughly what the run has cost, and will cost if it is still going, from
+/// its machine's price per hour (see [HourlyPrice]). Rounded: it's an
+/// estimate. Kept current by [clockProvider].
+class _CostStrip extends ConsumerWidget {
+  const _CostStrip({required this.run, required this.price});
+
+  final Run run;
+  final HourlyPrice price;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final cost = estimateCost(run, ref.watch(clockProvider), price)!;
+    final live = run.status == RunStatus.live;
+    return StatStrip(
+      stats: [
+        (live ? 'Cost so far' : 'Cost', formatCost(cost.soFar)),
+        if (cost.total case final total?) ('Expected total', formatCost(total)),
+        ('Price', '${formatCost(price.dollars)}/h'),
+      ],
+      footer: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+        child: Text(
+          'Estimated: run time × ${price.basis}.',
+          style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+        ),
+      ),
     );
   }
 }

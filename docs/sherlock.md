@@ -41,6 +41,11 @@ EOF
 chmod 600 ~/.modelsapp_env
 ```
 
+The app estimates what each run costs from typical cloud prices for its
+GPUs: what the run would cost on a cloud, since Sherlock doesn't bill by
+the hour. To hide the estimate for Sherlock runs, add
+`export MODELSAPP_PRICE_PER_HOUR=0` to that file.
+
 ## 3. Jobs can reach the internet
 
 Tested on 2026-11-12 from a compute node in the `normal` partition: outgoing
