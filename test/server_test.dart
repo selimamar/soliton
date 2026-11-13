@@ -161,7 +161,7 @@ void main() {
       expect(find.text('All · 10'), findsOneWidget, reason: 'demo data first');
       expect(find.textContaining('Demo data.'), findsOneWidget);
 
-      await tester.tap(find.widgetWithText(TextButton, 'Connect'));
+      await tester.tap(find.widgetWithText(TextButton, 'Connect server'));
       await tester.pumpAndSettle();
       expect(locationOf(tester), '/settings/server');
       await fillIn(tester, 'runs.example.com', 'secret');

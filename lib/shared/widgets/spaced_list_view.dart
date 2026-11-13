@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:material_ui/material_ui.dart';
 
+import 'style_decor.dart';
+
 /// Content wider than this is centred, so cards don't stretch across tablets
 /// and desktop windows.
 const maxContentWidth = 720.0;
@@ -32,13 +34,15 @@ class SpacedListView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) => ListView.separated(
-        padding: centeredPadding(constraints.maxWidth, padding),
-        physics: physics,
-        itemCount: children.length,
-        separatorBuilder: (context, index) => SizedBox(height: spacing),
-        itemBuilder: (context, index) => children[index],
+    return StyleBackground(
+      child: LayoutBuilder(
+        builder: (context, constraints) => ListView.separated(
+          padding: centeredPadding(constraints.maxWidth, padding),
+          physics: physics,
+          itemCount: children.length,
+          separatorBuilder: (context, index) => SizedBox(height: spacing),
+          itemBuilder: (context, index) => children[index],
+        ),
       ),
     );
   }

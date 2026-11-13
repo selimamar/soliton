@@ -864,7 +864,9 @@ class _MapsCard extends StatelessWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(shape == original ? shape : '$shape (of $original)', style: muted),
+            Flexible(
+              child: Text(shape == original ? shape : '$shape (of $original)', style: muted),
+            ),
             exportButton,
           ],
         ),
@@ -1462,7 +1464,12 @@ class _ValidationCard extends ConsumerWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('${formatInt(eval.count)} samples · step ${formatInt(eval.step)}', style: muted),
+            Flexible(
+              child: Text(
+                '${formatInt(eval.count)} samples · step ${formatInt(eval.step)}',
+                style: muted,
+              ),
+            ),
             exportButton,
           ],
         ),

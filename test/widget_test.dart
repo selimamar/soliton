@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:models_app/app/theme.dart';
 import 'package:models_app/data/mock/mock_run_repository.dart';
 import 'package:models_app/features/runs_list/widgets/run_card.dart';
 import 'package:models_app/models/run.dart';
@@ -203,12 +204,28 @@ void main() {
     expect(find.text('Epoch 42/100 · 3h 17m'), findsOneWidget);
   });
 
+  testWidgets('a style picked in settings restyles the app', (tester) async {
+    await openApp(tester, '/settings');
+    expect(
+      Theme.of(tester.element(find.text('Settings'))).colorScheme.primary,
+      AppTheme.light().colorScheme.primary,
+    );
+
+    await tester.tap(find.text('Lab'));
+    await tester.pumpAndSettle();
+    expect(
+      Theme.of(tester.element(find.text('Settings'))).colorScheme.primary,
+      AppTheme.light(AppStyle.lab).colorScheme.primary,
+    );
+  });
+
   testWidgets('settings opens from the runs list', (tester) async {
     await openApp(tester);
 
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
     expect(locationOf(tester), '/settings');
+    await tester.scrollUntilVisible(find.text('Version 0.2.0'), 300, scrollable: visibleList());
     expect(find.text('Version 0.2.0'), findsOneWidget);
   });
 }

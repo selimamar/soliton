@@ -215,7 +215,9 @@ class _VolumeCardState extends State<VolumeCard> {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(shape == original ? shape : '$shape (of $original)', style: muted),
+            Flexible(
+              child: Text(shape == original ? shape : '$shape (of $original)', style: muted),
+            ),
             exportButton,
           ],
         ),

@@ -110,6 +110,18 @@ class Run {
 
   double? get latestLoss => lossPreview.isEmpty ? null : lossPreview.last;
 
+  /// How the training loss moved over the last tenth of [lossPreview]
+  /// (negative: falling). Null when that is too short to tell, not finite,
+  /// or under 0.1% of the loss: noise rather than a trend.
+  double? get recentLossChange {
+    final n = lossPreview.length;
+    if (n < 2) return null;
+    final latest = lossPreview[n - 1];
+    final change = latest - lossPreview[n - 1 - (n ~/ 10).clamp(1, n - 1)];
+    if (!change.isFinite || change.abs() < latest.abs() * 1e-3) return null;
+    return change;
+  }
+
   double get progress =>
       totalSteps == 0 ? 0 : (currentStep / totalSteps).clamp(0.0, 1.0).toDouble();
 

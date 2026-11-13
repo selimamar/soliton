@@ -5,13 +5,16 @@ import '../../../app/theme.dart';
 import '../../../models/run.dart';
 import '../../../shared/clock.dart';
 import '../../../shared/formatters.dart';
+import '../../../shared/widgets/loss_change.dart';
 import '../../../shared/widgets/section_card.dart';
 import '../../../shared/widgets/sparkline.dart';
-import '../../../shared/widgets/status_chip.dart';
 import '../../../shared/widgets/tag_label.dart';
+import 'run_card_styles.dart';
 
-/// One run in the runs list: name, status, where it runs, its tags and the
-/// start of its note, a loss sparkline and its progress.
+/// One run in the runs list, in the current style: in Lab an instrument
+/// card, in Ink a table row (see run_card_styles.dart). In Paper: a strip in its status colour, its name and
+/// latest loss, where it runs and how the loss moved, its tags and the start
+/// of its note, a loss sparkline and its progress.
 class RunCard extends StatelessWidget {
   const RunCard({super.key, required this.run, this.onTap, this.selected});
 
@@ -23,24 +26,38 @@ class RunCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    switch (AppTheme.styleOf(context)) {
+      case AppStyle.lab:
+        return LabRunCard(run: run, onTap: onTap, selected: selected);
+      case AppStyle.ink:
+        return JournalRunRow(run: run, onTap: onTap, selected: selected);
+      case AppStyle.paper:
+        break;
+    }
     final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurfaceVariant;
+    final scheme = theme.colorScheme;
+    final muted = scheme.onSurfaceVariant;
+    final crashed = run.status == RunStatus.crashed;
+    final statusColor = run.status == RunStatus.finished
+        ? scheme.outline
+        : run.status.color(scheme);
     final latestLoss = run.latestLoss;
-    final lossColor = run.status == RunStatus.crashed ? theme.colorScheme.error : ChartColors.train;
+    final small = theme.textTheme.bodySmall?.copyWith(color: muted);
 
-    return SectionCard(
-      onTap: onTap,
-      selected: selected,
+    final content = Padding(
+      padding: const EdgeInsets.fromLTRB(15, 10, 12, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
             children: [
               if (selected case final isSelected?) ...[
                 Icon(
                   isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
-                  size: 20,
-                  color: isSelected ? theme.colorScheme.primary : muted,
+                  size: 18,
+                  color: isSelected ? scheme.primary : muted,
                 ),
                 const SizedBox(width: 8),
               ],
@@ -51,21 +68,40 @@ class RunCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(width: 8),
-              StatusChip(status: run.status),
+              if (latestLoss != null) ...[
+                const SizedBox(width: 8),
+                Text(
+                  formatMetric(latestLoss),
+                  semanticsLabel: 'loss ${formatMetric(latestLoss)}',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    fontFeatures: AppText.tabular,
+                    color: crashed ? scheme.error : null,
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 2),
-          Text(
-            [run.host, run.project].where((s) => s.isNotEmpty).join(' · '),
-            style: theme.textTheme.bodySmall?.copyWith(color: muted),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  [run.host, run.project].where((s) => s.isNotEmpty).join(' · '),
+                  style: small,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (!crashed) LossChange(run: run, style: small),
+            ],
           ),
           if (run.tags.isNotEmpty) ...[
             const SizedBox(height: 8),
             Wrap(spacing: 6, runSpacing: 4, children: [for (final tag in run.tags) TagLabel(tag)]),
           ],
           if (run.notes.trim().isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Row(
               children: [
                 Icon(Icons.sticky_note_2_outlined, size: 14, color: muted),
@@ -75,44 +111,59 @@ class RunCard extends StatelessWidget {
                     run.notes.trim().split('\n').first,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                    style: small,
                   ),
                 ),
               ],
             ),
           ],
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Sparkline(
             values: run.lossPreview,
-            color: lossColor,
+            color: crashed ? scheme.error : scheme.onSurface,
+            height: 24,
+            endDotColor: crashed ? null : statusColor,
             semanticLabel: 'Loss curve, ${trendOf(run.lossPreview)}',
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _ProgressLabel(
-                  run: run,
-                  style: theme.textTheme.labelMedium?.copyWith(color: muted),
-                ),
-              ),
-              if (latestLoss != null)
-                Text(
-                  'loss ${formatMetric(latestLoss)}',
-                  style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600),
-                ),
-            ],
+          const SizedBox(height: 8),
+          _ProgressLabel(
+            run: run,
+            style: theme.textTheme.labelMedium?.copyWith(color: crashed ? scheme.error : muted),
           ),
           if (run.status == RunStatus.live) ...[
             const SizedBox(height: 8),
             LinearProgressIndicator(
               value: run.progress,
-              minHeight: 4,
-              borderRadius: BorderRadius.circular(4),
+              minHeight: 2,
+              color: scheme.onSurface,
               semanticsLabel: 'Training progress',
               semanticsValue: formatPercent(run.progress),
             ),
           ],
+        ],
+      ),
+    );
+
+    return SectionCard(
+      onTap: onTap,
+      selected: selected,
+      padding: EdgeInsets.zero,
+      // The status strip is laid over the card's left edge; the card sizes
+      // to its content alone, so the strip costs no extra layout pass.
+      child: Stack(
+        children: [
+          content,
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 3,
+            // The strip's colour is the status; this says it for screen readers.
+            child: Semantics(
+              label: run.status.label,
+              child: ColoredBox(color: statusColor),
+            ),
+          ),
         ],
       ),
     );

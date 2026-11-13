@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../app/theme.dart';
 import '../../data/providers.dart';
 import '../../shared/widgets/async_value_view.dart';
 import '../../shared/widgets/status_chip.dart';
@@ -39,12 +40,26 @@ class RunDetailScreen extends ConsumerWidget {
       initialIndex: initialTab.index,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(loadedRun?.name ?? runId),
+          title: loadedRun == null
+              ? Text(runId)
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(loadedRun.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(
+                      [loadedRun.host, loadedRun.project].where((s) => s.isNotEmpty).join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall
+                          ?.copyWith(color: AppTheme.headerColorsOf(context).muted),
+                    ),
+                  ],
+                ),
           actions: [
             if (loadedRun != null)
               Padding(
                 padding: const EdgeInsets.only(right: 16),
-                child: StatusChip(status: loadedRun.status),
+                child: StatusChip(status: loadedRun.status, inHeader: true),
               ),
           ],
           // Tabs only make sense once there is a run to show.
@@ -57,12 +72,12 @@ class RunDetailScreen extends ConsumerWidget {
                   tabAlignment: MediaQuery.sizeOf(context).width < _fixedTabsWidth
                       ? TabAlignment.start
                       : TabAlignment.fill,
-                  tabs: const [
-                    Tab(text: 'Overview'),
-                    Tab(text: 'Metrics'),
-                    Tab(text: 'Layers'),
-                    Tab(text: 'Fields'),
-                    Tab(text: 'System'),
+                  tabs: [
+                    for (final name in ['Overview', 'Metrics', 'Layers', 'Fields', 'System'])
+                      // Lab labels its tabs in capitals, like panel buttons.
+                      AppTheme.styleOf(context) == AppStyle.lab
+                          ? Tab(child: Text(name.toUpperCase(), semanticsLabel: name))
+                          : Tab(text: name),
                   ],
                 ),
         ),

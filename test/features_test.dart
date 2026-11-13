@@ -135,8 +135,12 @@ void main() {
     testWidgets('settings are saved when changed', (tester) async {
       final store = MemorySettingsStore();
       await openApp(tester, '/settings', store);
-      await tester.tap(find.text('When a run finishes'));
       await tester.tap(find.text('Dark'));
+      await tester.pumpAndSettle();
+      // The switch is below the style picker: scroll to it.
+      await tester.ensureVisible(find.text('When a run finishes'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('When a run finishes'));
       await tester.pumpAndSettle();
       expect(store.getBool('notifyOnFinish'), isFalse);
       expect(store.getString('themeMode'), 'dark');

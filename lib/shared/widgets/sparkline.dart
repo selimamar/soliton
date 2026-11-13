@@ -13,6 +13,8 @@ class Sparkline extends StatelessWidget {
     required this.color,
     this.height = 28,
     this.strokeWidth = 1.5,
+    this.endDotColor,
+    this.grid = false,
     this.semanticLabel,
   });
 
@@ -20,6 +22,12 @@ class Sparkline extends StatelessWidget {
   final Color color;
   final double height;
   final double strokeWidth;
+
+  /// When set, a dot of this colour marks the latest value.
+  final Color? endDotColor;
+
+  /// Whether to draw a faint grid behind the line (the Lab style).
+  final bool grid;
 
   /// What screen readers announce for this chart. Without one, the chart is
   /// treated as decoration.
@@ -30,7 +38,15 @@ class Sparkline extends StatelessWidget {
     final chart = SizedBox(
       height: height,
       width: double.infinity,
-      child: CustomPaint(painter: _SparklinePainter(values, color, strokeWidth)),
+      child: CustomPaint(
+        painter: _SparklinePainter(
+          values,
+          color,
+          strokeWidth,
+          endDotColor,
+          grid ? Theme.of(context).colorScheme.outlineVariant : null,
+        ),
+      ),
     );
     if (semanticLabel == null) return chart;
     return Semantics(container: true, label: semanticLabel, image: true, child: chart);
@@ -50,14 +66,27 @@ String trendOf(List<double> values) {
 }
 
 class _SparklinePainter extends CustomPainter {
-  _SparklinePainter(this.values, this.color, this.strokeWidth);
+  _SparklinePainter(this.values, this.color, this.strokeWidth, this.endDotColor, this.gridColor);
 
   final List<double> values;
   final Color color;
   final double strokeWidth;
+  final Color? endDotColor;
+  final Color? gridColor;
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (gridColor case final grid?) {
+      final paint = Paint()
+        ..color = grid
+        ..strokeWidth = 1;
+      for (var i = 1; i < 4; i++) {
+        final y = size.height * i / 4;
+        final x = size.width * i / 4;
+        canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+        canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+      }
+    }
     if (values.length < 2) return;
 
     double? minV;
@@ -71,15 +100,18 @@ class _SparklinePainter extends CustomPainter {
     final low = minV;
     final range = maxV - low;
 
+    // Leave room for the stroke (and the end dot) at the edges.
+    final dotRadius = endDotColor == null ? 0.0 : strokeWidth + 1.5;
+    final inset = dotRadius > strokeWidth ? dotRadius : strokeWidth;
     Offset pointAt(int i) {
-      final x = i / (values.length - 1) * size.width;
+      final x = i / (values.length - 1) * (size.width - dotRadius);
       final normalized = range == 0 ? 0.5 : (values[i] - low) / range;
-      // Leave room for the stroke at the top and bottom.
-      final y = strokeWidth + (1 - normalized) * (size.height - 2 * strokeWidth);
+      final y = inset + (1 - normalized) * (size.height - 2 * inset);
       return Offset(x, y);
     }
 
     final path = Path();
+    Offset? last;
     var penDown = false;
     for (var i = 0; i < values.length; i++) {
       if (!values[i].isFinite) {
@@ -87,6 +119,7 @@ class _SparklinePainter extends CustomPainter {
         continue;
       }
       final p = pointAt(i);
+      last = p;
       if (penDown) {
         path.lineTo(p.dx, p.dy);
       } else {
@@ -104,11 +137,18 @@ class _SparklinePainter extends CustomPainter {
         ..strokeJoin = StrokeJoin.round
         ..strokeCap = StrokeCap.round,
     );
+    if (endDotColor case final dot? when last != null) {
+      canvas.drawCircle(last, dotRadius, Paint()..color = dot);
+    }
   }
 
   // Compares contents, not identity: callers often build a fresh list with
   // the same values on every rebuild.
   @override
   bool shouldRepaint(_SparklinePainter old) =>
-      !listEquals(old.values, values) || old.color != color || old.strokeWidth != strokeWidth;
+      !listEquals(old.values, values) ||
+      old.color != color ||
+      old.strokeWidth != strokeWidth ||
+      old.endDotColor != endDotColor ||
+      old.gridColor != gridColor;
 }

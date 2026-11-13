@@ -3,6 +3,7 @@ import 'dart:ui' show Tristate;
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:models_app/app/theme.dart';
 import 'package:models_app/features/settings/settings_providers.dart';
 
 import 'test_app.dart';
@@ -14,26 +15,31 @@ Future<void> expectGuidelines(WidgetTester tester) async {
 }
 
 void main() {
-  for (final mode in [ThemeMode.light, ThemeMode.dark]) {
-    testWidgets('runs list meets accessibility guidelines (${mode.name})', (tester) async {
-      final handle = tester.ensureSemantics();
-      await openApp(tester);
-      containerOf(tester).read(themeModeProvider.notifier).set(mode);
-      await tester.pumpAndSettle();
+  for (final style in AppStyle.values) {
+    for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+      final name = '${style.name}, ${mode.name}';
+      testWidgets('runs list meets accessibility guidelines ($name)', (tester) async {
+        final handle = tester.ensureSemantics();
+        await openApp(tester);
+        containerOf(tester).read(appStyleProvider.notifier).set(style);
+        containerOf(tester).read(themeModeProvider.notifier).set(mode);
+        await tester.pumpAndSettle();
 
-      await expectGuidelines(tester);
-      handle.dispose();
-    });
+        await expectGuidelines(tester);
+        handle.dispose();
+      });
 
-    testWidgets('run overview meets accessibility guidelines (${mode.name})', (tester) async {
-      final handle = tester.ensureSemantics();
-      await openApp(tester, '/runs/unet-seg');
-      containerOf(tester).read(themeModeProvider.notifier).set(mode);
-      await tester.pumpAndSettle();
+      testWidgets('run overview meets accessibility guidelines ($name)', (tester) async {
+        final handle = tester.ensureSemantics();
+        await openApp(tester, '/runs/unet-seg');
+        containerOf(tester).read(appStyleProvider.notifier).set(style);
+        containerOf(tester).read(themeModeProvider.notifier).set(mode);
+        await tester.pumpAndSettle();
 
-      await expectGuidelines(tester);
-      handle.dispose();
-    });
+        await expectGuidelines(tester);
+        handle.dispose();
+      });
+    }
   }
 
   for (final location in ['/settings/server', '/compare?runs=resnet50-cifar,unet-seg']) {

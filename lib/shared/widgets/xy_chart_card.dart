@@ -102,12 +102,22 @@ class XYChartCard extends StatelessWidget {
                     ),
             ),
             const SizedBox(height: 4),
+            // The axis name on the left, the band's note on the right; both
+            // wrap rather than overflow on a phone.
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (xLabel.isNotEmpty) Text(xLabel, style: muted),
-                const Spacer(),
-                if (band != null && bandLabel != null)
-                  Text(bandLabel!, style: muted?.copyWith(fontStyle: FontStyle.italic)),
+                Expanded(child: Text(xLabel, style: muted)),
+                if (band != null && bandLabel != null) ...[
+                  const SizedBox(width: 12),
+                  Flexible(
+                    child: Text(
+                      bandLabel!,
+                      textAlign: TextAlign.end,
+                      style: muted?.copyWith(fontStyle: FontStyle.italic),
+                    ),
+                  ),
+                ],
               ],
             ),
             if (shown.length > 1 && !scatter) ...[

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/constants.dart';
 import '../../app/routes.dart';
+import '../../app/theme.dart';
 import '../../data/providers.dart';
 import '../../shared/widgets/spaced_list_view.dart';
 import 'settings_providers.dart';
@@ -48,6 +49,7 @@ class SettingsScreen extends ConsumerWidget {
                     ref.read(themeModeProvider.notifier).set(selection.first),
               ),
             ),
+            for (final style in AppStyle.values) _StyleTile(style: style),
             const _SectionHeader('Data source'),
             ListTile(
               leading: Icon(connection == null ? Icons.science_outlined : Icons.dns_outlined),
@@ -106,6 +108,59 @@ class _SectionHeader extends StatelessWidget {
       child: Text(
         text,
         style: theme.textTheme.labelLarge?.copyWith(color: theme.colorScheme.primary),
+      ),
+    );
+  }
+}
+
+/// One of the app's styles, with a swatch of its colours; tap to use it.
+class _StyleTile extends ConsumerWidget {
+  const _StyleTile({required this.style});
+
+  final AppStyle style;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selected = ref.watch(appStyleProvider) == style;
+    // The swatch shows the style in the brightness on screen now.
+    final colors = AppTheme.of(style, Theme.of(context).brightness).colorScheme;
+    return ListTile(
+      selected: selected,
+      leading: _Swatch(colors: colors),
+      title: Text(style.label),
+      subtitle: Text(style.description),
+      trailing: selected ? const Icon(Icons.check) : null,
+      onTap: () => ref.read(appStyleProvider.notifier).set(style),
+    );
+  }
+}
+
+/// A style's page, panel and accent colours as three overlapping dots.
+class _Swatch extends StatelessWidget {
+  const _Swatch({required this.colors});
+
+  final ColorScheme colors;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget dot(Color color) => Container(
+      width: 20,
+      height: 20,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(color: colors.outlineVariant),
+      ),
+    );
+    return SizedBox(
+      width: 48,
+      height: 20,
+      child: Stack(
+        children: [
+          dot(colors.surface),
+          Positioned(left: 14, child: dot(colors.surfaceContainerLow)),
+          Positioned(left: 28, child: dot(colors.primary)),
+        ],
       ),
     );
   }

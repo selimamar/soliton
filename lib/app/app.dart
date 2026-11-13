@@ -15,8 +15,8 @@ class ModelsApp extends ConsumerWidget {
     return MaterialApp.router(
       title: appName,
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
+      theme: AppTheme.light(ref.watch(appStyleProvider)),
+      darkTheme: AppTheme.dark(ref.watch(appStyleProvider)),
       themeMode: ref.watch(themeModeProvider),
       // fl_chart still imports the legacy package:flutter/material.dart, but
       // its line and bar charts don't read the legacy Theme, so no

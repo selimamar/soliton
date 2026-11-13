@@ -145,6 +145,8 @@ def write_svg(path):
 def main():
     write_svg(ROOT / "assets/branding/neural_wave.svg")
     save(render(1024, "rounded"), ROOT / "assets/branding/neural_wave.png")
+    # Beside the runs list title: 24 pt at up to 3x, in the bold small style.
+    save(render(72, "rounded", style="small"), ROOT / "assets/branding/app_mark.png")
 
     # iOS masks the corners itself and rejects transparency.
     for px, path in appiconset(ROOT / "ios/Runner/Assets.xcassets/AppIcon.appiconset"):

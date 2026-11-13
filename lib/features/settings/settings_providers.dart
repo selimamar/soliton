@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../app/theme.dart';
 import '../../data/services/settings_store.dart';
 
 // App settings, saved on the device (see `Setting`). The server login is
@@ -9,6 +10,11 @@ import '../../data/services/settings_store.dart';
 
 final themeModeProvider = NotifierProvider<Setting<ThemeMode>, ThemeMode>(
   () => Setting.choice('themeMode', ThemeMode.system, ThemeMode.values),
+);
+
+/// The app's look (colours, title font, corners); see [AppStyle].
+final appStyleProvider = NotifierProvider<Setting<AppStyle>, AppStyle>(
+  () => Setting.choice('appStyle', AppStyle.paper, AppStyle.values),
 );
 
 /// In-app alerts when a run finishes or crashes (while the app is open).

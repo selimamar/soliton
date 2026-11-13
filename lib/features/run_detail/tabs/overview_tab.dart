@@ -3,13 +3,17 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../../data/providers.dart';
 import '../../../models/metric_series.dart';
+import '../../../app/theme.dart';
 import '../../../models/run.dart';
 import '../../../shared/clock.dart';
 import '../../../shared/formatters.dart';
 import '../../../shared/widgets/key_value_row.dart';
+import '../../../shared/widgets/loss_change.dart';
 import '../../../shared/widgets/section_card.dart';
 import '../../../shared/widgets/spaced_list_view.dart';
+import '../../../shared/widgets/sparkline.dart';
 import '../../../shared/widgets/stat_tile.dart';
+import '../../../shared/widgets/style_decor.dart';
 import '../widgets/architecture_tree.dart';
 import '../widgets/network_diagram.dart';
 import '../widgets/run_notes_card.dart';
@@ -27,26 +31,15 @@ class OverviewTab extends StatelessWidget {
       children: [
         if (run.statusMessage case final message?)
           _StatusBanner(message: message, isError: run.status == RunStatus.crashed),
-        _TileRow(
-          left: StatTile(
-            label: 'Parameters',
-            value: formatCount(run.parameterCount),
-            icon: Icons.memory,
-          ),
-          right: StatTile(label: 'Host', value: run.host, icon: Icons.dns_outlined),
-        ),
-        _TimingTiles(run: run),
-        _SpeedTiles(runId: run.id),
-        _ProgressCard(run: run),
+        if (run.latestLoss != null) _LossHero(run: run),
+        // Ink says the progress in the loss sentence instead.
+        if (AppTheme.styleOf(context) != AppStyle.ink || run.latestLoss == null)
+          _ProgressStrip(run: run),
+        _SpeedStrip(runId: run.id),
         RunNotesCard(run: run),
         SectionCard(
           title: 'Hyperparameters',
-          child: Column(
-            children: [
-              for (final entry in run.hyperparameters.entries)
-                KeyValueRow(label: entry.key, value: entry.value),
-            ],
-          ),
+          child: KeyValueGrid(entries: run.hyperparameters, caption: 'Settings of this run.'),
         ),
         SectionCard(
           title: 'Architecture · ${run.architecture.type}',
@@ -68,8 +61,8 @@ class OverviewTab extends StatelessWidget {
 /// How fast the model is per sample, and how much faster than the solver
 /// it stands in for (`perf/inference_s`, `perf/solver_s`): only when the run
 /// logs them.
-class _SpeedTiles extends ConsumerWidget {
-  const _SpeedTiles({required this.runId});
+class _SpeedStrip extends ConsumerWidget {
+  const _SpeedStrip({required this.runId});
 
   final String runId;
 
@@ -80,17 +73,173 @@ class _SpeedTiles extends ConsumerWidget {
     if (inference == null) return const SizedBox.shrink();
     final solver = metrics?[MetricKeys.solverSeconds]?.latest;
     final speedup = solver != null && inference > 0 ? solver / inference : null;
-    return _TileRow(
-      left: StatTile(
-        label: 'Model, per sample',
-        value: formatSeconds(inference),
-        icon: Icons.bolt_outlined,
+    return StatStrip(
+      stats: [
+        ('Model, per sample', formatSeconds(inference)),
+        if (solver != null) ('Solver', formatSeconds(solver)),
+        ('Speed-up', speedup == null ? 'Solver not logged' : '${formatCount(speedup)}× faster'),
+      ],
+    );
+  }
+}
+
+/// The run's latest training loss, large, over its curve: whether the run
+/// is healthy at a glance.
+class _LossHero extends StatelessWidget {
+  const _LossHero({required this.run});
+
+  final Run run;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final style = AppTheme.styleOf(context);
+    final crashed = run.status == RunStatus.crashed;
+    final loss = formatMetric(run.latestLoss!);
+    final curveColor = crashed
+        ? scheme.error
+        : (style == AppStyle.lab ? scheme.primary : scheme.onSurface);
+    final dot = crashed ? null : run.status.color(scheme);
+
+    // Ink: a sentence, then the curve as a captioned figure.
+    if (style == AppStyle.ink) {
+      return SectionCard(
+        title: 'Training loss',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _LossSentence(run: run),
+            const SizedBox(height: 12),
+            FigureChart(
+              values: run.lossPreview,
+              color: crashed ? scheme.error : scheme.primary,
+              lastStep: run.currentStep,
+              semanticLabel: 'Figure 1, training loss curve, ${trendOf(run.lossPreview)}',
+            ),
+            const SizedBox(height: 6),
+            Text.rich(
+              const TextSpan(
+                children: [
+                  TextSpan(
+                    text: 'Figure 1. ',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  TextSpan(text: 'Training loss against step.'),
+                ],
+              ),
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+        ),
+      );
+    }
+
+    final lab = style == AppStyle.lab;
+    return SectionCard(
+      title: lab ? 'Train loss · readout' : 'Training loss',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                loss,
+                semanticsLabel: 'Training loss $loss',
+                style: theme.textTheme.displaySmall?.copyWith(
+                  fontFeatures: AppText.tabular,
+                  color: crashed ? scheme.error : scheme.onSurface,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Flexible(
+                child: LossChange(
+                  run: run,
+                  style: theme.textTheme.bodySmall,
+                  suffix: ' over the last 10%',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (lab)
+            FigureChart(
+              values: run.lossPreview,
+              color: curveColor,
+              endDotColor: dot,
+              lastStep: run.currentStep,
+              semanticLabel: 'Training loss curve, ${trendOf(run.lossPreview)}',
+            )
+          else
+            Sparkline(
+              values: run.lossPreview,
+              color: curveColor,
+              height: 64,
+              strokeWidth: 2,
+              endDotColor: dot,
+              semanticLabel: 'Training loss curve, ${trendOf(run.lossPreview)}',
+            ),
+        ],
       ),
-      right: StatTile(
-        label: solver == null ? 'Solver time not logged' : 'vs solver (${formatSeconds(solver)})',
-        value: speedup == null ? '–' : '${formatCount(speedup)}× faster',
-        icon: Icons.speed,
+    );
+  }
+}
+
+/// Ink: the loss and progress in a sentence, as a paper would put it, e.g.
+/// "The loss is now 0.501, down 0.065 lately. Training is 42% done (epoch
+/// 42 of 100, step 8,232 of 19,600); about 4h 25m remain." Kept current by
+/// [clockProvider].
+class _LossSentence extends ConsumerWidget {
+  const _LossSentence({required this.run});
+
+  final Run run;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final now = ref.watch(clockProvider);
+    final loss = formatMetric(run.latestLoss!);
+    final change = run.recentLossChange;
+    final trend = change == null
+        ? ''
+        : ', ${change < 0 ? 'down' : 'up'} ${formatMetric(change.abs())} lately';
+    final remaining = run.estimatedRemainingAt(now);
+    final endedAt = run.endedAt;
+
+    final (before, after) = switch (run.status) {
+      RunStatus.live => (
+        'The loss is now ',
+        '$trend. Training is ${formatPercent(run.progress)} done (epoch ${run.currentEpoch} of '
+            '${run.totalEpochs}, step ${formatInt(run.currentStep)} of '
+            '${formatInt(run.totalSteps)})'
+            '${remaining == null ? '' : '; about ${formatDuration(remaining)} remain'}.',
       ),
+      RunStatus.finished => (
+        'The final loss was ',
+        '. Training finished${endedAt == null ? '' : ' ${formatTimeAgo(endedAt, now: now)}'} '
+            'after ${run.currentEpoch} epochs (${formatInt(run.currentStep)} steps).',
+      ),
+      RunStatus.crashed => (
+        'The loss reached ',
+        ' before the run crashed at step ${formatInt(run.currentStep)} '
+            '(epoch ${run.currentEpoch} of ${run.totalEpochs}).',
+      ),
+    };
+
+    return Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(text: before),
+          TextSpan(
+            text: loss,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          TextSpan(text: after),
+        ],
+      ),
+      style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
     );
   }
 }
@@ -127,90 +276,70 @@ class _NetworkSection extends StatelessWidget {
   }
 }
 
-/// Elapsed and remaining (or ended) time, kept current by [clockProvider].
-class _TimingTiles extends ConsumerWidget {
-  const _TimingTiles({required this.run});
+/// Progress, epoch, elapsed and remaining (or ended) time in one strip,
+/// with a progress line and the step count under it. Kept current by
+/// [clockProvider].
+class _ProgressStrip extends ConsumerWidget {
+  const _ProgressStrip({required this.run});
 
   final Run run;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final style = AppTheme.styleOf(context);
+    final lab = style == AppStyle.lab;
+    final theme = Theme.of(context);
     final now = ref.watch(clockProvider);
     final remaining = run.estimatedRemainingAt(now);
     final endedAt = run.endedAt;
+    // Lab shows times like a clock, 03:12:04.
+    final time = lab ? _clock : formatDuration;
 
-    return _TileRow(
-      left: StatTile(
-        label: 'Elapsed',
-        value: formatDuration(run.elapsedAt(now)),
-        icon: Icons.timer_outlined,
-      ),
-      right: StatTile(
-        label: remaining != null ? 'Remaining' : 'Ended',
-        value: remaining != null
-            ? '~${formatDuration(remaining)}'
-            : endedAt != null
-            ? formatTimeAgo(endedAt, now: now)
-            : '—',
-        icon: Icons.hourglass_bottom,
-      ),
-    );
-  }
-}
-
-class _TileRow extends StatelessWidget {
-  const _TileRow({required this.left, required this.right});
-
-  final Widget left;
-  final Widget right;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(child: left),
-        const SizedBox(width: 12),
-        Expanded(child: right),
+    return StatStrip(
+      stats: [
+        ('Progress', formatPercent(run.progress)),
+        ('Epoch', '${run.currentEpoch}/${run.totalEpochs}'),
+        ('Elapsed', time(run.elapsedAt(now))),
+        if (remaining != null)
+          (lab ? 'ETA' : 'Remaining', lab ? time(remaining) : '~${time(remaining)}')
+        else
+          ('Ended', endedAt != null ? formatTimeAgo(endedAt, now: now) : '—'),
       ],
-    );
-  }
-}
-
-class _ProgressCard extends StatelessWidget {
-  const _ProgressCard({required this.run});
-
-  final Run run;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return SectionCard(
-      title: 'Progress',
-      trailing: Text(
-        formatPercent(run.progress),
-        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      footer: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          LinearProgressIndicator(
-            value: run.progress,
-            minHeight: 6,
-            borderRadius: BorderRadius.circular(4),
-            color: run.status == RunStatus.crashed ? theme.colorScheme.error : null,
-            semanticsLabel: 'Training progress',
-            semanticsValue: formatPercent(run.progress),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Step ${formatInt(run.currentStep)} of ${formatInt(run.totalSteps)} · '
-            'epoch ${run.currentEpoch} of ${run.totalEpochs}',
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          if (lab)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: BlockProgress(value: run.progress, label: 'Training progress'),
+            )
+          else
+            LinearProgressIndicator(
+              value: run.progress,
+              minHeight: 2,
+              semanticsLabel: 'Training progress',
+              semanticsValue: formatPercent(run.progress),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+            child: Text(
+              'Step ${formatInt(run.currentStep)} of ${formatInt(run.totalSteps)}',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontFeatures: AppText.tabular,
+              ),
+            ),
           ),
         ],
       ),
     );
   }
+}
+
+/// "03:12:04": hours, minutes and seconds, for Lab's readouts.
+String _clock(Duration d) {
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${two(d.inHours)}:${two(d.inMinutes % 60)}:${two(d.inSeconds % 60)}';
 }
 
 class _StatusBanner extends StatelessWidget {
@@ -227,7 +356,10 @@ class _StatusBanner extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(16)),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(AppTheme.radiusOf(context)),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

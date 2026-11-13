@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:material_ui/material_ui.dart';
@@ -9,6 +11,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Clean web URLs (/runs/x instead of /#/runs/x). No effect on iOS/Android.
   usePathUrlStrategy();
+  _registerFontLicenses();
 
   // Saved settings (theme, server login, ...) are loaded before the first
   // frame, so the app starts with them instead of flickering.
@@ -27,4 +30,24 @@ Future<void> main() async {
       child: const ModelsApp(),
     ),
   );
+}
+
+/// The bundled fonts' licences, for the licences page. Read only when that
+/// page opens.
+void _registerFontLicenses() {
+  const fonts = {
+    'inter': 'Inter',
+    'sourceserif4': 'Source Serif 4',
+    'jetbrainsmono': 'JetBrains Mono',
+    'stixtwotext': 'STIX Two Text',
+    'spacegrotesk': 'Space Grotesk',
+    'ibmplexmono': 'IBM Plex Mono',
+  };
+  LicenseRegistry.addLicense(() async* {
+    for (final MapEntry(key: file, value: name) in fonts.entries) {
+      yield LicenseEntryWithLineBreaks([
+        name,
+      ], await rootBundle.loadString('assets/fonts/OFL-$file.txt'));
+    }
+  });
 }
