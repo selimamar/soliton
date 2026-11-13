@@ -154,6 +154,11 @@ def test_the_demo_runs_end_to_end(tmp_path, database_url, monkeypatch):
         assert stored["lossPreview"][-1] < stored["lossPreview"][0], "the loss went down"
         names = {s["name"] for s in server.get(f"/api/runs/{stored['id']}/metrics")}
         assert {"train/loss", "val/loss", "val/accuracy", "optim/lr", "optim/grad_norm"} <= names
+        assert list(stored["hyperparameters"])[:3] == ["Training samples", "Validation samples", "Loss"]
+        assert stored["hyperparameters"]["Loss"] == "CrossEntropyLoss"
+        drawn = [(f["type"], f["width"]) for f in stored["architecture"]["flow"] if f["kind"] == "linear"]
+        assert drawn == [("Linear", 128), ("Linear", 128), ("Linear", 64), ("Linear", 10)]
+        assert stored["architecture"]["input"]["width"] == 32
 
 
 def test_a_crashing_demo_is_reported_as_crashed(tmp_path, database_url, monkeypatch):

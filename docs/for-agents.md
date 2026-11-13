@@ -28,10 +28,15 @@ fine, don't work around it.
 
 **In every training script**
 - Before training: `run = modelsapp.init(name, project=..., config=hparams,
+  train_samples=train_set, val_samples=val_set, loss=criterion,
   total_steps=..., total_epochs=...)`. `name` is short and descriptive
-  (model-dataset-variant). `config` holds all hyperparameters as a dict.
+  (model-dataset-variant). `config` holds all other hyperparameters as a dict.
+  Always pass `train_samples` and `val_samples` (a number, a dataset or a
+  DataLoader) and `loss` (the criterion module, a function or a string such
+  as "CrossEntropyLoss + Dice"): they're listed first in the app.
 - PyTorch: `run.watch(model, every=100)` right after building the model.
-  With DDP, only rank 0 calls init, watch and log.
+  It also records the layers for the app's network diagram on the first
+  forward pass. With DDP, only rank 0 calls init, watch and log.
 - In the training loop, after `loss.backward()` and before `optimizer.zero_grad()`:
   `run.log({"train/loss": loss, "optim/lr": lr}, step=global_step, epoch=epoch)`.
   If you clip gradients, also log `"optim/grad_norm"`: the value `clip_grad_norm_` returns.

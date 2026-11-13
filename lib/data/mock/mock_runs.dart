@@ -3,9 +3,11 @@ import 'dart:math' as math;
 import '../../models/layer_info.dart';
 import '../../models/layer_stats.dart';
 import '../../models/metric_series.dart';
+import '../../models/model_flow.dart';
 import '../../models/run.dart';
 import 'curve_generator.dart';
 import 'mock_architectures.dart';
+import 'mock_flows.dart';
 
 /// Everything the mock repository knows about one run.
 class MockRun {
@@ -28,7 +30,11 @@ List<MockRun> buildMockRuns(DateTime now) => [
     totalSteps: 19600,
     totalEpochs: 100,
     architecture: resnet50Cifar(),
+    flow: resnet50CifarFlow(),
     hyperparameters: const {
+      'Training samples': '50,000',
+      'Validation samples': '10,000',
+      'Loss': 'CrossEntropyLoss(label_smoothing=0.1)',
       'Optimizer': 'AdamW',
       'Learning rate': '3e-4 (cosine)',
       'Batch size': '256',
@@ -52,7 +58,11 @@ List<MockRun> buildMockRuns(DateTime now) => [
     totalSteps: 50000,
     totalEpochs: 3,
     architecture: gptTiny(),
+    flow: gptTinyFlow(),
     hyperparameters: const {
+      'Training samples': '8,013,769',
+      'Validation samples': '4,007',
+      'Loss': 'cross_entropy',
       'Optimizer': 'AdamW (β₂ = 0.95)',
       'Learning rate': '6e-4 (cosine)',
       'Batch size': '64 × 1024 tokens',
@@ -76,7 +86,11 @@ List<MockRun> buildMockRuns(DateTime now) => [
     totalSteps: 30000,
     totalEpochs: 60,
     architecture: unet(),
+    flow: unetFlow(),
     hyperparameters: const {
+      'Training samples': '4,580',
+      'Validation samples': '508',
+      'Loss': 'CrossEntropyLoss + Dice',
       'Optimizer': 'SGD (momentum 0.9)',
       'Learning rate': '0.1 (cosine)',
       'Batch size': '16',
@@ -102,7 +116,11 @@ List<MockRun> buildMockRuns(DateTime now) => [
     totalSteps: 39000,
     totalEpochs: 200,
     architecture: vitSmall(),
+    flow: vitSmallFlow(),
     hyperparameters: const {
+      'Training samples': '50,000',
+      'Validation samples': '10,000',
+      'Loss': 'SoftTargetCrossEntropy',
       'Optimizer': 'AdamW',
       'Learning rate': '1e-3 (cosine)',
       'Batch size': '512',
@@ -129,6 +147,7 @@ MockRun _buildRun({
   required int totalSteps,
   required int totalEpochs,
   required LayerInfo architecture,
+  ModelFlow? flow,
   required Map<String, String> hyperparameters,
   required double initialLoss,
   required double finalLoss,
@@ -206,6 +225,7 @@ MockRun _buildRun({
     totalEpochs: totalEpochs,
     hyperparameters: hyperparameters,
     architecture: architecture,
+    flow: flow,
     lossPreview: [for (final p in trainLoss.downsampled(40).points) p.value],
     statusMessage: statusMessage,
   );

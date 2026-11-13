@@ -26,6 +26,25 @@ ARCHITECTURE = {
         {"name": "fc1", "type": "Linear", "ownParameters": 80, "children": []},
         {"name": "fc2", "type": "Linear", "ownParameters": 11, "children": []},
     ],
+    # The layers in the order they ran, for the app's network diagram: kept
+    # as the logger sent them.
+    "input": {"shape": [8], "tokens": False, "width": 8},
+    "flow": [
+        {"name": "fc1", "type": "Linear", "kind": "linear", "shape": [10], "width": 10,
+         "parameters": 90},
+        {"name": "fc2", "type": "Linear", "kind": "linear", "shape": [1], "width": 1,
+         "parameters": 11},
+    ],
+}
+
+
+# The data and the loss come first; the app shows them in this order.
+HYPERPARAMETERS = {
+    "Training samples": "50,000",
+    "Validation samples": "10,000",
+    "Loss": "CrossEntropyLoss",
+    "Optimizer": "AdamW",
+    "Learning rate": "0.0003",
 }
 
 
@@ -36,7 +55,7 @@ def create_run(client, run_id="tiny-1", **fields):
         "host": "Sherlock",
         "totalSteps": 1000,
         "totalEpochs": 10,
-        "hyperparameters": {"Optimizer": "AdamW", "Learning rate": "0.0003"},
+        "hyperparameters": HYPERPARAMETERS,
         "architecture": ARCHITECTURE,
         **fields,
     }
@@ -92,7 +111,7 @@ def test_a_run_reads_back_in_the_apps_format(client, clock):
     assert set(run) == RUN_KEYS
     assert run["currentStep"] == 99
     assert run["currentEpoch"] == 9
-    assert run["hyperparameters"] == {"Optimizer": "AdamW", "Learning rate": "0.0003"}
+    assert list(run["hyperparameters"].items()) == list(HYPERPARAMETERS.items())
     assert run["architecture"] == ARCHITECTURE
     assert 0 < len(run["lossPreview"]) <= 60
     assert run["lossPreview"][0] == pytest.approx(2.0)

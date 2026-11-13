@@ -1,13 +1,23 @@
 from __future__ import annotations
 
+import functools
 import json
 import math
+import warnings
 from argparse import Namespace
 
 import pytest
 
 import modelsapp
-from modelsapp._util import detect_host, encode_float, flatten_config, new_run_id, slugify
+from modelsapp._util import (
+    count_samples,
+    describe_loss,
+    detect_host,
+    encode_float,
+    flatten_config,
+    new_run_id,
+    slugify,
+)
 
 
 def records(run):
@@ -48,6 +58,44 @@ def test_the_host_is_detected():
     assert detect_host({}) != ""
 
 
+class DataLoader:
+    """Looks like torch.utils.data.DataLoader: its length is the number of
+    batches, its dataset's length the number of samples."""
+
+    def __init__(self, dataset, batch_size):
+        self.dataset, self.batch_size = dataset, batch_size
+
+    def __len__(self):
+        return math.ceil(len(self.dataset) / self.batch_size)
+
+
+def test_samples_are_counted_from_numbers_datasets_and_loaders():
+    assert count_samples(50_000) == 50_000
+    assert count_samples(list(range(300))) == 300
+    assert count_samples(DataLoader(list(range(300)), batch_size=64)) == 300, "samples, not batches"
+    with pytest.raises(TypeError, match="pass the number"):
+        count_samples(iter([1, 2]))
+    with pytest.raises(TypeError):
+        count_samples(True)
+
+
+def cross_entropy(logits, targets, label_smoothing=0.0):
+    return 0.0
+
+
+def test_losses_are_described_by_name():
+    assert describe_loss("Dice + BCE") == "Dice + BCE"
+    assert describe_loss(cross_entropy) == "cross_entropy"
+    assert describe_loss(functools.partial(cross_entropy, label_smoothing=0.1)) == (
+        "cross_entropy(label_smoothing=0.1)"
+    )
+
+    class FocalLoss:
+        gamma = 2
+
+    assert describe_loss(FocalLoss()) == "FocalLoss"
+
+
 # Runs -------------------------------------------------------------------------
 
 
@@ -64,6 +112,34 @@ def test_an_offline_run_is_saved_to_disk(tmp_path):
     assert m0 == {"type": "metrics", "step": 0, "time": m0["time"], "values": {"train/loss": 1.0}, "epoch": 0}
     assert m1["step"] == 1 and m1["values"] == {"train/loss": "NaN"} and m1["epoch"] == 0
     assert status["type"] == "status" and status["status"] == "finished"
+
+
+def test_the_data_and_loss_come_first_among_the_hyperparameters(tmp_path):
+    run = offline(tmp_path, config={"Optimizer": "AdamW", "Loss": "ignored"},
+                  train_samples=DataLoader(list(range(50_000)), batch_size=256),
+                  val_samples=10_000, loss="CrossEntropyLoss")
+    run.finish()
+    assert list(records(run)[0]["hyperparameters"].items()) == [
+        ("Training samples", "50,000"),
+        ("Validation samples", "10,000"),
+        ("Loss", "CrossEntropyLoss"),
+        ("Optimizer", "AdamW"),
+    ]
+
+
+def test_uncountable_samples_are_left_out_with_a_warning(tmp_path):
+    with pytest.warns(UserWarning, match="training samples: can't count"):
+        run = offline(tmp_path, train_samples=iter(range(10)))
+    run.finish()
+    assert records(run)[0]["hyperparameters"] == {}
+
+
+def test_without_data_or_loss_only_the_config_is_listed(tmp_path):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        run = offline(tmp_path, config={"Batch size": 64})
+    run.finish()
+    assert records(run)[0]["hyperparameters"] == {"Batch size": "64"}
 
 
 def test_finishing_twice_and_logging_after_finish_are_ignored(tmp_path):

@@ -1,4 +1,5 @@
 import 'layer_info.dart';
+import 'model_flow.dart';
 import 'model_helpers.dart';
 
 enum RunStatus { live, finished, crashed }
@@ -23,6 +24,7 @@ class Run {
     required this.hyperparameters,
     required this.architecture,
     required this.lossPreview,
+    this.flow,
     this.endedAt,
     this.statusMessage,
   });
@@ -46,6 +48,7 @@ class Run {
       (json['hyperparameters']! as Map).map((k, v) => MapEntry(k as String, v as String)),
     ),
     architecture: LayerInfo.fromJson(json['architecture']! as Map<String, Object?>),
+    flow: ModelFlow.fromArchitectureJson(json['architecture']! as Map<String, Object?>),
     lossPreview: List.unmodifiable([for (final v in json['lossPreview']! as List) decodeDouble(v)]),
     statusMessage: json['statusMessage'] as String?,
   );
@@ -71,6 +74,10 @@ class Run {
 
   /// Root of the model's architecture tree.
   final LayerInfo architecture;
+
+  /// The layers in the order they ran, for the network diagram. Null until
+  /// the watched model has run once.
+  final ModelFlow? flow;
 
   /// A short, downsampled training-loss history for the list sparkline.
   final List<double> lossPreview;
@@ -112,7 +119,7 @@ class Run {
     'currentEpoch': currentEpoch,
     'totalEpochs': totalEpochs,
     'hyperparameters': hyperparameters,
-    'architecture': architecture.toJson(),
+    'architecture': {...architecture.toJson(), ...?flow?.toArchitectureJson()},
     'lossPreview': [for (final v in lossPreview) encodeDouble(v)],
     'statusMessage': statusMessage,
   };
@@ -133,6 +140,7 @@ class Run {
       other.totalEpochs == totalEpochs &&
       deepMapEquals(other.hyperparameters, hyperparameters) &&
       other.architecture == architecture &&
+      other.flow == flow &&
       sameDoubles(other.lossPreview, lossPreview) &&
       other.statusMessage == statusMessage;
 
@@ -152,6 +160,7 @@ class Run {
     // Unordered, to match the order-insensitive map comparison above.
     Object.hashAllUnordered(hyperparameters.entries.map((e) => Object.hash(e.key, e.value))),
     architecture,
+    flow,
     Object.hashAll(lossPreview.map(doubleHash)),
     statusMessage,
   );

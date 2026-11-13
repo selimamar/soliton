@@ -15,6 +15,8 @@ from typing import Any, Mapping, Optional
 from ._upload import ApiClient, RunFiles, Uploader
 from ._util import (
     RUN_ID,
+    count_samples,
+    describe_loss,
     detect_host,
     encode_float,
     flatten_config,
@@ -45,6 +47,9 @@ class Run:
         *,
         project: str = "",
         config: Optional[Mapping[str, Any]] = None,
+        train_samples: Any = None,
+        val_samples: Any = None,
+        loss: Any = None,
         total_steps: int = 0,
         total_epochs: int = 0,
         host: Optional[str] = None,
@@ -81,7 +86,7 @@ class Run:
             "startedAt": utc_now_iso(),
             "totalSteps": int(total_steps),
             "totalEpochs": int(total_epochs),
-            "hyperparameters": flatten_config(config),
+            "hyperparameters": _hyperparameters(config, train_samples, val_samples, loss),
             "architecture": None,
         }
         self._files = RunFiles(self.directory)
@@ -157,9 +162,20 @@ class Run:
         with self._lock:
             if self._watcher is not None:
                 self._watcher.remove()
-            self._watcher = Watcher(model, every=every, layers=layers, max_layers=max_layers)
-            self._description["architecture"] = architecture(model)
+            tree = architecture(model)
+            self._watcher = Watcher(model, every=every, layers=layers, max_layers=max_layers,
+                                    on_traced=lambda flow: self._add_flow(tree, flow))
+            self._description["architecture"] = tree
             self._files.append(self._description)  # Updated description, with the model.
+
+    def _add_flow(self, tree: dict, flow: dict) -> None:
+        """After the model's first forward pass: the layers in the order they
+        ran, for the app's network diagram."""
+        with self._lock:
+            if self._finished or self._description["architecture"] is not tree:
+                return
+            self._description["architecture"] = {**tree, **flow}
+            self._files.append(self._description)
 
     # Ending ---------------------------------------------------------------
 
@@ -202,6 +218,22 @@ class Run:
         if key not in self._warned:
             self._warned.add(key)
             warnings.warn(f"modelsapp: {message}", stacklevel=3)
+
+
+def _hyperparameters(config, train_samples, val_samples, loss) -> dict:
+    """The data and loss first, then the config."""
+    first = {}
+    for label, value in (("Training samples", train_samples),
+                         ("Validation samples", val_samples)):
+        if value is None:
+            continue
+        try:
+            first[label] = f"{count_samples(value):,}"
+        except TypeError as error:
+            warnings.warn(f"modelsapp: {label.lower()}: {error}", stacklevel=4)
+    if loss is not None:
+        first["Loss"] = describe_loss(loss)
+    return {**first, **{k: v for k, v in flatten_config(config).items() if k not in first}}
 
 
 def _describe(kind, error) -> str:

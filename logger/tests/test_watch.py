@@ -122,3 +122,113 @@ def test_unknown_layer_names_are_an_error(tmp_path):
     with pytest.raises(ValueError, match="no such layers"):
         run.watch(TinyNet(), layers=["conv", "nope"])
     run.finish()
+
+
+# The network diagram ------------------------------------------------------------
+
+
+class SmallCNN(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(3, 16, 3, padding=1), nn.BatchNorm2d(16), nn.ReLU(), nn.MaxPool2d(2),
+            nn.Conv2d(16, 32, 3, padding=1), nn.ReLU(), nn.AdaptiveAvgPool2d(1),
+        )
+        self.head = nn.Sequential(nn.Flatten(), nn.Linear(32, 10))
+
+    def forward(self, x):
+        return self.head(self.features(x))
+
+
+def descriptions(run):
+    return [r for r in records(run) if r["type"] == "run"]
+
+
+def test_the_first_forward_pass_records_the_layers_in_order(tmp_path):
+    model = SmallCNN()
+    run = offline(tmp_path)
+    run.watch(model)
+    model.eval()  # Any pass counts, training or not.
+    with torch.no_grad():
+        model(torch.zeros(2, 3, 8, 8))
+        model(torch.zeros(2, 3, 8, 8))
+    run.finish()
+
+    saved = descriptions(run)
+    assert len(saved) == 3, "started, watched, traced: once"
+    architecture = saved[-1]["architecture"]
+    assert architecture["children"], "the tree is still there"
+    assert architecture["input"] == {"shape": [3, 8, 8], "tokens": False, "width": 3}
+    flow = architecture["flow"]
+    assert [(f["name"], f["kind"]) for f in flow] == [
+        ("features.0", "conv"), ("features.1", "norm"), ("features.2", "activation"),
+        ("features.3", "pool"), ("features.4", "conv"), ("features.5", "activation"),
+        ("features.6", "pool"), ("head.0", "reshape"), ("head.1", "linear"),
+    ]
+    assert [f["width"] for f in flow] == [16, 16, 16, 16, 32, 32, 32, 32, 10]
+    assert flow[3]["shape"] == [16, 4, 4] and flow[-1]["shape"] == [10]
+    assert flow[0]["parameters"] == 3 * 16 * 9 + 16
+
+
+def test_the_trace_removes_its_hooks(tmp_path):
+    model = SmallCNN()
+    before = len(model.features[0]._forward_hooks)
+    run = offline(tmp_path)
+    run.watch(model)
+    model(torch.zeros(1, 3, 8, 8))
+    assert len(model.features[0]._forward_hooks) == before + 1, "only the watcher's own hook"
+    assert len(model.features[1]._forward_hooks) == before + 1
+    assert len(model.features[2]._forward_hooks) == before, "parameter-free: not watched"
+    run.finish()
+
+
+class TokenModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.embed = nn.Embedding(100, 16)
+        self.attention = nn.MultiheadAttention(16, 2, batch_first=True)
+        self.rnn = nn.LSTM(16, 24)  # Sequence first.
+        self.out = nn.Linear(24, 5)
+
+    def forward(self, tokens):
+        x = self.embed(tokens)
+        x, _ = self.attention(x, x, x)
+        x, _ = self.rnn(x)
+        return self.out(x)
+
+
+def test_attention_counts_as_one_layer_and_token_inputs_are_marked(tmp_path):
+    model = TokenModel()
+    run = offline(tmp_path)
+    run.watch(model)
+    model(torch.zeros(2, 7, dtype=torch.long))
+    run.finish()
+    architecture = descriptions(run)[-1]["architecture"]
+    assert architecture["input"] == {"shape": [7], "tokens": True, "width": None}
+    flow = architecture["flow"]
+    assert [(f["name"], f["kind"], f["width"]) for f in flow] == [
+        ("embed", "embedding", 16), ("attention", "attention", 16),
+        ("rnn", "recurrent", 24), ("out", "linear", 5),
+    ]
+    assert flow[2]["shape"] == [2, 24], "batch_first=False: dimension 1 is the batch"
+
+
+def test_a_single_layer_model_is_one_layer(tmp_path):
+    model = nn.Linear(4, 2)
+    run = offline(tmp_path)
+    run.watch(model)
+    model(torch.zeros(3, 4))
+    run.finish()
+    architecture = descriptions(run)[-1]["architecture"]
+    assert architecture["input"]["width"] == 4
+    assert [(f["name"], f["width"]) for f in architecture["flow"]] == [("Linear", 2)]
+
+
+def test_pytorch_losses_show_the_settings_that_differ():
+    from modelsapp._util import describe_loss
+
+    assert describe_loss(nn.CrossEntropyLoss()) == "CrossEntropyLoss"
+    assert describe_loss(nn.CrossEntropyLoss(label_smoothing=0.1)) == (
+        "CrossEntropyLoss(label_smoothing=0.1)"
+    )
+    assert describe_loss(nn.functional.mse_loss) == "mse_loss"

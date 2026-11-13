@@ -28,10 +28,13 @@ run = modelsapp.init(
     "resnet50-cifar",                 # shown in the app
     project="image-classification",
     config={"Optimizer": "AdamW", "Learning rate": 3e-4, "Batch size": 256},
+    train_samples=train_set,          # or a DataLoader, or a number
+    val_samples=val_set,
+    loss=criterion,                   # e.g. nn.CrossEntropyLoss(label_smoothing=0.1)
     total_steps=50_000,               # for the progress bar and time left
     total_epochs=100,
 )
-run.watch(model, every=100)           # per-layer statistics every 100 batches
+run.watch(model, every=100)           # layer statistics, network diagram
 
 for epoch in range(100):
     for x, y in loader:
@@ -79,6 +82,12 @@ are zero for the whole batch). At the next `run.log()`, the gradient norm of
 each layer's own parameters is added. Other passes cost one counter increment;
 evaluation passes (`model.eval()`) are ignored.
 
+On the model's first forward pass after `watch()`, it also records which
+layers run, in order, and the shape of each one's output. The app draws this
+as a network diagram (a column of units per layer, connected to the next) in
+the run's Overview. Large models are drawn by block (e.g. ResNet's `layer1`,
+or "blocks.0–11 ×12" for a transformer). Skip connections aren't shown.
+
 By default it watches every module that holds parameters itself (Conv,
 Linear, norms, embeddings), spread over the model if there are more than
 `max_layers`. Pass `layers=["encoder.0", "head"]`, or a function
@@ -94,6 +103,8 @@ With DistributedDataParallel, log from rank 0 only.
 | `name` | required | Shown in the app |
 | `project` | `""` | Shown under the name |
 | `config` | none | Hyperparameters: a dict (nested is fine) or argparse namespace |
+| `train_samples`, `val_samples` | none | How many samples are trained and validated on: a number, a dataset, or a DataLoader (its dataset is counted, not its batches) |
+| `loss` | none | The loss: the criterion module (shown with the settings that differ from the defaults, e.g. `CrossEntropyLoss(label_smoothing=0.1)`), a function, or a string |
 | `total_steps`, `total_epochs` | 0 | Progress bar, time left, epochs on the x-axis |
 | `host` | detected | Where it runs: `MODELSAPP_HOST`, else the Slurm cluster (e.g. "Sherlock"), else the host name |
 | `id` | new | Pass a previous run's id to continue it |

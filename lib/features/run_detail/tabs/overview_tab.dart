@@ -8,6 +8,7 @@ import '../../../shared/widgets/section_card.dart';
 import '../../../shared/widgets/spaced_list_view.dart';
 import '../../../shared/widgets/stat_tile.dart';
 import '../widgets/architecture_tree.dart';
+import '../widgets/network_diagram.dart';
 
 /// Key facts about a run: size, timing, progress, hyperparameters and
 /// architecture.
@@ -44,7 +45,46 @@ class OverviewTab extends StatelessWidget {
         SectionCard(
           title: 'Architecture · ${run.architecture.type}',
           trailing: Text('${formatCount(run.parameterCount)} params'),
-          child: ArchitectureTree(root: run.architecture),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _NetworkSection(run: run),
+              const SizedBox(height: 8),
+              ArchitectureTree(root: run.architecture),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The network diagram, or what it takes to get one.
+class _NetworkSection extends StatelessWidget {
+  const _NetworkSection({required this.run});
+
+  final Run run;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final note = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    final flow = run.flow;
+    if (flow == null || !flow.layers.any((layer) => layer.isDrawn)) {
+      return Text(
+        'The network diagram appears once the model has run with run.watch(model).',
+        style: note,
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        NetworkDiagram(flow: flow, tree: run.architecture),
+        const SizedBox(height: 4),
+        Text(
+          'Layers in the order they run; numbers are output features or channels. '
+          'Skip connections aren\'t shown. Hold or hover over a layer for details.',
+          style: note,
         ),
       ],
     );

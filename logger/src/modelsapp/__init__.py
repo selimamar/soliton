@@ -3,8 +3,10 @@
     import modelsapp
 
     run = modelsapp.init("resnet50-cifar", project="image-classification",
-                         config=vars(args), total_steps=50_000, total_epochs=100)
-    run.watch(model, every=100)          # per-layer statistics
+                         config=vars(args), train_samples=train_set,
+                         val_samples=val_set, loss=criterion,
+                         total_steps=50_000, total_epochs=100)
+    run.watch(model, every=100)          # per-layer statistics, network diagram
     for step, (x, y) in enumerate(batches):
         loss = criterion(model(x), y)
         loss.backward()
@@ -32,6 +34,9 @@ def init(
     *,
     project: str = "",
     config: Optional[Mapping[str, Any]] = None,
+    train_samples: Any = None,
+    val_samples: Any = None,
+    loss: Any = None,
     total_steps: int = 0,
     total_epochs: int = 0,
     host: Optional[str] = None,
@@ -44,7 +49,12 @@ def init(
     """Starts a run.
 
     name, project: shown in the app. config: hyperparameters (a dict, nested
-    dicts and argparse namespaces work). total_steps, total_epochs: for the
+    dicts and argparse namespaces work). train_samples, val_samples: how many
+    samples are trained and validated on: a number, a dataset or a DataLoader
+    (its dataset is counted). loss: the loss, e.g. the criterion module
+    ("CrossEntropyLoss(label_smoothing=0.1)"), a function or a string.
+    These three are listed first among the hyperparameters. total_steps,
+    total_epochs: for the
     progress bar and time estimate. host: where it runs (default: detected,
     e.g. "Sherlock"). id: reuse an id to continue a run (default: new).
     server, token: default MODELSAPP_SERVER, MODELSAPP_TOKEN. mode: "online"
@@ -56,6 +66,9 @@ def init(
         name,
         project=project,
         config=config,
+        train_samples=train_samples,
+        val_samples=val_samples,
+        loss=loss,
         total_steps=total_steps,
         total_epochs=total_epochs,
         host=host,

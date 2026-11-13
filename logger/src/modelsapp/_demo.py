@@ -44,7 +44,9 @@ def train(steps: int = 3000, delay: float = 0.02, crash_at: Optional[int] = None
         return x, y
 
     val_x, val_y = data(2048)
-    with modelsapp.init(name, project="demos", config=config, total_steps=steps,
+    with modelsapp.init(name, project="demos", config=config,
+                        train_samples=steps * batch,  # Fresh random samples every step.
+                        val_samples=val_x, loss=loss_fn, total_steps=steps,
                         total_epochs=math.ceil(steps / steps_per_epoch)) as run:
         run.watch(model, every=50)
         for step in range(steps):

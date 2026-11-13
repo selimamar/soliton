@@ -76,7 +76,9 @@ flutter analyze           # lints
 What it does:
 
 - **Runs list** with status filters, live progress and a loss sparkline per run.
-- **Run detail**: Overview (progress, hyperparameters, architecture), Metrics
+- **Run detail**: Overview (progress; hyperparameters, led by the number of
+  training and validation samples and the loss; a network diagram and the
+  module tree), Metrics
   (loss, accuracy, learning rate, gradient norms, any other metric) and
   Layers (activation histograms, dead units, gradient norms per layer).
 - **Live updates**: charts and the list refresh as the server receives data.

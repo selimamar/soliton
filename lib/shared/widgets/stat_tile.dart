@@ -25,7 +25,14 @@ class StatTile extends StatelessWidget {
           Row(
             children: [
               if (icon != null) ...[Icon(icon, size: 14, color: muted), const SizedBox(width: 4)],
-              Text(label, style: theme.textTheme.labelMedium?.copyWith(color: muted)),
+              Flexible(
+                child: Text(
+                  label,
+                  style: theme.textTheme.labelMedium?.copyWith(color: muted),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 4),
