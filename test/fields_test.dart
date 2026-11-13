@@ -418,6 +418,13 @@ void main() {
       expect(find.text('Slice 17 of 32 across axis 2'), findsOneWidget);
     });
 
+    testWidgets('a link can open a run on its Fields tab', (tester) async {
+      await openApp(tester, '/runs/$fno?tab=fields');
+      expect(find.text('Step 7,000'), findsOneWidget, reason: 'the Fields tab, straight away');
+      await openApp(tester, '/runs/$fno?tab=nonsense');
+      expect(find.text('Tags and notes'), findsOneWidget, reason: 'unknown tabs: the Overview');
+    });
+
     testWidgets('a run without fields says how to log them', (tester) async {
       await openFieldsTab(tester, 'resnet50-cifar');
       expect(find.text('This run logs no fields'), findsOneWidget);

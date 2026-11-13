@@ -10,12 +10,19 @@ import 'tabs/metrics_tab.dart';
 import 'tabs/overview_tab.dart';
 import 'tabs/system_tab.dart';
 
+/// The run detail tabs, in order; their names are what `?tab=` takes in a
+/// run's link (e.g. `/runs/fno-navier-stokes?tab=fields`).
+enum RunTab { overview, metrics, layers, fields, system }
+
 /// One run, split into five tabs: Overview, Metrics, Layers, Fields and
 /// System.
 class RunDetailScreen extends ConsumerWidget {
-  const RunDetailScreen({super.key, required this.runId});
+  const RunDetailScreen({super.key, required this.runId, this.initialTab = RunTab.overview});
 
   final String runId;
+
+  /// The tab to open on.
+  final RunTab initialTab;
 
   /// Narrowest screen on which the tabs share the width equally.
   static const _fixedTabsWidth = 520.0;
@@ -26,7 +33,10 @@ class RunDetailScreen extends ConsumerWidget {
     final loadedRun = run.value;
 
     return DefaultTabController(
-      length: 5,
+      // A link to another tab of the same run switches to it.
+      key: ValueKey(initialTab),
+      length: RunTab.values.length,
+      initialIndex: initialTab.index,
       child: Scaffold(
         appBar: AppBar(
           title: Text(loadedRun?.name ?? runId),

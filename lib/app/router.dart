@@ -11,7 +11,8 @@ import '../features/settings/settings_screen.dart';
 /// All routes of the app (build locations with `AppRoutes`):
 ///
 ///   /                     runs list
-///   /runs/:runId          run detail (Overview, Metrics, Layers tabs)
+///   /runs/:runId          run detail; ?tab=metrics (or layers, fields,
+///                         system) opens on that tab
 ///   /compare?runs=a,b     runs side by side
 ///   /settings             settings
 ///   /settings/server      connect to a server
@@ -30,7 +31,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         routes: [
           GoRoute(
             path: 'runs/:runId',
-            builder: (context, state) => RunDetailScreen(runId: state.pathParameters['runId']!),
+            builder: (context, state) => RunDetailScreen(
+              runId: state.pathParameters['runId']!,
+              initialTab:
+                  RunTab.values.asNameMap()[state.uri.queryParameters['tab']] ?? RunTab.overview,
+            ),
           ),
           GoRoute(
             path: 'compare',
