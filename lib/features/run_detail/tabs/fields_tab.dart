@@ -939,10 +939,13 @@ class _LayersCard extends StatelessWidget {
   }
 }
 
-/// A layer snapshot as one plane: a 1D output as a strip, 2D as is, the
-/// middle slice of a 3D one.
-FieldPlane _layerPlane(FieldSnapshot s) =>
-    s.plane(s.prediction, axis: 0, index: s.dimensions == 3 ? s.shape[0] ~/ 2 : 0);
+/// A layer snapshot as one plane, for its filmstrip tile: a 1D output as a
+/// strip, 2D as is, the middle slice of a 3D one across its shortest axis.
+FieldPlane _layerPlane(FieldSnapshot s) {
+  if (s.dimensions != 3) return s.plane(s.prediction);
+  final axis = _FieldsTabState._shortestAxis(s.shape);
+  return s.plane(s.prediction, axis: axis, index: s.shape[axis] ~/ 2);
+}
 
 class _LayerTile extends ConsumerWidget {
   const _LayerTile({
@@ -986,13 +989,38 @@ class _LayerTile extends ConsumerWidget {
                 const SizedBox(height: 6),
                 SizedBox(
                   height: 108,
-                  child: switch (snapshot) {
-                    final s? => Center(
-                      child: _LayerMap(snapshot: s, plane: _layerPlane(s)),
-                    ),
-                    null when value.hasError => const Center(child: Icon(Icons.error_outline)),
-                    null => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                  },
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: switch (snapshot) {
+                          final s? => Center(
+                            child: _LayerMap(snapshot: s, plane: _layerPlane(s)),
+                          ),
+                          null when value.hasError => const Center(
+                            child: Icon(Icons.error_outline),
+                          ),
+                          null => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                        },
+                      ),
+                      // A 3D output: the tile is a slice; tapping opens it in 3D.
+                      if (layer.shape.length == 3)
+                        Positioned(
+                          right: 2,
+                          top: 2,
+                          child: Tooltip(
+                            message: '3D output: tap to see it in 3D',
+                            child: Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surface.withValues(alpha: 0.85),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Icon(Icons.view_in_ar_outlined, size: 14),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -1057,6 +1085,12 @@ class _LayerDetail extends ConsumerStatefulWidget {
 class _LayerDetailState extends ConsumerState<_LayerDetail> {
   GridPoint? _point;
 
+  /// 3D layers: slices instead of the 3D view, and which slice (null: the
+  /// middle, across the shortest axis).
+  bool _sliced = false;
+  int? _axis;
+  int? _slice;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1067,7 +1101,12 @@ class _LayerDetailState extends ConsumerState<_LayerDetail> {
         )
         .value;
     if (snapshot == null) return const SizedBox(height: 40);
-    final plane = _layerPlane(snapshot);
+    final is3D = snapshot.dimensions == 3;
+    final axis = is3D ? (_axis ?? _FieldsTabState._shortestAxis(snapshot.shape)) : 0;
+    final slice = is3D
+        ? (_slice ?? snapshot.shape[axis] ~/ 2).clamp(0, snapshot.shape[axis] - 1)
+        : 0;
+    final plane = snapshot.plane(snapshot.prediction, axis: axis, index: slice);
     final range = snapshot.valueRange;
     final point = switch (_point) {
       final p? => (
@@ -1076,20 +1115,71 @@ class _LayerDetailState extends ConsumerState<_LayerDetail> {
       ),
       null => null,
     };
+    final caption = Text(
+      [
+        if (snapshot.layerShape case final s?) 'output ${s.join(' × ')} per sample',
+        ?snapshot.reduction,
+        if (is3D) '3D: ${snapshot.shape.join(' × ')}',
+      ].join(' · '),
+      style: muted,
+    );
+
+    if (is3D && !_sliced) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(widget.layer.label, style: theme.textTheme.titleSmall),
+          const SizedBox(height: 2),
+          caption,
+          const SizedBox(height: 8),
+          _ViewToggle(sliced: false, onChanged: (v) => setState(() => _sliced = v)),
+          const SizedBox(height: 8),
+          VolumeCard(
+            // A new layer starts from the default view.
+            key: ValueKey(widget.layer.name),
+            snapshot: snapshot,
+            frame: 0,
+            playing: false,
+            loading: false,
+            framed: false,
+          ),
+        ],
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(widget.layer.label, style: theme.textTheme.titleSmall),
         const SizedBox(height: 2),
-        Text(
-          [
-            if (snapshot.layerShape case final s?) 'output ${s.join(' × ')} per sample',
-            ?snapshot.reduction,
-            if (snapshot.dimensions == 3) 'middle slice across axis 0',
-          ].join(' · '),
-          style: muted,
-        ),
+        caption,
         const SizedBox(height: 8),
+        if (is3D) ...[
+          _ViewToggle(sliced: true, onChanged: (v) => setState(() => _sliced = v)),
+          const SizedBox(height: 8),
+          SegmentedButton<int>(
+            segments: [
+              for (var a = 0; a < 3; a++)
+                ButtonSegment(value: a, label: Text('Axis $a (${snapshot.shape[a]})')),
+            ],
+            selected: {axis},
+            showSelectedIcon: false,
+            onSelectionChanged: (selection) => setState(() {
+              _axis = selection.single;
+              _slice = null;
+              _point = null;
+            }),
+          ),
+          _IndexSlider(
+            index: slice,
+            count: snapshot.shape[axis],
+            previous: 'Previous slice',
+            next: 'Next slice',
+            label: (i) => 'Slice ${i + 1}',
+            onChanged: (i) => setState(() => _slice = i),
+          ),
+          Text('Slice ${slice + 1} of ${snapshot.shape[axis]} across axis $axis', style: muted),
+          const SizedBox(height: 8),
+        ],
         Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 360),

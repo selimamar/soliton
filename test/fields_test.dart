@@ -384,6 +384,40 @@ void main() {
       );
     });
 
+    testWidgets('a 3D layer opens in 3D, or in slices', (tester) async {
+      useTallScreen(tester);
+      await openFieldsTab(tester, 'fno3d-turbulence');
+      await tester.scrollUntilVisible(
+        find.text('Inside the model'),
+        300,
+        scrollable: visibleList(),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byTooltip('3D output: tap to see it in 3D'),
+        findsWidgets,
+        reason: 'the tiles say their layer is 3D',
+      );
+      final volumesBefore = tester.widgetList(find.byType(VolumeView)).length;
+      await tester.tap(find.text('blocks.1'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('output 20 × 32 × 32 × 32 per sample · mean of 20 channels · 3D: 32 × 32 × 32'),
+        200,
+        scrollable: visibleList(),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.widgetList(find.byType(VolumeView)).length, volumesBefore + 1);
+      expect(find.text('Output'), findsOneWidget, reason: 'a layer has no truth or error');
+
+      await tester.tap(find.text('Slices').last);
+      await tester.pumpAndSettle();
+      expect(find.text('Slice 17 of 32 across axis 0'), findsOneWidget);
+      await tester.tap(find.text('Axis 2 (32)').last);
+      await tester.pumpAndSettle();
+      expect(find.text('Slice 17 of 32 across axis 2'), findsOneWidget);
+    });
+
     testWidgets('a run without fields says how to log them', (tester) async {
       await openFieldsTab(tester, 'resnet50-cifar');
       expect(find.text('This run logs no fields'), findsOneWidget);

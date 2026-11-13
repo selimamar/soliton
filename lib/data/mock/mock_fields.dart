@@ -72,37 +72,15 @@ List<MockField> navierStokesFields({
     required int frames,
     required Float32List Function(int frame, double? progress) frame,
     List<double>? times,
-  }) {
-    final size = shape.fold(1, (a, b) => a * b);
-    final prediction = Float32List(frames * size);
-    final target = Float32List(frames * size);
-    for (var f = 0; f < frames; f++) {
-      prediction.setAll(f * size, frame(f, progress(step)));
-      target.setAll(f * size, frame(f, null));
-    }
-    return FieldSnapshot(
-      name: name,
-      step: step,
-      shape: List.unmodifiable(shape),
-      originalShape: List.unmodifiable([for (final n in shape) n * 2]),
-      frames: frames,
-      times: times,
-      prediction: prediction,
-      target: target,
-      stats: Map.unmodifiable(_errorStats(prediction, target)),
-      frameStats: frames == 1
-          ? const {}
-          : Map.unmodifiable({
-              FieldStatKeys.relL2: List<double>.unmodifiable([
-                for (var f = 0; f < frames; f++)
-                  _errorStats(
-                    Float32List.sublistView(prediction, f * size, (f + 1) * size),
-                    Float32List.sublistView(target, f * size, (f + 1) * size),
-                  )[FieldStatKeys.relL2]!,
-              ]),
-            }),
-    );
-  }
+  }) => _outputSnapshot(
+    name,
+    step,
+    shape,
+    progress: progress(step),
+    frames: frames,
+    frame: frame,
+    times: times,
+  );
 
   const size = 64, line = 256;
   const rolloutSize = 32, rolloutLine = 128, frames = 16;
@@ -252,6 +230,153 @@ List<MockField> navierStokesFields({
             step: step,
             kind: FieldKind.layer,
             shape: const [size, size],
+            prediction: values,
+            layer: layer,
+            reduction: reduction,
+            layerShape: layerShape,
+          );
+        },
+      ),
+    );
+  }
+  return fields;
+}
+
+/// A snapshot of an output field: [frame] gives each frame of the
+/// prediction (at training [progress]) or, with null, of the truth.
+FieldSnapshot _outputSnapshot(
+  String name,
+  int step,
+  List<int> shape, {
+  required double progress,
+  required int frames,
+  required Float32List Function(int frame, double? progress) frame,
+  List<double>? times,
+}) {
+  final size = shape.fold(1, (a, b) => a * b);
+  final prediction = Float32List(frames * size);
+  final target = Float32List(frames * size);
+  for (var f = 0; f < frames; f++) {
+    prediction.setAll(f * size, frame(f, progress));
+    target.setAll(f * size, frame(f, null));
+  }
+  return FieldSnapshot(
+    name: name,
+    step: step,
+    shape: List.unmodifiable(shape),
+    originalShape: List.unmodifiable([for (final n in shape) n * 2]),
+    frames: frames,
+    times: times,
+    prediction: prediction,
+    target: target,
+    stats: Map.unmodifiable(_errorStats(prediction, target)),
+    frameStats: frames == 1
+        ? const {}
+        : Map.unmodifiable({
+            FieldStatKeys.relL2: List<double>.unmodifiable([
+              for (var f = 0; f < frames; f++)
+                _errorStats(
+                  Float32List.sublistView(prediction, f * size, (f + 1) * size),
+                  Float32List.sublistView(target, f * size, (f + 1) * size),
+                )[FieldStatKeys.relL2]!,
+            ]),
+          }),
+  );
+}
+
+/// A 3D turbulent flow in a periodic box, as a demo FNO-3D would log it: the
+/// vorticity at a fixed time, a rollout over time, and what each layer
+/// outputs, all 3D.
+List<MockField> turbulence3dFields({
+  required int currentStep,
+  required int totalSteps,
+  required int every,
+  int seed = 11,
+}) {
+  final flow = _Flow3d(seed);
+  List<int> stepsEvery(int n) => List.unmodifiable([for (var s = 0; s <= currentStep; s += n) s]);
+  final steps = stepsEvery(every);
+  final slowSteps = stepsEvery(every * 2);
+  double progress(int step) => step / totalSteps;
+  const size = 32, cube = 24, frames = 10;
+  final times = List<double>.unmodifiable([for (var f = 0; f < frames; f++) f * 0.1]);
+
+  final fields = [
+    MockField._(
+      name: 'vorticity',
+      shape: const [size, size, size],
+      steps: steps,
+      make: (step) => _outputSnapshot(
+        'vorticity',
+        step,
+        const [size, size, size],
+        progress: progress(step),
+        frames: 1,
+        frame: (_, p) => flow.grid(size, 0, p),
+      ),
+    ),
+    MockField._(
+      name: 'rollout',
+      shape: const [cube, cube, cube],
+      frames: frames,
+      steps: slowSteps,
+      make: (step) => _outputSnapshot(
+        'rollout',
+        step,
+        const [cube, cube, cube],
+        progress: progress(step),
+        frames: frames,
+        times: times,
+        frame: (f, p) => flow.grid(cube, times[f], p),
+      ),
+    ),
+  ];
+
+  // Inside the model, all 3D: the lifting layer sees the input and the
+  // (x, y, z) grid it is given (a ramp); each block moves the field closer
+  // to the output, with small-scale texture from channel mixing.
+  const layers = [
+    ('lifting', [size, size, size, 20], 'mean of 20 channels'),
+    ('blocks.0', [20, size, size, size], 'mean of 20 channels'),
+    ('blocks.1', [20, size, size, size], 'mean of 20 channels'),
+    ('blocks.2', [20, size, size, size], 'mean of 20 channels'),
+    ('blocks.3', [20, size, size, size], 'mean of 20 channels'),
+    ('projection', [size, size, size, 1], '1 channel'),
+  ];
+  final input = flow.grid(size, -0.5, null);
+  for (final (position, (layer, layerShape, reduction)) in layers.indexed) {
+    final depth = position / (layers.length - 1);
+    final last = position == layers.length - 1;
+    fields.add(
+      MockField._(
+        name: 'layers/$layer',
+        kind: FieldKind.layer,
+        layer: layer,
+        position: position,
+        shape: const [size, size, size],
+        steps: slowSteps,
+        make: (step) {
+          final out = flow.grid(size, 0, progress(step));
+          final values = Float32List(size * size * size);
+          for (var i = 0; i < values.length; i++) {
+            final x = (i ~/ (size * size)) / size;
+            final y = ((i ~/ size) % size) / size;
+            final z = (i % size) / size;
+            final ramp = position == 0 ? 0.6 * (x + y + z - 1.5) : 0.0;
+            final texture =
+                0.5 *
+                math.sin(math.pi * depth) *
+                math.sin(2 * math.pi * (5 * x + 3 * y) + position) *
+                math.cos(2 * math.pi * (4 * z - 2 * x));
+            values[i] = last
+                ? out[i]
+                : 0.4 * ((1 - depth) * input[i] + depth * out[i]) + ramp + texture;
+          }
+          return FieldSnapshot(
+            name: 'layers/$layer',
+            step: step,
+            kind: FieldKind.layer,
+            shape: const [size, size, size],
             prediction: values,
             layer: layer,
             reduction: reduction,

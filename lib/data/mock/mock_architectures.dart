@@ -95,6 +95,34 @@ LayerInfo fno2d() => LayerInfo(
   ],
 );
 
+/// A 3D Fourier neural operator: 4 spectral blocks of width 20, keeping
+/// 8 × 8 × 8 Fourier modes, on (vorticity, x, y, z) inputs.
+LayerInfo fno3d() => LayerInfo(
+  name: 'fno',
+  type: 'FNO3d',
+  children: [
+    const LayerInfo(name: 'lifting', type: 'Linear', ownParameters: 4 * 20 + 20),
+    LayerInfo(
+      name: 'blocks',
+      type: 'ModuleList',
+      children: [
+        for (var i = 0; i < 4; i++)
+          LayerInfo(
+            name: 'blocks.$i',
+            type: 'FNOBlock',
+            children: [
+              // Four corners of complex weights: in × out × 8³ × 4 × 2 reals.
+              LayerInfo(name: 'blocks.$i.spectral', type: 'SpectralConv3d', ownParameters: 1638400),
+              LayerInfo(name: 'blocks.$i.w', type: 'Conv3d', ownParameters: 20 * 20 + 20),
+            ],
+          ),
+      ],
+    ),
+    const LayerInfo(name: 'projection.0', type: 'Linear', ownParameters: 20 * 128 + 128),
+    const LayerInfo(name: 'projection.1', type: 'Linear', ownParameters: 128 + 1),
+  ],
+);
+
 /// A ResNet stage of [blocks] bottleneck blocks sharing [parameters].
 LayerInfo _stage(String name, {required int blocks, required int parameters}) => LayerInfo(
   name: name,

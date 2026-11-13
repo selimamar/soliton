@@ -28,7 +28,7 @@ class MockRun {
   final List<MockField> fields;
 }
 
-/// The five demo runs: three live, one crashed, one finished.
+/// The six demo runs: four live, one crashed, one finished.
 List<MockRun> buildMockRuns(DateTime now) => [
   _buildRun(
     id: 'resnet50-cifar',
@@ -220,8 +220,59 @@ List<MockRun> buildMockRuns(DateTime now) => [
     initialLoss: 0.95,
     finalLoss: 0.012,
     peakLearningRate: 1e-3,
-    fieldsEvery: 500,
+    fields: (current, total, seed) =>
+        navierStokesFields(currentStep: current, totalSteps: total, every: 500, seed: seed),
     seed: 5,
+  ),
+  _buildRun(
+    id: 'fno3d-turbulence',
+    project: 'neural-operators',
+    host: 'Sherlock',
+    status: RunStatus.live,
+    startedAt: now.subtract(const Duration(hours: 4, minutes: 5)),
+    currentStep: 4000,
+    totalSteps: 12000,
+    totalEpochs: 120,
+    architecture: fno3d(),
+    system: const SystemInfo(
+      hostname: 'sh04-02n11.int',
+      os: 'Rocky Linux 8.10 (Linux 4.18.0)',
+      python: '3.12.4',
+      cpu: 'AMD EPYC 9124 16-Core Processor',
+      cpuCores: 16,
+      memoryGb: 128,
+      gpus: [GpuInfo(name: 'NVIDIA H100 80GB HBM3', memoryGb: 80)],
+      gpuDriver: '550.54.15',
+      torch: '2.5.1',
+      cuda: '12.4',
+      cudnn: '9.1.0',
+      slurm: {
+        'jobId': '52095102',
+        'jobName': 'fno3d',
+        'partition': 'gpu',
+        'nodes': 'sh04-02n11',
+        'cluster': 'sherlock',
+      },
+    ),
+    hyperparameters: const {
+      'Training samples': '800',
+      'Validation samples': '100',
+      'Loss': 'LpLoss (relative L2)',
+      'PDE': 'Navier–Stokes 3D, periodic box',
+      'Resolution': '64 × 64 × 64',
+      'Fourier modes': '8 × 8 × 8',
+      'Width': '20',
+      'Optimizer': 'Adam',
+      'Learning rate': '1e-3 (cosine)',
+      'Batch size': '4',
+      'Dataset': 'Navier–Stokes 3D (synthetic)',
+    },
+    initialLoss: 0.98,
+    finalLoss: 0.03,
+    peakLearningRate: 1e-3,
+    fields: (current, total, seed) =>
+        turbulence3dFields(currentStep: current, totalSteps: total, every: 500, seed: seed),
+    seed: 6,
   ),
   _buildRun(
     id: 'vit-small',
@@ -286,7 +337,7 @@ MockRun _buildRun({
   double? finalAccuracy,
   required double peakLearningRate,
   String? statusMessage,
-  int? fieldsEvery,
+  List<MockField> Function(int currentStep, int totalSteps, int seed)? fields,
   required int seed,
 }) {
   final crashed = status == RunStatus.crashed;
@@ -369,14 +420,7 @@ MockRun _buildRun({
     run: run,
     metrics: metrics,
     layerStats: layerStats,
-    fields: fieldsEvery == null
-        ? const []
-        : navierStokesFields(
-            currentStep: currentStep,
-            totalSteps: totalSteps,
-            every: fieldsEvery,
-            seed: seed,
-          ),
+    fields: fields?.call(currentStep, totalSteps, seed) ?? const [],
   );
 }
 

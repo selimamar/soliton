@@ -169,7 +169,8 @@ run.log_rollout("u", traj[:, 0], val_u[0, 1:21], step=step, times=t[1:21])
 **`with run.capture_layers(model, step=None, layers=None, channel_axis=None,
 reduce="mean", max_size=64):`** records what each layer outputs during the
 forward pass in the block, so the app can show the field as it goes through
-the network (a filmstrip, input to output; tap a layer to see it large):
+the network (a filmstrip, input to output; tap a layer to see it large, and a
+3D layer output in the same 3D view as 3D fields, or in slices):
 
 ```python
 with torch.no_grad(), run.capture_layers(model, step=step):

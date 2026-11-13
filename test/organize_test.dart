@@ -57,11 +57,12 @@ void main() {
       expect(summary(groupRuns(runs, RunGrouping.project)), {
         'image-classification': ['resnet50-cifar', 'vit-small'],
         'language-models': ['gpt-tiny'],
-        'neural-operators': ['fno-navier-stokes'],
+        'neural-operators': ['fno-navier-stokes', 'fno3d-turbulence'],
         'segmentation': ['unet-seg'],
       });
       expect(groupRuns(runs, RunGrouping.model).map((g) => g.label), [
         'FNO2d',
+        'FNO3d',
         'GPT',
         'ResNet',
         'UNet',

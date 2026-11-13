@@ -19,6 +19,7 @@ class VolumeCard extends StatefulWidget {
     required this.frame,
     required this.playing,
     required this.loading,
+    this.framed = true,
   });
 
   final FieldSnapshot snapshot;
@@ -27,6 +28,10 @@ class VolumeCard extends StatefulWidget {
   /// A rollout playing: render drafts, to keep up.
   final bool playing;
   final bool loading;
+
+  /// In a card of its own (with the field's name and shape), or bare, to
+  /// sit inside another card (a layer's detail).
+  final bool framed;
 
   @override
   State<VolumeCard> createState() => _VolumeCardState();
@@ -94,7 +99,13 @@ class _VolumeCardState extends State<VolumeCard> {
         );
 
     final views = [
-      view('Prediction', snapshot.prediction, Colormap.viridis, range.min, range.max),
+      view(
+        snapshot.kind == FieldKind.layer ? 'Output' : 'Prediction',
+        snapshot.prediction,
+        Colormap.viridis,
+        range.min,
+        range.max,
+      ),
       if (snapshot.target case final target?)
         view('Ground truth', target, Colormap.viridis, range.min, range.max),
       if (snapshot.error case final error?)
@@ -107,90 +118,94 @@ class _VolumeCardState extends State<VolumeCard> {
       VolumeMode.maxProjection => (null, 0.0, null),
     };
 
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SegmentedButton<VolumeMode>(
+          segments: const [
+            ButtonSegment(value: VolumeMode.volume, label: Text('Volume')),
+            ButtonSegment(value: VolumeMode.maxProjection, label: Text('Max')),
+            ButtonSegment(value: VolumeMode.isosurface, label: Text('Surface')),
+          ],
+          selected: {_mode},
+          showSelectedIcon: false,
+          onSelectionChanged: (selection) => setState(() => _mode = selection.single),
+        ),
+        const SizedBox(height: 4),
+        Text(switch (_mode) {
+          VolumeMode.volume =>
+            'See-through: values far from ${_referenceName(range.min, range.max)} show most.',
+          VolumeMode.maxProjection => 'The most extreme value along each line of sight.',
+          VolumeMode.isosurface =>
+            'Surfaces where values reach the level'
+                '${range.min < 0 && range.max > 0 ? ' (both signs)' : ''}.',
+        }, style: muted),
+        if (sliderLabel != null)
+          Row(
+            children: [
+              SizedBox(width: 64, child: Text(sliderLabel, style: theme.textTheme.labelLarge)),
+              Expanded(
+                child: Slider(
+                  value: sliderValue,
+                  min: 0.02,
+                  max: 0.98,
+                  label: _mode == VolumeMode.isosurface
+                      ? _levelText(sliderValue, range.min, range.max)
+                      : '${(sliderValue * 100).round()}%',
+                  semanticFormatterCallback: (v) => '$sliderLabel ${(v * 100).round()}%',
+                  // Drafts while dragging the slider too.
+                  onChangeStart: (_) => setState(() => _turning = true),
+                  onChangeEnd: (_) => setState(() => _turning = false),
+                  onChanged: onSlider,
+                ),
+              ),
+              if (_mode == VolumeMode.isosurface)
+                Text(_levelText(_level, range.min, range.max), style: muted),
+            ],
+          ),
+        const SizedBox(height: 8),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            const gap = 12.0;
+            final perRow = constraints.maxWidth >= 560 ? views.length : (views.length == 1 ? 1 : 2);
+            // A single view (a layer) needn't fill a wide screen.
+            final width = views.length == 1
+                ? constraints.maxWidth.clamp(0.0, 360.0)
+                : (constraints.maxWidth - gap * (perRow - 1)) / perRow;
+            return Wrap(
+              alignment: WrapAlignment.center,
+              spacing: gap,
+              runSpacing: 16,
+              children: [for (final v in views) SizedBox(width: width, child: v)],
+            );
+          },
+        ),
+        const SizedBox(height: 12),
+        SizedBox(height: 3, child: widget.loading ? const LinearProgressIndicator() : null),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Drag to turn; pinch or Ctrl/⌘ + scroll to zoom. Axes are numbered as in the array.',
+                style: muted,
+              ),
+            ),
+            TextButton.icon(
+              onPressed: _camera == const VolumeCamera()
+                  ? null
+                  : () => setState(() => _camera = const VolumeCamera()),
+              icon: const Icon(Icons.restart_alt, size: 18),
+              label: const Text('Reset view'),
+            ),
+          ],
+        ),
+      ],
+    );
+    if (!widget.framed) return content;
     return SectionCard(
       title: snapshot.name,
       trailing: Text(shape == original ? shape : '$shape (of $original)', style: muted),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SegmentedButton<VolumeMode>(
-            segments: const [
-              ButtonSegment(value: VolumeMode.volume, label: Text('Volume')),
-              ButtonSegment(value: VolumeMode.maxProjection, label: Text('Max')),
-              ButtonSegment(value: VolumeMode.isosurface, label: Text('Surface')),
-            ],
-            selected: {_mode},
-            showSelectedIcon: false,
-            onSelectionChanged: (selection) => setState(() => _mode = selection.single),
-          ),
-          const SizedBox(height: 4),
-          Text(switch (_mode) {
-            VolumeMode.volume =>
-              'See-through: values far from ${_referenceName(range.min, range.max)} show most.',
-            VolumeMode.maxProjection => 'The most extreme value along each line of sight.',
-            VolumeMode.isosurface =>
-              'Surfaces where values reach the level'
-                  '${range.min < 0 && range.max > 0 ? ' (both signs)' : ''}.',
-          }, style: muted),
-          if (sliderLabel != null)
-            Row(
-              children: [
-                SizedBox(width: 64, child: Text(sliderLabel, style: theme.textTheme.labelLarge)),
-                Expanded(
-                  child: Slider(
-                    value: sliderValue,
-                    min: 0.02,
-                    max: 0.98,
-                    label: _mode == VolumeMode.isosurface
-                        ? _levelText(sliderValue, range.min, range.max)
-                        : '${(sliderValue * 100).round()}%',
-                    semanticFormatterCallback: (v) => '$sliderLabel ${(v * 100).round()}%',
-                    // Drafts while dragging the slider too.
-                    onChangeStart: (_) => setState(() => _turning = true),
-                    onChangeEnd: (_) => setState(() => _turning = false),
-                    onChanged: onSlider,
-                  ),
-                ),
-                if (_mode == VolumeMode.isosurface)
-                  Text(_levelText(_level, range.min, range.max), style: muted),
-              ],
-            ),
-          const SizedBox(height: 8),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              const gap = 12.0;
-              final perRow = constraints.maxWidth >= 560
-                  ? views.length
-                  : (views.length == 1 ? 1 : 2);
-              final width = (constraints.maxWidth - gap * (perRow - 1)) / perRow;
-              return Wrap(
-                spacing: gap,
-                runSpacing: 16,
-                children: [for (final v in views) SizedBox(width: width, child: v)],
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          SizedBox(height: 3, child: widget.loading ? const LinearProgressIndicator() : null),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Drag to turn; pinch or Ctrl/⌘ + scroll to zoom. Axes are numbered as in the array.',
-                  style: muted,
-                ),
-              ),
-              TextButton.icon(
-                onPressed: _camera == const VolumeCamera()
-                    ? null
-                    : () => setState(() => _camera = const VolumeCamera()),
-                icon: const Icon(Icons.restart_alt, size: 18),
-                label: const Text('Reset view'),
-              ),
-            ],
-          ),
-        ],
-      ),
+      child: content,
     );
   }
 
