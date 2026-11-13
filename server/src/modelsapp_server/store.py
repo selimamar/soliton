@@ -15,9 +15,9 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from .db import LayerPointRow, LayerRow, MetricPointRow, RunRow
+from .db import LayerPointRow, LayerRow, MetricPointRow, RunNotesRow, RunRow
 from .floats import decode_float, downsample, encode_float, from_columns, to_columns
-from .schemas import LayersEvent, MetricsEvent, RunIn, StatusEvent
+from .schemas import LayersEvent, MetricsEvent, RunIn, RunNotesIn, StatusEvent
 
 TRAIN_LOSS = "train/loss"
 LOSS_PREVIEW_POINTS = 60
@@ -141,8 +141,27 @@ class Store:
             row.total_epochs = body.totalEpochs
             row.hyperparameters = dict(body.hyperparameters)
             row.architecture = body.architecture or _default_architecture(body.name)
+            if (body.tags or body.notes) and session.get(RunNotesRow, run_id) is None:
+                session.add(RunNotesRow(run_id=run_id, tags=list(body.tags), notes=body.notes,
+                                        updated_at=now))
             session.flush()
             return self._run_json(session, row), _change(row, event)
+
+    def update_notes(self, run_id: str, body: RunNotesIn) -> tuple[dict, Change]:
+        """Sets a run's tags and/or note (from the app)."""
+        with self._sessions.begin() as session:
+            row = self._find(session, run_id)
+            notes = session.get(RunNotesRow, run_id)
+            if notes is None:
+                notes = RunNotesRow(run_id=run_id, tags=[], notes="")
+                session.add(notes)
+            if body.tags is not None:
+                notes.tags = list(body.tags)
+            if body.notes is not None:
+                notes.notes = body.notes
+            notes.updated_at = self._clock()
+            session.flush()
+            return self._run_json(session, row), _change(row, "updated")
 
     def list_runs(self) -> list[dict]:
         with self._sessions() as session:
@@ -157,7 +176,7 @@ class Store:
         with self._sessions.begin() as session:
             row = self._find(session, run_id)
             change = _change(row, "deleted")
-            for table in (MetricPointRow, LayerPointRow, LayerRow):
+            for table in (MetricPointRow, LayerPointRow, LayerRow, RunNotesRow):
                 session.execute(delete(table).where(table.run_id == run_id))
             session.delete(row)
             return change
@@ -361,6 +380,7 @@ class Store:
             )
         ]
         preview = downsample(losses, LOSS_PREVIEW_POINTS, lambda v: v)
+        notes = session.get(RunNotesRow, row.id)
         return {
             "id": row.id,
             "name": row.name,
@@ -377,4 +397,6 @@ class Store:
             "architecture": row.architecture,
             "lossPreview": [encode_float(v) for v in preview],
             "statusMessage": row.status_message,
+            "tags": list(notes.tags) if notes else [],
+            "notes": notes.notes if notes else "",
         }

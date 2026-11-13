@@ -75,8 +75,9 @@ server, so it has to run somewhere public, with HTTPS. Two common ways:
 
 Run a single process: live updates are pushed from memory, so several
 workers wouldn't see each other's changes. Tables are created on startup.
-There are no migrations yet, so after an upgrade that changes the schema,
-start from a fresh database.
+There are no migrations yet, so after an upgrade that changes an existing
+table, start from a fresh database. (New tables, like `run_notes` for tags
+and notes, are added to an existing database on startup.)
 
 ## API
 
@@ -92,6 +93,7 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
 | `GET /api/runs` | All runs, newest first, each with a 60-point loss preview |
 | `GET /api/runs/{id}` | One run (404 if unknown) |
 | `PUT /api/runs/{id}` | Creates or updates a run's description (the logger does this) |
+| `PATCH /api/runs/{id}` | Sets its `tags` and/or `notes` (the app does this; below) |
 | `DELETE /api/runs/{id}` | Deletes a run and its data |
 | `POST /api/runs/{id}/events` | A batch of events from the logger (below) |
 | `GET /api/runs/{id}/metrics?maxPoints=1000` | Every metric, downsampled keeping spikes and NaN |
@@ -109,6 +111,13 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
  "activationHistogram": {"min": -2, "max": 3, "counts": [1, 5, 9], "zeroCount": 40}}]}
 {"type": "status", "status": "crashed", "message": "RuntimeError: CUDA out of memory"}
 ```
+
+**Tags and notes** (`PATCH /api/runs/{id}` with `{"tags": ["baseline"], "notes": "..."}`;
+leave a field out to keep it): up to 20 tags of 1–40 characters (trimmed,
+each once ignoring case) and a note of up to 10,000 characters. Every run
+response includes `tags` and `notes`. The logger's `tags=` and `notes=` only
+set them when the run is created, so it never overwrites edits made in the
+app.
 
 A point is keyed by run, metric and step, so a resent batch replaces itself:
 the logger can retry freely. A run marked "lost contact" comes back to life

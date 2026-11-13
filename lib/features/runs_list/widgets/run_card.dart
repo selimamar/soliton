@@ -8,9 +8,10 @@ import '../../../shared/formatters.dart';
 import '../../../shared/widgets/section_card.dart';
 import '../../../shared/widgets/sparkline.dart';
 import '../../../shared/widgets/status_chip.dart';
+import '../../../shared/widgets/tag_label.dart';
 
-/// One run in the runs list: name, status, where it runs, a loss sparkline
-/// and its progress.
+/// One run in the runs list: name, status, where it runs, its tags and the
+/// start of its note, a loss sparkline and its progress.
 class RunCard extends StatelessWidget {
   const RunCard({super.key, required this.run, this.onTap, this.selected});
 
@@ -56,9 +57,30 @@ class RunCard extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            '${run.host} · ${run.project}',
+            [run.host, run.project].where((s) => s.isNotEmpty).join(' · '),
             style: theme.textTheme.bodySmall?.copyWith(color: muted),
           ),
+          if (run.tags.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 4, children: [for (final tag in run.tags) TagLabel(tag)]),
+          ],
+          if (run.notes.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.sticky_note_2_outlined, size: 14, color: muted),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    run.notes.trim().split('\n').first,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                  ),
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 12),
           Sparkline(
             values: run.lossPreview,

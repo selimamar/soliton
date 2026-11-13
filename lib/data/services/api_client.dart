@@ -52,15 +52,27 @@ class ApiClient {
   final Duration timeout;
   final http.Client _http;
 
-  Future<Object?> getJson(String path, {Map<String, String>? query}) async {
+  Future<Object?> getJson(String path, {Map<String, String>? query}) =>
+      _send(() => _http.get(connection.api(path, query), headers: _headers));
+
+  /// Changes part of a resource; returns the server's answer.
+  Future<Object?> patchJson(String path, Map<String, Object?> body) => _send(
+    () => _http.patch(
+      connection.api(path),
+      headers: {..._headers, 'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    ),
+  );
+
+  Map<String, String> get _headers => {
+    'Authorization': 'Bearer ${connection.token}',
+    'Accept': 'application/json',
+  };
+
+  Future<Object?> _send(Future<http.Response> Function() request) async {
     final http.Response response;
     try {
-      response = await _http
-          .get(
-            connection.api(path, query),
-            headers: {'Authorization': 'Bearer ${connection.token}', 'Accept': 'application/json'},
-          )
-          .timeout(timeout);
+      response = await request().timeout(timeout);
     } on TimeoutException {
       throw ServerUnreachableException(connection.address);
     } on http.ClientException {

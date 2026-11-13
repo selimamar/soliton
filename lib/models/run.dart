@@ -27,6 +27,8 @@ class Run {
     this.flow,
     this.endedAt,
     this.statusMessage,
+    this.tags = const [],
+    this.notes = '',
   });
 
   factory Run.fromJson(Map<String, Object?> json) => Run(
@@ -51,6 +53,9 @@ class Run {
     flow: ModelFlow.fromArchitectureJson(json['architecture']! as Map<String, Object?>),
     lossPreview: List.unmodifiable([for (final v in json['lossPreview']! as List) decodeDouble(v)]),
     statusMessage: json['statusMessage'] as String?,
+    // Older servers don't send these.
+    tags: List.unmodifiable([for (final tag in (json['tags'] as List?) ?? const []) tag as String]),
+    notes: json['notes'] as String? ?? '',
   );
 
   final String id;
@@ -84,6 +89,12 @@ class Run {
 
   /// Optional explanation, e.g. why the run crashed.
   final String? statusMessage;
+
+  /// Labels to organise runs by, e.g. `baseline`; edited in the app.
+  final List<String> tags;
+
+  /// Free text left on the run, e.g. what was tried; edited in the app.
+  final String notes;
 
   int get parameterCount => architecture.totalParameters;
 
@@ -122,6 +133,8 @@ class Run {
     'architecture': {...architecture.toJson(), ...?flow?.toArchitectureJson()},
     'lossPreview': [for (final v in lossPreview) encodeDouble(v)],
     'statusMessage': statusMessage,
+    'tags': tags,
+    'notes': notes,
   };
 
   @override
@@ -142,7 +155,9 @@ class Run {
       other.architecture == architecture &&
       other.flow == flow &&
       sameDoubles(other.lossPreview, lossPreview) &&
-      other.statusMessage == statusMessage;
+      other.statusMessage == statusMessage &&
+      deepListEquals(other.tags, tags) &&
+      other.notes == notes;
 
   @override
   int get hashCode => Object.hash(
@@ -163,5 +178,7 @@ class Run {
     flow,
     Object.hashAll(lossPreview.map(doubleHash)),
     statusMessage,
+    Object.hashAll(tags),
+    notes,
   );
 }

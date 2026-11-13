@@ -10,6 +10,7 @@ import '../../models/run.dart';
 import '../../shared/widgets/async_value_view.dart';
 import '../../shared/widgets/section_card.dart';
 import '../../shared/widgets/spaced_list_view.dart';
+import 'run_groups.dart';
 import 'widgets/run_card.dart';
 
 /// Which status the list shows. `null` means all runs.
@@ -20,6 +21,19 @@ class RunFilter extends Notifier<RunStatus?> {
   RunStatus? build() => null;
 
   void select(RunStatus? status) => state = status;
+}
+
+/// Groups folded away, as `grouping:label` (until the app restarts).
+final collapsedGroupsProvider = NotifierProvider<CollapsedGroups, Set<String>>(CollapsedGroups.new);
+
+class CollapsedGroups extends Notifier<Set<String>> {
+  @override
+  Set<String> build() => const {};
+
+  static String keyOf(RunGrouping grouping, RunGroup group) => '${grouping.name}:${group.label}';
+
+  void toggle(String key) =>
+      state = state.contains(key) ? ({...state}..remove(key)) : {...state, key};
 }
 
 /// The runs picked for comparing, in the order they were picked; null when
@@ -50,7 +64,8 @@ class CompareSelection extends Notifier<List<String>?> {
   }
 }
 
-/// Home screen: every run as a card, with status filters.
+/// Home screen: every run as a card, with status filters, optionally in
+/// groups (by project, model, dataset, tag or host).
 class RunsListScreen extends ConsumerWidget {
   const RunsListScreen({super.key});
 
@@ -72,6 +87,7 @@ class RunsListScreen extends ConsumerWidget {
     title: const Text('Runs'),
     actions: [
       const _LiveStatusButton(),
+      const _GroupingButton(),
       IconButton(
         icon: const Icon(Icons.compare_arrows),
         tooltip: 'Compare runs',
@@ -120,6 +136,18 @@ class _RunsList extends ConsumerWidget {
     final picked = ref.watch(compareSelectionProvider);
     final demo = ref.watch(connectionProvider) == null;
     final visibleRuns = filter == null ? runs : runs.where((r) => r.status == filter).toList();
+    final grouping = ref.watch(runGroupingProvider);
+    final collapsed = ref.watch(collapsedGroupsProvider);
+
+    Widget card(Run run) => picked != null
+        ? RunCard(
+            run: run,
+            selected: picked.contains(run.id),
+            onTap: () => ref.read(compareSelectionProvider.notifier).toggle(run.id),
+          )
+        // `go` (not `push`) so the browser URL follows on the web. The
+        // detail route is nested under '/', so Back still returns here.
+        : RunCard(run: run, onTap: () => context.go(AppRoutes.run(run.id)));
 
     return RefreshIndicator(
       onRefresh: () => ref.refresh(runsProvider.future),
@@ -136,19 +164,96 @@ class _RunsList extends ConsumerWidget {
             )
           else if (visibleRuns.isEmpty)
             const _EmptyState('No runs with this status'),
-          for (final run in visibleRuns)
-            if (picked != null)
-              RunCard(
-                run: run,
-                selected: picked.contains(run.id),
-                onTap: () => ref.read(compareSelectionProvider.notifier).toggle(run.id),
-              )
-            else
-              // `go` (not `push`) so the browser URL follows on the web. The
-              // detail route is nested under '/', so Back still returns here.
-              RunCard(run: run, onTap: () => context.go(AppRoutes.run(run.id))),
+          if (grouping == RunGrouping.none)
+            for (final run in visibleRuns) card(run)
+          else
+            for (final group in groupRuns(visibleRuns, grouping)) ...[
+              _GroupHeader(
+                group: group,
+                collapsed: collapsed.contains(CollapsedGroups.keyOf(grouping, group)),
+                onTap: () => ref
+                    .read(collapsedGroupsProvider.notifier)
+                    .toggle(CollapsedGroups.keyOf(grouping, group)),
+              ),
+              if (!collapsed.contains(CollapsedGroups.keyOf(grouping, group)))
+                for (final run in group.runs) card(run),
+            ],
         ],
       ),
+    );
+  }
+}
+
+/// A group's name and size; tap to fold it away.
+class _GroupHeader extends StatelessWidget {
+  const _GroupHeader({required this.group, required this.collapsed, required this.onTap});
+
+  final RunGroup group;
+  final bool collapsed;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final count = group.runs.length;
+    return Semantics(
+      button: true,
+      expanded: !collapsed,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(4, 12, 4, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  group.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: group.isRest ? theme.colorScheme.onSurfaceVariant : null,
+                  ),
+                ),
+              ),
+              Text(
+                count == 1 ? '1 run' : '$count runs',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: 4),
+              ExcludeSemantics(child: Icon(collapsed ? Icons.expand_more : Icons.expand_less)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Picks what the list is grouped by.
+class _GroupingButton extends ConsumerWidget {
+  const _GroupingButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final current = ref.watch(runGroupingProvider);
+    return PopupMenuButton<RunGrouping>(
+      icon: const Icon(Icons.workspaces_outline),
+      tooltip: 'Group runs',
+      onSelected: (grouping) => ref.read(runGroupingProvider.notifier).set(grouping),
+      itemBuilder: (context) => [
+        for (final grouping in RunGrouping.values)
+          CheckedPopupMenuItem(
+            value: grouping,
+            checked: grouping == current,
+            child: Text(
+              grouping == RunGrouping.none ? grouping.label : 'By ${grouping.label.toLowerCase()}',
+            ),
+          ),
+      ],
     );
   }
 }

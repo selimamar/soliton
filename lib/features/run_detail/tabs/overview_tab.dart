@@ -9,9 +9,10 @@ import '../../../shared/widgets/spaced_list_view.dart';
 import '../../../shared/widgets/stat_tile.dart';
 import '../widgets/architecture_tree.dart';
 import '../widgets/network_diagram.dart';
+import '../widgets/run_notes_card.dart';
 
-/// Key facts about a run: size, timing, progress, hyperparameters and
-/// architecture.
+/// Key facts about a run: size, timing, progress, tags and notes,
+/// hyperparameters and architecture.
 class OverviewTab extends StatelessWidget {
   const OverviewTab({super.key, required this.run});
 
@@ -33,6 +34,7 @@ class OverviewTab extends StatelessWidget {
         ),
         _TimingTiles(run: run),
         _ProgressCard(run: run),
+        RunNotesCard(run: run),
         SectionCard(
           title: 'Hyperparameters',
           child: Column(

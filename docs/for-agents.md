@@ -34,6 +34,10 @@ fine, don't work around it.
   Always pass `train_samples` and `val_samples` (a number, a dataset or a
   DataLoader) and `loss` (the criterion module, a function or a string such
   as "CrossEntropyLoss + Dice"): they're listed first in the app.
+- Use `project=` for what the model does (e.g. "image-classification") and
+  `tags=[...]` for what makes this run different (e.g. ["baseline"],
+  ["ablation", "no-dropout"]): I group runs by them in the app. Put the
+  reason for the run in `notes=` (one or two sentences).
 - PyTorch: `run.watch(model, every=100)` right after building the model.
   It also records the layers for the app's network diagram on the first
   forward pass. With DDP, only rank 0 calls init, watch and log.

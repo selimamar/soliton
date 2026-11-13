@@ -21,7 +21,7 @@ from .config import Settings
 from .db import make_engine, make_sessionmaker
 from .live import Broadcaster
 from .notify import NtfyNotifier
-from .schemas import RUN_ID_PATTERN, EventsIn, RunIn
+from .schemas import RUN_ID_PATTERN, EventsIn, RunIn, RunNotesIn
 from .store import Change, RunNotFound, Store, utcnow
 
 log = logging.getLogger(__name__)
@@ -124,6 +124,13 @@ def create_app(
     @app.put("/api/runs/{run_id}", dependencies=auth)
     def put_run(run_id: RunId, body: RunIn):
         run, change = store.put_run(run_id, body)
+        publish([change])
+        return run
+
+    @app.patch("/api/runs/{run_id}", dependencies=auth)
+    def update_run_notes(run_id: RunId, body: RunNotesIn):
+        """Tags and notes, edited in the app."""
+        run, change = store.update_notes(run_id, body)
         publish([change])
         return run
 

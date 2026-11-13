@@ -228,7 +228,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('resnet50-cifar'));
       await tester.pumpAndSettle();
-      expect(find.text('Hyperparameters'), findsOneWidget);
+      expect(find.text('Tags and notes'), findsOneWidget);
       await tester.tap(find.text('Metrics'));
       await tester.pumpAndSettle();
       expect(find.text('Loss'), findsOneWidget);

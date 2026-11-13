@@ -21,7 +21,7 @@ a server, runs are saved locally (offline) and uploaded later with
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Optional
+from typing import Any, Iterable, Mapping, Optional
 
 from ._run import Run
 
@@ -37,6 +37,8 @@ def init(
     train_samples: Any = None,
     val_samples: Any = None,
     loss: Any = None,
+    tags: Optional[Iterable[str]] = None,
+    notes: str = "",
     total_steps: int = 0,
     total_epochs: int = 0,
     host: Optional[str] = None,
@@ -53,7 +55,9 @@ def init(
     samples are trained and validated on: a number, a dataset or a DataLoader
     (its dataset is counted). loss: the loss, e.g. the criterion module
     ("CrossEntropyLoss(label_smoothing=0.1)"), a function or a string.
-    These three are listed first among the hyperparameters. total_steps,
+    These three are listed first among the hyperparameters. tags, notes:
+    to organise runs in the app (e.g. tags=["baseline"]); they only set the
+    starting values, which are then edited in the app. total_steps,
     total_epochs: for the
     progress bar and time estimate. host: where it runs (default: detected,
     e.g. "Sherlock"). id: reuse an id to continue a run (default: new).
@@ -69,6 +73,8 @@ def init(
         train_samples=train_samples,
         val_samples=val_samples,
         loss=loss,
+        tags=tags,
+        notes=notes,
         total_steps=total_steps,
         total_epochs=total_epochs,
         host=host,

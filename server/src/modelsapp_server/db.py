@@ -1,7 +1,8 @@
 """Database tables. Works with SQLite (local) and PostgreSQL (server).
 
-Tables are created on startup. There are no migrations yet: after a schema
-change, start from a fresh database.
+Tables are created on startup. There are no migrations yet: after a change
+to an existing table, start from a fresh database (new tables are fine:
+they are created in an existing database too).
 """
 
 from __future__ import annotations
@@ -86,6 +87,20 @@ class MetricPointRow(Base):
     step: Mapped[int] = mapped_column(Integer, primary_key=True)
     value: Mapped[float | None] = mapped_column(Double, nullable=True)
     code: Mapped[int] = mapped_column(SmallInteger, default=0)
+
+
+class RunNotesRow(Base):
+    """What people add to a run: tags and a note. In a table of its own so
+    the logger, which resends the run's description, never overwrites them."""
+
+    __tablename__ = "run_notes"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    tags: Mapped[list] = mapped_column(JSON, default=list)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime)
 
 
 class LayerRow(Base):

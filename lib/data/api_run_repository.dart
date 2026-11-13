@@ -47,6 +47,16 @@ class ApiRunRepository implements RunRepository {
     ];
   }
 
+  @override
+  Future<Run> updateNotes(String runId, {List<String>? tags, String? notes}) async {
+    try {
+      final json = await _client.patchJson(_runPath(runId), {'tags': ?tags, 'notes': ?notes});
+      return Run.fromJson(json! as Map<String, Object?>);
+    } on NotFoundException {
+      throw RunNotFoundException(runId);
+    }
+  }
+
   static String _runPath(String runId) => '/runs/${Uri.encodeComponent(runId)}';
 
   Future<List<Map<String, Object?>>> _list(String path) async =>

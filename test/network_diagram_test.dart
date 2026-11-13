@@ -218,6 +218,11 @@ void main() {
   group('Overview', () {
     testWidgets('shows the data, the loss and the network diagram', (tester) async {
       await openApp(tester, '/runs/resnet50-cifar');
+      await tester.scrollUntilVisible(
+        find.text('Training samples'),
+        200,
+        scrollable: visibleList(),
+      );
       expect(find.text('Training samples'), findsOneWidget);
       expect(find.text('50,000'), findsWidgets);
       expect(find.text('CrossEntropyLoss(label_smoothing=0.1)'), findsOneWidget);

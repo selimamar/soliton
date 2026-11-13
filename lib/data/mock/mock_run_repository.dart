@@ -2,26 +2,46 @@ import '../../models/layer_stats.dart';
 import '../../models/metric_series.dart';
 import '../../models/run.dart';
 import '../run_repository.dart';
+import '../tags.dart';
 import 'mock_runs.dart';
 
 /// A [RunRepository] serving generated demo data, with a fake network delay.
+/// Edited tags and notes are kept in memory, until the app restarts.
 class MockRunRepository implements RunRepository {
   MockRunRepository({this.latency = const Duration(milliseconds: 350)})
     : _runs = buildMockRuns(DateTime.now());
 
   final Duration latency;
   final List<MockRun> _runs;
+  final _edited = <String, ({List<String> tags, String notes})>{};
 
   @override
   Future<List<Run>> fetchRuns() async {
     await Future<void>.delayed(latency);
-    return [for (final r in _runs) r.run];
+    return [for (final r in _runs) _withEdits(r.run)];
   }
 
   @override
   Future<Run> fetchRun(String runId) async {
     await Future<void>.delayed(latency);
-    return _find(runId).run;
+    return _withEdits(_find(runId).run);
+  }
+
+  @override
+  Future<Run> updateNotes(String runId, {List<String>? tags, String? notes}) async {
+    await Future<void>.delayed(latency);
+    final run = _withEdits(_find(runId).run);
+    _edited[runId] = (
+      tags: List.unmodifiable(tags == null ? run.tags : cleanTags(tags)),
+      notes: notes ?? run.notes,
+    );
+    return _withEdits(run);
+  }
+
+  Run _withEdits(Run run) {
+    final edit = _edited[run.id];
+    if (edit == null) return run;
+    return Run.fromJson({...run.toJson(), 'tags': edit.tags, 'notes': edit.notes});
   }
 
   @override

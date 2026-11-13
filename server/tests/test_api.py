@@ -11,7 +11,7 @@ from conftest import AUTH, TOKEN
 RUN_KEYS = {
     "id", "name", "project", "host", "status", "startedAt", "endedAt", "currentStep",
     "totalSteps", "currentEpoch", "totalEpochs", "hyperparameters", "architecture",
-    "lossPreview", "statusMessage",
+    "lossPreview", "statusMessage", "tags", "notes",
 }
 LAYER_KEYS = {
     "layerName", "activationMean", "activationStd", "gradNorm", "activationHistogram",
@@ -215,6 +215,65 @@ def test_deleting_a_run(client):
     assert client.get("/api/runs").json() == []
     create_run(client)  # The id is free again, with no leftover data.
     assert client.get("/api/runs/tiny-1/metrics").json() == []
+
+
+# Tags and notes ---------------------------------------------------------------
+
+
+def test_a_new_run_has_no_tags_or_notes(client):
+    run = create_run(client)
+    assert (run["tags"], run["notes"]) == ([], "")
+
+
+def test_the_app_edits_tags_and_notes(client):
+    create_run(client)
+    response = client.patch("/api/runs/tiny-1", json={
+        "tags": [" baseline ", "cifar", "Baseline"], "notes": "LR too high?\nTry 1e-4.",
+    })
+    assert response.status_code == 200, response.text
+    assert response.json()["tags"] == ["baseline", "cifar"], "trimmed, each once"
+    assert response.json()["notes"] == "LR too high?\nTry 1e-4."
+
+    # What's left out stays as it is.
+    assert client.patch("/api/runs/tiny-1", json={"notes": ""}).json()["tags"] == ["baseline", "cifar"]
+    run = client.get("/api/runs/tiny-1").json()
+    assert (run["tags"], run["notes"]) == (["baseline", "cifar"], "")
+    assert client.get("/api/runs").json()[0]["tags"] == ["baseline", "cifar"]
+
+
+def test_tags_and_notes_from_the_logger_only_start_the_run(client):
+    run = create_run(client, tags=["sweep-3"], notes="Started from a script")
+    assert (run["tags"], run["notes"]) == (["sweep-3"], "Started from a script")
+    client.patch("/api/runs/tiny-1", json={"tags": ["best"]})
+    # The logger sends the description again (e.g. after run.watch()).
+    run = create_run(client, tags=["sweep-3"], notes="Started from a script")
+    assert run["tags"] == ["best"], "the app's edit wins"
+
+
+def test_bad_tags_and_notes_are_rejected(client):
+    create_run(client)
+    for body in ({"tags": [""]}, {"tags": ["x" * 41]}, {"tags": [f"t{i}" for i in range(21)]},
+                 {"notes": "x" * 10_001}):
+        assert client.patch("/api/runs/tiny-1", json=body).status_code == 422, body
+    assert client.patch("/api/runs/nope", json={"notes": "hi"}).status_code == 404
+
+
+def test_editing_notes_is_announced_live(client):
+    create_run(client)
+    with client.websocket_connect("/api/live") as ws:
+        ws.send_json({"type": "auth", "token": TOKEN})
+        assert ws.receive_json()["type"] == "ready"
+        client.patch("/api/runs/tiny-1", json={"notes": "hi"})
+        message = ws.receive_json()
+        assert (message["event"], message["runId"]) == ("updated", "tiny-1")
+
+
+def test_deleting_a_run_deletes_its_notes(client):
+    create_run(client)
+    client.patch("/api/runs/tiny-1", json={"tags": ["old"], "notes": "old"})
+    client.delete("/api/runs/tiny-1")
+    run = create_run(client)
+    assert (run["tags"], run["notes"]) == ([], "")
 
 
 def test_a_quiet_run_is_marked_crashed_and_comes_back(app, client, clock, notifications):

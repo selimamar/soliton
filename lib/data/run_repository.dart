@@ -4,11 +4,9 @@ import '../models/run.dart';
 
 /// The only way the UI gets data.
 ///
-/// Today this is backed by [MockRunRepository]. Later, an implementation
-/// talking to the backend server (HTTP + WebSocket) will replace it without
-/// any screen having to change. Put the raw HTTP/WebSocket code in a service
-/// class under `data/services/` and inject it into that repository, so the
-/// repository only maps responses to models (see the `fromJson` constructors).
+/// Backed by the server ([ApiRunRepository], with the raw HTTP in
+/// `services/api_client.dart`) or by demo data ([MockRunRepository]);
+/// screens don't know which.
 abstract interface class RunRepository {
   Future<List<Run>> fetchRuns();
 
@@ -24,6 +22,10 @@ abstract interface class RunRepository {
   /// The latest gradient norm of every layer, in model order. Much lighter
   /// than [fetchLayerStats] when only the comparison chart is needed.
   Future<List<LayerGradNorm>> fetchLayerGradNorms(String runId);
+
+  /// Replaces a run's [tags] and/or [notes] (null: unchanged) and returns
+  /// the run as saved (tags trimmed, each once).
+  Future<Run> updateNotes(String runId, {List<String>? tags, String? notes});
 }
 
 /// The requested run doesn't exist (e.g. a stale or mistyped link).

@@ -69,7 +69,7 @@ void main() {
     expect(find.text('Overview'), findsOneWidget);
     expect(find.text('Metrics'), findsOneWidget);
     expect(find.text('Layers'), findsOneWidget);
-    expect(find.text('Hyperparameters'), findsOneWidget);
+    expect(find.text('Tags and notes'), findsOneWidget); // The Overview, near its top.
 
     // Back returns to the list, because the detail route is nested under '/'.
     await tester.tap(find.byType(BackButton));
@@ -107,7 +107,7 @@ void main() {
 
     await tester.tap(find.text('Overview'));
     await tester.pumpAndSettle();
-    expect(find.text('Hyperparameters'), findsOneWidget);
+    expect(find.text('Tags and notes'), findsOneWidget); // The Overview, near its top.
     expect(tester.takeException(), isNull);
   });
 

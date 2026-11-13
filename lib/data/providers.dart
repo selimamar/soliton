@@ -99,3 +99,22 @@ final layerGradNormsProvider = FutureProvider.autoDispose.family<List<LayerGradN
   (ref, runId) => ref.watch(runRepositoryProvider).fetchLayerGradNorms(runId),
   retry: retryDataRequest,
 );
+
+/// Saves what people add to runs (tags, notes).
+final runNotesEditorProvider = Provider<RunNotesEditor>(RunNotesEditor.new);
+
+class RunNotesEditor {
+  RunNotesEditor(this._ref);
+
+  final Ref _ref;
+
+  /// Saves [tags] and/or [notes] (null: unchanged), then refreshes the
+  /// screens that show them. Throws what the repository throws.
+  Future<Run> save(String runId, {List<String>? tags, String? notes}) async {
+    final run = await _ref.read(runRepositoryProvider).updateNotes(runId, tags: tags, notes: notes);
+    _ref
+      ..invalidate(runsProvider)
+      ..invalidate(runProvider(runId));
+    return run;
+  }
+}

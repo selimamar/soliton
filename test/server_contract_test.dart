@@ -53,6 +53,25 @@ void main() {
     );
   }, skip: skip);
 
+  test('tags and notes are saved, then put back as they were', () async {
+    final client = ApiClient(connection());
+    addTearDown(client.close);
+    final repository = ApiRunRepository(client);
+    final run = (await repository.fetchRuns()).first;
+    addTearDown(() => repository.updateNotes(run.id, tags: run.tags, notes: run.notes));
+
+    final saved = await repository.updateNotes(
+      run.id,
+      tags: [' contract-test ', ...run.tags],
+      notes: 'Written by server_contract_test',
+    );
+    expect(saved.tags.first, 'contract-test', reason: 'trimmed by the server');
+    expect(saved.notes, 'Written by server_contract_test');
+    expect((await repository.fetchRun(run.id)).notes, saved.notes);
+    final onlyNotes = await repository.updateNotes(run.id, notes: 'second');
+    expect(onlyNotes.tags, saved.tags, reason: 'left out, so kept');
+  }, skip: skip);
+
   test('a wrong token is rejected', () async {
     final client = ApiClient(ServerConnection.parse(address!, 'wrong-token')!);
     addTearDown(client.close);

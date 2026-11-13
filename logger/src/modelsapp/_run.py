@@ -10,7 +10,7 @@ import threading
 import warnings
 import weakref
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any, Iterable, Mapping, Optional
 
 from ._upload import ApiClient, RunFiles, Uploader
 from ._util import (
@@ -50,6 +50,8 @@ class Run:
         train_samples: Any = None,
         val_samples: Any = None,
         loss: Any = None,
+        tags: Optional[Iterable[str]] = None,
+        notes: str = "",
         total_steps: int = 0,
         total_epochs: int = 0,
         host: Optional[str] = None,
@@ -88,6 +90,8 @@ class Run:
             "totalEpochs": int(total_epochs),
             "hyperparameters": _hyperparameters(config, train_samples, val_samples, loss),
             "architecture": None,
+            "tags": _clean_tags(tags),
+            "notes": str(notes or "")[:10_000],
         }
         self._files = RunFiles(self.directory)
         self._lock = threading.RLock()
@@ -218,6 +222,21 @@ class Run:
         if key not in self._warned:
             self._warned.add(key)
             warnings.warn(f"modelsapp: {message}", stacklevel=3)
+
+
+def _clean_tags(tags: Optional[Iterable[str]]) -> list:
+    """As the server takes them: trimmed, at most 40 characters, each once,
+    at most 20. A single string is one tag."""
+    if tags is None:
+        return []
+    if isinstance(tags, str):
+        tags = [tags]
+    clean: list = []
+    for tag in tags:
+        text = str(tag).strip()[:40]
+        if text and text.casefold() not in {t.casefold() for t in clean}:
+            clean.append(text)
+    return clean[:20]
 
 
 def _hyperparameters(config, train_samples, val_samples, loss) -> dict:

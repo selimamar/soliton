@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Annotated, Literal, Optional, Union
 
-from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints
 
 from .floats import decode_float
 
@@ -25,6 +25,22 @@ Name = Annotated[str, Field(min_length=1, max_length=200)]
 RUN_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
 
 
+def _distinct(tags: list[str]) -> list[str]:
+    """Each tag once (ignoring case), in the order given."""
+    seen: set[str] = set()
+    kept = []
+    for tag in tags:
+        if tag.casefold() not in seen:
+            seen.add(tag.casefold())
+            kept.append(tag)
+    return kept
+
+
+Tag = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)]
+Tags = Annotated[list[Tag], Field(max_length=20), AfterValidator(_distinct)]
+Notes = Annotated[str, Field(max_length=10_000)]
+
+
 class _In(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -40,6 +56,16 @@ class RunIn(_In):
     totalEpochs: int = Field(default=0, ge=0)
     hyperparameters: dict[str, str] = Field(default_factory=dict)
     architecture: Optional[dict] = None
+    # Only used when the run is created: after that, they're edited in the app.
+    tags: Tags = Field(default_factory=list)
+    notes: Notes = ""
+
+
+class RunNotesIn(_In):
+    """An edit from the app: what is left out stays as it is."""
+
+    tags: Optional[Tags] = None
+    notes: Optional[Notes] = None
 
 
 class MetricsEvent(_In):

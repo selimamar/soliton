@@ -76,7 +76,11 @@ flutter analyze           # lints
 What it does:
 
 - **Runs list** with status filters, live progress and a loss sparkline per run.
-- **Run detail**: Overview (progress; hyperparameters, led by the number of
+- **Organizing**: group the list by project, model, dataset, tag or host
+  (folding groups away), tag runs (e.g. `baseline`, `best`) and leave a
+  note on each. Tags and notes are saved on the server, so every device
+  sees them; the logger can set the first ones.
+- **Run detail**: Overview (progress; tags and notes; hyperparameters, led by the number of
   training and validation samples and the loss; a network diagram and the
   module tree), Metrics
   (loss, accuracy, learning rate, gradient norms, any other metric) and

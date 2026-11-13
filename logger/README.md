@@ -101,7 +101,8 @@ With DistributedDataParallel, log from rank 0 only.
 | Option | Default | |
 |---|---|---|
 | `name` | required | Shown in the app |
-| `project` | `""` | Shown under the name |
+| `project` | `""` | Shown under the name; the app can group runs by it |
+| `tags`, `notes` | none | To organise runs in the app, e.g. `tags=["baseline"]`, `notes="first try with AdamW"`. Only the starting values: they're then edited in the app, and the logger never overwrites them |
 | `config` | none | Hyperparameters: a dict (nested is fine) or argparse namespace |
 | `train_samples`, `val_samples` | none | How many samples are trained and validated on: a number, a dataset, or a DataLoader (its dataset is counted, not its batches) |
 | `loss` | none | The loss: the criterion module (shown with the settings that differ from the defaults, e.g. `CrossEntropyLoss(label_smoothing=0.1)`), a function, or a string |

@@ -78,7 +78,8 @@ def test_a_run_uploads_while_training(tmp_path, database_url):
     with LiveServer(database_url) as server:
         model = torch.nn.Sequential(torch.nn.Linear(4, 8), torch.nn.ReLU(), torch.nn.Linear(8, 1))
         run = modelsapp.init("live", project="tests", server=server.url, token=TOKEN,
-                             dir=str(tmp_path / "runs"), total_steps=20, host="test")
+                             dir=str(tmp_path / "runs"), total_steps=20, host="test",
+                             tags=["smoke-test"], notes="From the logger")
         run.watch(model, every=5)
         for step in range(20):
             model.zero_grad()
@@ -93,6 +94,7 @@ def test_a_run_uploads_while_training(tmp_path, database_url):
         stored = server.get(f"/api/runs/{run.id}")
         assert stored["status"] == "finished"
         assert stored["architecture"]["type"] == "Sequential"
+        assert (stored["tags"], stored["notes"]) == (["smoke-test"], "From the logger")
         assert len(stored["lossPreview"]) == 20
         metrics = {s["name"]: s for s in server.get(f"/api/runs/{run.id}/metrics")}
         assert len(metrics["train/loss"]["points"]) == 20

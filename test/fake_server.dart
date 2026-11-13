@@ -23,6 +23,9 @@ class FakeServer {
   var down = false;
   var requests = 0;
 
+  /// The bodies of the edits (PATCH requests) it received.
+  final edits = <Map<String, Object?>>[];
+
   final _data = MockRunRepository(latency: Duration.zero);
 
   /// For `apiClientFactoryProvider.overrideWithValue(server.clientFor)`.
@@ -38,6 +41,18 @@ class FakeServer {
     final path = request.url.pathSegments;
     if (path.length < 2 || path[0] != 'api') return _json({'detail': 'Not Found'}, status: 404);
     try {
+      if (request.method == 'PATCH' && path.length == 3 && path[1] == 'runs') {
+        final body = jsonDecode(request.body) as Map<String, Object?>;
+        edits.add(body);
+        final run = await _run(path[2]);
+        return _json(
+          (await _data.updateNotes(
+            run.id,
+            tags: (body['tags'] as List?)?.cast<String>(),
+            notes: body['notes'] as String?,
+          )).toJson(),
+        );
+      }
       return switch (path.sublist(1)) {
         ['session'] => _json({'ok': true, 'version': '0.1.0'}),
         ['runs'] => _json([

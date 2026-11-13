@@ -127,6 +127,19 @@ def test_the_data_and_loss_come_first_among_the_hyperparameters(tmp_path):
     ]
 
 
+def test_tags_and_notes_are_cleaned_up_as_the_server_takes_them(tmp_path):
+    run = offline(tmp_path, tags=[" baseline ", "", "Baseline", "x" * 50] + [f"t{i}" for i in range(30)],
+                  notes="first try")
+    run.finish()
+    description = records(run)[0]
+    assert description["tags"][:3] == ["baseline", "x" * 40, "t0"]
+    assert len(description["tags"]) == 20
+    assert description["notes"] == "first try"
+    run = offline(tmp_path, name="one", tags="sweep")
+    run.finish()
+    assert records(run)[0]["tags"] == ["sweep"], "a single string is one tag"
+
+
 def test_uncountable_samples_are_left_out_with_a_warning(tmp_path):
     with pytest.warns(UserWarning, match="training samples: can't count"):
         run = offline(tmp_path, train_samples=iter(range(10)))
