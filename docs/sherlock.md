@@ -10,13 +10,15 @@ Sherlock job + modelsapp logger  ──►  your server (public, HTTPS)  ◄─�
 
 ## 1. Put the server somewhere public
 
-Sherlock's nodes "are not directly accessible from the outside", so they
-can't host a web server your phone could reach, and long-running services
-are only allowed on lab-owned nodes, as jobs that restart at their time limit
-([Concepts](https://www.sherlock.stanford.edu/docs/concepts/),
-[Service jobs](https://www.sherlock.stanford.edu/docs/advanced-topics/service-jobs/)).
-Run `modelsapp-server` on a small cloud VM or hosting platform instead, with
-HTTPS: see [server/README.md](../server/README.md#putting-it-on-the-internet).
+Sherlock's nodes "are not directly accessible from the outside"
+([Concepts](https://www.sherlock.stanford.edu/docs/concepts/)), so they
+can't host a server your phone could reach. Run `modelsapp-server` on a
+small cloud VM or hosting platform instead, with HTTPS: see
+[server/README.md](../server/README.md#putting-it-on-the-internet).
+
+To try it out first, the server can run as a job inside Sherlock, and the app
+on your computer reaches it through an SSH tunnel: see
+[A server on Sherlock, for testing](#a-server-on-sherlock-for-testing).
 
 ## 2. Install the logger on Sherlock
 
@@ -115,6 +117,57 @@ modelsapp sync $SCRATCH/modelsapp-runs
 Sherlock doesn't allow loops, `watch` or anything else that syncs
 continuously on a login node. Between syncs more than 10 minutes apart, the
 server shows the run as "lost contact"; the next sync brings it back to live.
+
+## A server on Sherlock, for testing
+
+Sherlock's public `service` partition is for lightweight servers
+([Service jobs](https://www.sherlock.stanford.edu/docs/advanced-topics/service-jobs/)),
+so `modelsapp-server` can run there as a job: training jobs send it data
+live, and the app on your computer connects through an SSH tunnel while you
+use it. Your phone can't reach it, and it stops at the job's time limit
+(1 day in the script; the partition allows 2). Tested on 2026-11-12.
+
+1. Copy the server over (from this repository, on your computer):
+
+   ```bash
+   rsync -a server/src server/deploy/requirements.txt server/deploy/sherlock-server.sbatch sherlock:modelsapp-server/
+   ```
+
+2. Start it (on a login node). The first job creates its Python environment
+   in `$HOME/modelsapp-server/venv`, which takes a minute:
+
+   ```bash
+   mkdir -p $SCRATCH/modelsapp-server && cd $SCRATCH/modelsapp-server
+   sbatch $HOME/modelsapp-server/sherlock-server.sbatch
+   ```
+
+   While it runs, `$HOME/modelsapp-server/env.sh` holds its address and token
+   (readable by you only). The token itself is in `$HOME/modelsapp-server/token`
+   and stays the same for every job.
+
+3. In training job scripts, use it instead of `~/.modelsapp_env`:
+
+   ```bash
+   source $HOME/modelsapp-server/env.sh   # MODELSAPP_SERVER and MODELSAPP_TOKEN
+   ```
+
+4. Open a tunnel from your computer while you use the app, with the address
+   from `env.sh` (e.g. `http://sh03-01n01.int:45678`), and close it (Ctrl-C)
+   when you're done: Sherlock doesn't allow tunnels left running unattended.
+
+   ```bash
+   ssh -N -L 8100:NODE:PORT sherlock   # e.g. 8100:sh03-01n01.int:45678
+   ```
+
+5. In the app, Settings → Server: address `http://localhost:8100`, and the
+   token (`ssh sherlock cat modelsapp-server/token`).
+
+The database lives on the node's local disk while the server runs (SQLite
+doesn't belong on a network filesystem) and is copied to
+`$SCRATCH/modelsapp-server` when the job ends, for the next job to pick up.
+A node failure loses what changed since that job started. Stop the server
+with `scancel <job id>` (it saves the database first). Inside Sherlock the
+token travels over plain HTTP on the cluster's network.
 
 ## When a job ends
 
