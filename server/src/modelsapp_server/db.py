@@ -147,6 +147,23 @@ class LayerPointRow(Base):
     values: Mapped[dict] = mapped_column(JSON)
 
 
+class FieldRow(Base):
+    """A field snapshot at one step (see schemas.FieldEvent). [meta] holds
+    shape, originalShape, min, max and stats as JSON (stats may hold "NaN"
+    strings); the data stays base64 text, as the app reads it."""
+
+    __tablename__ = "field_snapshots"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    name: Mapped[str] = mapped_column(String(200), primary_key=True)
+    step: Mapped[int] = mapped_column(Integer, primary_key=True)
+    meta: Mapped[dict] = mapped_column(JSON)
+    prediction: Mapped[str] = mapped_column(Text)
+    target: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 def make_engine(url: str) -> Engine:
     if url.startswith("sqlite"):
         engine = create_engine(url, connect_args={"check_same_thread": False, "timeout": 30})

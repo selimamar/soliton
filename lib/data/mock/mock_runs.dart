@@ -8,18 +8,27 @@ import '../../models/run.dart';
 import '../../models/system_info.dart';
 import 'curve_generator.dart';
 import 'mock_architectures.dart';
+import 'mock_fields.dart';
 import 'mock_flows.dart';
 
 /// Everything the mock repository knows about one run.
 class MockRun {
-  const MockRun({required this.run, required this.metrics, required this.layerStats});
+  const MockRun({
+    required this.run,
+    required this.metrics,
+    required this.layerStats,
+    this.fields = const [],
+  });
 
   final Run run;
   final Map<String, MetricSeries> metrics;
   final List<LayerStats> layerStats;
+
+  /// Field snapshots (for the neural operator run).
+  final List<MockField> fields;
 }
 
-/// The four demo runs: two live, one crashed, one finished.
+/// The five demo runs: three live, one crashed, one finished.
 List<MockRun> buildMockRuns(DateTime now) => [
   _buildRun(
     id: 'resnet50-cifar',
@@ -165,6 +174,56 @@ List<MockRun> buildMockRuns(DateTime now) => [
     seed: 3,
   ),
   _buildRun(
+    id: 'fno-navier-stokes',
+    project: 'neural-operators',
+    host: 'Sherlock',
+    status: RunStatus.live,
+    startedAt: now.subtract(const Duration(hours: 1, minutes: 47)),
+    currentStep: 7000,
+    totalSteps: 20000,
+    totalEpochs: 400,
+    architecture: fno2d(),
+    system: const SystemInfo(
+      hostname: 'sh04-01n05.int',
+      os: 'Rocky Linux 8.10 (Linux 4.18.0)',
+      python: '3.12.4',
+      cpu: 'AMD EPYC 9124 16-Core Processor',
+      cpuCores: 8,
+      memoryGb: 32,
+      gpus: [GpuInfo(name: 'NVIDIA L40S', memoryGb: 48)],
+      gpuDriver: '550.54.15',
+      torch: '2.5.1',
+      cuda: '12.4',
+      cudnn: '9.1.0',
+      slurm: {
+        'jobId': '52094410',
+        'jobName': 'fno-ns',
+        'partition': 'gpu',
+        'nodes': 'sh04-01n05',
+        'cluster': 'sherlock',
+      },
+    ),
+    hyperparameters: const {
+      'Training samples': '1,000',
+      'Validation samples': '200',
+      'Loss': 'LpLoss (relative L2)',
+      'PDE': 'Navier–Stokes 2D, vorticity form',
+      'Viscosity': '1e-3',
+      'Resolution': '64 × 64',
+      'Fourier modes': '12 × 12',
+      'Width': '32',
+      'Optimizer': 'Adam',
+      'Learning rate': '1e-3 (step, ×0.5 every 100 epochs)',
+      'Batch size': '20',
+      'Dataset': 'Navier–Stokes 2D (FNO benchmark)',
+    },
+    initialLoss: 0.95,
+    finalLoss: 0.012,
+    peakLearningRate: 1e-3,
+    fieldsEvery: 500,
+    seed: 5,
+  ),
+  _buildRun(
     id: 'vit-small',
     project: 'image-classification',
     host: 'GCP',
@@ -227,6 +286,7 @@ MockRun _buildRun({
   double? finalAccuracy,
   required double peakLearningRate,
   String? statusMessage,
+  int? fieldsEvery,
   required int seed,
 }) {
   final crashed = status == RunStatus.crashed;
@@ -305,7 +365,19 @@ MockRun _buildRun({
     statusMessage: statusMessage,
   );
 
-  return MockRun(run: run, metrics: metrics, layerStats: layerStats);
+  return MockRun(
+    run: run,
+    metrics: metrics,
+    layerStats: layerStats,
+    fields: fieldsEvery == null
+        ? const []
+        : navierStokesFields(
+            currentStep: currentStep,
+            totalSteps: totalSteps,
+            every: fieldsEvery,
+            seed: seed,
+          ),
+  );
 }
 
 /// What the logger's system monitor would have sampled on [system]: GPUs

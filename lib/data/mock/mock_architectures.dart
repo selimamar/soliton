@@ -67,6 +67,34 @@ LayerInfo vitSmall() => LayerInfo(
   ],
 );
 
+/// A 2D Fourier neural operator (Li et al.): 4 spectral blocks of width 32,
+/// keeping 12 × 12 Fourier modes, on (vorticity, x, y) inputs.
+LayerInfo fno2d() => LayerInfo(
+  name: 'fno',
+  type: 'FNO2d',
+  children: [
+    const LayerInfo(name: 'lifting', type: 'Linear', ownParameters: 3 * 32 + 32),
+    LayerInfo(
+      name: 'blocks',
+      type: 'ModuleList',
+      children: [
+        for (var i = 0; i < 4; i++)
+          LayerInfo(
+            name: 'blocks.$i',
+            type: 'FNOBlock',
+            children: [
+              // Two corners of complex weights: in × out × 12 × 12 × 2 × 2 reals.
+              LayerInfo(name: 'blocks.$i.spectral', type: 'SpectralConv2d', ownParameters: 589824),
+              LayerInfo(name: 'blocks.$i.w', type: 'Conv2d', ownParameters: 32 * 32 + 32),
+            ],
+          ),
+      ],
+    ),
+    const LayerInfo(name: 'projection.0', type: 'Linear', ownParameters: 32 * 128 + 128),
+    const LayerInfo(name: 'projection.1', type: 'Linear', ownParameters: 128 + 1),
+  ],
+);
+
 /// A ResNet stage of [blocks] bottleneck blocks sharing [parameters].
 LayerInfo _stage(String name, {required int blocks, required int parameters}) => LayerInfo(
   name: name,

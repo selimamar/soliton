@@ -176,3 +176,24 @@ def test_a_crashing_demo_is_reported_as_crashed(tmp_path, database_url, monkeypa
         [stored] = server.get("/api/runs")
         assert stored["status"] == "crashed"
         assert stored["statusMessage"].startswith("FloatingPointError: Loss became NaN")
+
+
+def test_field_snapshots_reach_the_server(tmp_path, database_url):
+    np = pytest.importorskip("numpy")
+    x, y = np.meshgrid(np.linspace(0, 1, 256), np.linspace(0, 1, 256))
+    target = np.sin(2 * np.pi * x) * np.cos(2 * np.pi * y)
+    with LiveServer(database_url) as server:
+        run = modelsapp.init("fno", server=server.url, token=TOKEN, dir=str(tmp_path),
+                             system_metrics=False)
+        for step in (0, 100):
+            run.log({"train/loss": 1.0 / (step + 1)}, step=step)
+            run.log_field("u", target + 0.1 / (step + 1), target)
+        run.finish()
+        fields = server.get(f"/api/runs/{run.id}/fields")
+        assert [f["name"] for f in fields] == ["u"]
+        assert fields[0]["shape"] == [128, 128]
+        assert [s["step"] for s in fields[0]["steps"]] == [0, 100]
+        assert fields[0]["steps"][1]["stats"]["rmse"] == pytest.approx(0.1 / 101)
+        snapshot = server.get(f"/api/runs/{run.id}/fields/snapshot?name=u")
+        assert snapshot["step"] == 100
+        assert snapshot["originalShape"] == [256, 256]

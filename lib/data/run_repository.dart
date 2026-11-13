@@ -1,3 +1,4 @@
+import '../models/field_snapshot.dart';
 import '../models/layer_stats.dart';
 import '../models/metric_series.dart';
 import '../models/run.dart';
@@ -23,9 +24,28 @@ abstract interface class RunRepository {
   /// than [fetchLayerStats] when only the comparison chart is needed.
   Future<List<LayerGradNorm>> fetchLayerGradNorms(String runId);
 
+  /// The fields the run logs snapshots of (e.g. a PDE solution), each with
+  /// the steps it was logged at and their errors; empty for most runs.
+  Future<List<FieldSummary>> fetchFields(String runId);
+
+  /// One snapshot of field [name] at [step]. Throws
+  /// [FieldNotFoundException] if there is none.
+  Future<FieldSnapshot> fetchFieldSnapshot(String runId, String name, int step);
+
   /// Replaces a run's [tags] and/or [notes] (null: unchanged) and returns
   /// the run as saved (tags trimmed, each once).
   Future<Run> updateNotes(String runId, {List<String>? tags, String? notes});
+}
+
+/// The run has no snapshot of that field at that step. Retrying won't help.
+class FieldNotFoundException implements Exception {
+  const FieldNotFoundException(this.name, this.step);
+
+  final String name;
+  final int step;
+
+  @override
+  String toString() => 'FieldNotFoundException: no field "$name" at step $step';
 }
 
 /// The requested run doesn't exist (e.g. a stale or mistyped link).

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/field_snapshot.dart';
 import '../models/layer_stats.dart';
 import '../models/metric_series.dart';
 import '../models/run.dart';
@@ -68,7 +69,11 @@ final runRepositoryProvider = Provider<RunRepository>((ref) {
 /// quick attempts, and never retries what retrying can't fix (an unknown
 /// run, a rejected token).
 Duration? retryDataRequest(int retryCount, Object error) {
-  if (error is RunNotFoundException || error is UnauthorizedException) return null;
+  if (error is RunNotFoundException ||
+      error is FieldNotFoundException ||
+      error is UnauthorizedException) {
+    return null;
+  }
   return ProviderContainer.defaultRetry(retryCount, error, maxRetries: 3);
 }
 
@@ -97,6 +102,20 @@ final layerStatsProvider = FutureProvider.autoDispose.family<List<LayerStats>, S
 
 final layerGradNormsProvider = FutureProvider.autoDispose.family<List<LayerGradNorm>, String>(
   (ref, runId) => ref.watch(runRepositoryProvider).fetchLayerGradNorms(runId),
+  retry: retryDataRequest,
+);
+
+final fieldsProvider = FutureProvider.autoDispose.family<List<FieldSummary>, String>(
+  (ref, runId) => ref.watch(runRepositoryProvider).fetchFields(runId),
+  retry: retryDataRequest,
+);
+
+/// Which snapshot to fetch: a run's field at a step.
+typedef FieldSnapshotKey = ({String runId, String name, int step});
+
+/// A logged snapshot never changes, so live updates don't refetch it.
+final fieldSnapshotProvider = FutureProvider.autoDispose.family<FieldSnapshot, FieldSnapshotKey>(
+  (ref, key) => ref.watch(runRepositoryProvider).fetchFieldSnapshot(key.runId, key.name, key.step),
   retry: retryDataRequest,
 );
 

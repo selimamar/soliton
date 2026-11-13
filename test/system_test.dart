@@ -34,6 +34,9 @@ class NoSystemRepository extends MockRunRepository {
 Future<void> openSystemTab(WidgetTester tester, String runId) async {
   routerOf(tester).go('/runs/$runId');
   await tester.pumpAndSettle();
+  // On a phone, the tab bar scrolls and System starts off screen.
+  await tester.ensureVisible(find.text('System'));
+  await tester.pumpAndSettle();
   await tester.tap(find.text('System'));
   await tester.pumpAndSettle();
 }

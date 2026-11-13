@@ -70,8 +70,20 @@ class FakeServer {
         ['runs', final id, 'grad-norms'] => _json([
           for (final layer in await _data.fetchLayerGradNorms((await _run(id)).id)) layer.toJson(),
         ]),
+        ['runs', final id, 'fields'] => _json([
+          for (final field in await _data.fetchFields((await _run(id)).id)) field.toJson(),
+        ]),
+        ['runs', final id, 'fields', 'snapshot'] => _json(
+          (await _data.fetchFieldSnapshot(
+            (await _run(id)).id,
+            request.url.queryParameters['name']!,
+            int.parse(request.url.queryParameters['step']!),
+          )).toJson(),
+        ),
         _ => _json({'detail': 'Not Found'}, status: 404),
       };
+    } on FieldNotFoundException catch (error) {
+      return _json({'detail': "No field '${error.name} at step ${error.step}'"}, status: 404);
     } on RunNotFoundException catch (error) {
       return _json({'detail': "No run with id '${error.runId}'"}, status: 404);
     }

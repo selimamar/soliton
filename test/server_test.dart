@@ -158,7 +158,7 @@ void main() {
       final store = MemorySettingsStore();
       await tester.pumpWidget(app(store));
       await tester.pumpAndSettle();
-      expect(find.text('All · 4'), findsOneWidget, reason: 'demo data first');
+      expect(find.text('All · 5'), findsOneWidget, reason: 'demo data first');
       expect(find.textContaining('Demo data.'), findsOneWidget);
 
       await tester.tap(find.widgetWithText(TextButton, 'Connect'));
@@ -218,7 +218,7 @@ void main() {
       await tester.tap(find.text('Disconnect and use demo data'));
       await tester.pumpAndSettle();
 
-      expect(find.text('All · 4'), findsOneWidget);
+      expect(find.text('All · 5'), findsOneWidget);
       expect(store.getString('serverToken'), isNull);
       expect(sockets.opened.single.closed, isTrue);
     });

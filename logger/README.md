@@ -124,6 +124,34 @@ counts is sent along.
 
 With DistributedDataParallel, log from rank 0 only.
 
+### `run.log_field(name, prediction, target=None, step=None, max_size=128)`
+
+For neural operators and other models that predict a field (a PDE solution
+on a grid): a snapshot of the prediction next to the true field. The app's
+**Fields** tab shows the prediction, the target and their difference as
+heatmaps (2D) or lines (1D), with a slider through the logged steps and the
+relative L2 error over training.
+
+```python
+if step % 500 == 0:                      # e.g. at each validation
+    with torch.no_grad():
+        pred = model(val_a[:1])          # The same sample each time.
+    run.log_field("vorticity", pred[0, 0], val_u[0, 0], step=step)
+```
+
+- Arrays are NumPy arrays or PyTorch tensors (any device). They must be 1D
+  or 2D once dimensions of size 1 are dropped: log one sample and one
+  channel, and one slice of a 3D field (`u[0, 0, :, :, depth // 2]`). For
+  several variables, log each under its own name (`"u"`, `"v"`, `"p"`).
+- The relative L2 error, RMSE and largest pointwise error are computed on the
+  full arrays (ignoring NaN). The snapshot itself is averaged down to at most
+  `max_size` points per axis (up to 512) and sent as 16-bit values: about
+  90 KB for 128 × 128 with its target.
+- `step` defaults to the latest step logged, so a field logged right after
+  `run.log(..., step=step)` lands on the same step.
+- Snapshots are much larger than metrics: log one every few hundred steps,
+  not every step. Needs NumPy.
+
 ### All `init()` options
 
 | Option | Default | |

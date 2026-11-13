@@ -19,14 +19,19 @@ class ChartLine {
 
 /// What a chart's x-axis counts: training steps, or epochs.
 class ChartXAxis {
-  const ChartXAxis.steps() : stepsPerEpoch = null;
+  const ChartXAxis.steps() : stepsPerEpoch = null, label = 'Step';
 
   /// Epochs, assuming the same number of steps in each.
-  const ChartXAxis.epochs(double this.stepsPerEpoch);
+  const ChartXAxis.epochs(double this.stepsPerEpoch) : label = 'Epoch';
+
+  /// Positions that aren't training steps, e.g. grid points of a 1D field
+  /// (the series' "steps" are then the point indices).
+  const ChartXAxis.positions(this.label) : stepsPerEpoch = null;
 
   final double? stepsPerEpoch;
 
-  String get label => stepsPerEpoch == null ? 'Step' : 'Epoch';
+  /// "Step", "Epoch", or what the positions are, for tooltips.
+  final String label;
 
   double position(int step) => stepsPerEpoch == null ? step.toDouble() : step / stepsPerEpoch!;
 
@@ -56,6 +61,7 @@ class LineChartCard extends StatelessWidget {
     this.logScale = false,
     this.xAxis = const ChartXAxis.steps(),
     this.yRange,
+    this.showLatest = true,
   });
 
   final String title;
@@ -79,6 +85,10 @@ class LineChartCard extends StatelessWidget {
   /// outside it), e.g. 0 to 100 for a percentage. Linear scale only.
   final ({double min, double max})? yRange;
 
+  /// Shows the first line's latest value next to the title. Off for lines
+  /// that aren't over time (e.g. a field along x).
+  final bool showLatest;
+
   /// The value's height on the chart, or null if it can't be drawn.
   double? _plotY(double value) {
     if (!value.isFinite) return null;
@@ -96,7 +106,7 @@ class LineChartCard extends StatelessWidget {
       for (final line in lines)
         if (line.series.points.any((p) => _plotY(p.value) != null)) line,
     ];
-    final latest = plottable.isEmpty ? null : plottable.first.series.latest;
+    final latest = plottable.isEmpty || !showLatest ? null : plottable.first.series.latest;
     final emptyText = !hasData
         ? 'No data yet'
         : hasFinite && logScale

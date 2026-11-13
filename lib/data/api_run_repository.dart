@@ -1,3 +1,4 @@
+import '../models/field_snapshot.dart';
 import '../models/layer_stats.dart';
 import '../models/metric_series.dart';
 import '../models/run.dart';
@@ -45,6 +46,28 @@ class ApiRunRepository implements RunRepository {
     return [
       for (final json in (list as List).cast<Map<String, Object?>>()) LayerGradNorm.fromJson(json),
     ];
+  }
+
+  @override
+  Future<List<FieldSummary>> fetchFields(String runId) async {
+    final list = await _object(runId, '${_runPath(runId)}/fields');
+    return [
+      for (final json in (list as List).cast<Map<String, Object?>>()) FieldSummary.fromJson(json),
+    ];
+  }
+
+  @override
+  Future<FieldSnapshot> fetchFieldSnapshot(String runId, String name, int step) async {
+    try {
+      final json = await _client.getJson(
+        '${_runPath(runId)}/fields/snapshot',
+        query: {'name': name, 'step': '$step'},
+      );
+      return FieldSnapshot.fromJson(json! as Map<String, Object?>);
+    } on NotFoundException {
+      // The run or the snapshot: either way, there is nothing to show.
+      throw FieldNotFoundException(name, step);
+    }
   }
 
   @override

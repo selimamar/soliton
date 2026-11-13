@@ -406,3 +406,76 @@ def test_numbers_in_json_are_never_bare_nan(client):
     for path in ("/api/runs", "/api/runs/tiny-1/metrics"):
         assert "NaN" not in client.get(path).text.replace('"NaN"', "")
     assert math.isnan(float("nan"))  # (sanity: the check above would catch a bare NaN)
+
+
+# Field snapshots ----------------------------------------------------------------
+
+
+def field(step, name="u", shape=(2, 3), target=True, **stats):
+    import base64
+    import struct
+
+    count = math.prod(shape)
+    data = base64.b64encode(struct.pack(f"<{count}H", *range(count))).decode()
+    return {"type": "field", "step": step, "name": name, "shape": list(shape),
+            "originalShape": [s * 2 for s in shape], "min": -1.0, "max": 1.0,
+            "prediction": data, "target": data if target else None,
+            "stats": stats or {"relL2": 0.5 / (step + 1)}}
+
+
+def test_field_snapshots_are_listed_without_their_data(client):
+    create_run(client)
+    send(client, [field(0), field(100), field(100, name="p", target=False, relL2="NaN")])
+    fields = client.get("/api/runs/tiny-1/fields").json()
+    assert fields == [
+        {"name": "p", "shape": [2, 3], "steps": [{"step": 100, "stats": {"relL2": "NaN"}}]},
+        {"name": "u", "shape": [2, 3], "steps": [
+            {"step": 0, "stats": {"relL2": 0.5}},
+            {"step": 100, "stats": {"relL2": 0.5 / 101}},
+        ]},
+    ]
+    assert client.get("/api/runs/tiny-1").json()["currentStep"] == 100
+
+
+def test_a_field_snapshot_reads_back_whole(client):
+    create_run(client)
+    sent = field(100)
+    send(client, [field(0), sent])
+    latest = client.get("/api/runs/tiny-1/fields/snapshot", params={"name": "u"}).json()
+    assert latest == {k: v for k, v in sent.items() if k != "type"}
+    first = client.get("/api/runs/tiny-1/fields/snapshot", params={"name": "u", "step": 0})
+    assert first.json()["step"] == 0
+    missing = client.get("/api/runs/tiny-1/fields/snapshot", params={"name": "u", "step": 5})
+    assert missing.status_code == 404
+    assert client.get("/api/runs/tiny-1/fields/snapshot", params={"name": "v"}).status_code == 404
+    assert client.get("/api/runs/nope/fields").status_code == 404
+
+
+def test_a_resent_snapshot_replaces_itself(client):
+    create_run(client)
+    send(client, [field(0, relL2=0.9)])
+    send(client, [field(0, relL2=0.1)])
+    assert client.get("/api/runs/tiny-1/fields").json()[0]["steps"] == [
+        {"step": 0, "stats": {"relL2": 0.1}}
+    ]
+
+
+@pytest.mark.parametrize("change", [
+    {"shape": [2, 4]},                 # Data too short for the shape.
+    {"shape": [1, 2, 3]},              # 3D.
+    {"shape": [513, 1]},               # Too big.
+    {"prediction": "not base64!"},
+    {"target": "AAAA"},                # Target of another size.
+])
+def test_bad_field_snapshots_are_rejected(client, change):
+    create_run(client)
+    response = client.post("/api/runs/tiny-1/events", json={"events": [{**field(0), **change}]})
+    assert response.status_code == 422
+
+
+def test_deleting_a_run_deletes_its_fields(client):
+    create_run(client)
+    send(client, [field(0)])
+    client.delete("/api/runs/tiny-1")
+    create_run(client)
+    assert client.get("/api/runs/tiny-1/fields").json() == []

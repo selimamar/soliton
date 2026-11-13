@@ -1,3 +1,4 @@
+import '../../models/field_snapshot.dart';
 import '../../models/layer_stats.dart';
 import '../../models/metric_series.dart';
 import '../../models/run.dart';
@@ -63,6 +64,23 @@ class MockRunRepository implements RunRepository {
       for (final layer in _find(runId).layerStats)
         LayerGradNorm(layerName: layer.layerName, gradNorm: layer.gradNorm.latest ?? double.nan),
     ];
+  }
+
+  @override
+  Future<List<FieldSummary>> fetchFields(String runId) async {
+    await Future<void>.delayed(latency);
+    return [for (final field in _find(runId).fields) field.summary()];
+  }
+
+  @override
+  Future<FieldSnapshot> fetchFieldSnapshot(String runId, String name, int step) async {
+    await Future<void>.delayed(latency);
+    for (final field in _find(runId).fields) {
+      if (field.name == name) {
+        if (field.snapshot(step) case final snapshot?) return snapshot;
+      }
+    }
+    throw FieldNotFoundException(name, step);
   }
 
   MockRun _find(String runId) =>

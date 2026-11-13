@@ -22,7 +22,7 @@ from .db import make_engine, make_sessionmaker
 from .live import Broadcaster
 from .notify import NtfyNotifier
 from .schemas import RUN_ID_PATTERN, EventsIn, RunIn, RunNotesIn
-from .store import Change, RunNotFound, Store, utcnow
+from .store import Change, FieldNotFound, RunNotFound, Store, utcnow
 
 log = logging.getLogger(__name__)
 
@@ -103,6 +103,10 @@ def create_app(
     async def run_not_found(_, error: RunNotFound):
         return JSONResponse(status_code=404, content={"detail": f"No run with id '{error.args[0]}'"})
 
+    @app.exception_handler(FieldNotFound)
+    async def field_not_found(_, error: FieldNotFound):
+        return JSONResponse(status_code=404, content={"detail": f"No field '{error.args[0]}'"})
+
     @app.get("/api/health")
     def health():
         """Public: for uptime checks."""
@@ -155,6 +159,20 @@ def create_app(
     @app.get("/api/runs/{run_id}/grad-norms", dependencies=auth)
     def grad_norms(run_id: RunId):
         return store.grad_norms(run_id)
+
+    @app.get("/api/runs/{run_id}/fields", dependencies=auth)
+    def fields(run_id: RunId):
+        """The logged fields and their steps (no data)."""
+        return store.fields(run_id)
+
+    @app.get("/api/runs/{run_id}/fields/snapshot", dependencies=auth)
+    def field_snapshot(
+        run_id: RunId,
+        name: Annotated[str, Query(min_length=1, max_length=200)],
+        step: Annotated[Optional[int], Query(ge=0)] = None,
+    ):
+        """One snapshot of a field (the latest without [step])."""
+        return store.field_snapshot(run_id, name, step)
 
     @app.websocket("/api/live")
     async def live(websocket: WebSocket):

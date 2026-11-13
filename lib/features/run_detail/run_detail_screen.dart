@@ -4,16 +4,21 @@ import 'package:material_ui/material_ui.dart';
 import '../../data/providers.dart';
 import '../../shared/widgets/async_value_view.dart';
 import '../../shared/widgets/status_chip.dart';
+import 'tabs/fields_tab.dart';
 import 'tabs/layers_tab.dart';
 import 'tabs/metrics_tab.dart';
 import 'tabs/overview_tab.dart';
 import 'tabs/system_tab.dart';
 
-/// One run, split into four tabs: Overview, Metrics, Layers and System.
+/// One run, split into five tabs: Overview, Metrics, Layers, Fields and
+/// System.
 class RunDetailScreen extends ConsumerWidget {
   const RunDetailScreen({super.key, required this.runId});
 
   final String runId;
+
+  /// Narrowest screen on which the tabs share the width equally.
+  static const _fixedTabsWidth = 520.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -21,7 +26,7 @@ class RunDetailScreen extends ConsumerWidget {
     final loadedRun = run.value;
 
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Scaffold(
         appBar: AppBar(
           title: Text(loadedRun?.name ?? runId),
@@ -35,11 +40,18 @@ class RunDetailScreen extends ConsumerWidget {
           // Tabs only make sense once there is a run to show.
           bottom: loadedRun == null
               ? null
-              : const TabBar(
-                  tabs: [
+              : TabBar(
+                  // Five fixed tabs don't fit their labels on a phone: scroll
+                  // there, fill the width on larger screens.
+                  isScrollable: MediaQuery.sizeOf(context).width < _fixedTabsWidth,
+                  tabAlignment: MediaQuery.sizeOf(context).width < _fixedTabsWidth
+                      ? TabAlignment.start
+                      : TabAlignment.fill,
+                  tabs: const [
                     Tab(text: 'Overview'),
                     Tab(text: 'Metrics'),
                     Tab(text: 'Layers'),
+                    Tab(text: 'Fields'),
                     Tab(text: 'System'),
                   ],
                 ),
@@ -57,6 +69,7 @@ class RunDetailScreen extends ConsumerWidget {
               _KeepAlive(child: OverviewTab(run: run)),
               _KeepAlive(child: MetricsTab(runId: run.id)),
               _KeepAlive(child: LayersTab(runId: run.id)),
+              _KeepAlive(child: FieldsTab(runId: run.id)),
               _KeepAlive(child: SystemTab(run: run)),
             ],
           ),

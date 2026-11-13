@@ -15,9 +15,9 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from .db import LayerPointRow, LayerRow, MetricPointRow, RunNotesRow, RunRow, RunSystemRow
+from .db import FieldRow, LayerPointRow, LayerRow, MetricPointRow, RunNotesRow, RunRow, RunSystemRow
 from .floats import decode_float, downsample, encode_float, from_columns, to_columns
-from .schemas import LayersEvent, MetricsEvent, RunIn, RunNotesIn, StatusEvent
+from .schemas import FieldEvent, LayersEvent, MetricsEvent, RunIn, RunNotesIn, StatusEvent
 
 TRAIN_LOSS = "train/loss"
 LOSS_PREVIEW_POINTS = 60
@@ -26,6 +26,10 @@ _CHUNK = 500  # Rows per INSERT statement.
 
 class RunNotFound(Exception):
     pass
+
+
+class FieldNotFound(Exception):
+    """The run exists, but has no such field (at that step)."""
 
 
 @dataclass(frozen=True)
@@ -99,6 +103,23 @@ def _series(name: str, points: list[tuple[int, float]], max_points: int) -> dict
     return {
         "name": name,
         "points": [{"step": step, "value": encode_float(value)} for step, value in sampled],
+    }
+
+
+def _field_row(run_id: str, event: FieldEvent) -> dict:
+    return {
+        "run_id": run_id,
+        "name": event.name,
+        "step": event.step,
+        "meta": {
+            "shape": list(event.shape),
+            "originalShape": list(event.originalShape or event.shape),
+            "min": encode_float(event.min),
+            "max": encode_float(event.max),
+            "stats": {k: encode_float(v) for k, v in event.stats.items()},
+        },
+        "prediction": event.prediction,
+        "target": event.target,
     }
 
 
@@ -182,7 +203,8 @@ class Store:
         with self._sessions.begin() as session:
             row = self._find(session, run_id)
             change = _change(row, "deleted")
-            for table in (MetricPointRow, LayerPointRow, LayerRow, RunNotesRow, RunSystemRow):
+            for table in (MetricPointRow, LayerPointRow, LayerRow, FieldRow, RunNotesRow,
+                          RunSystemRow):
                 session.execute(delete(table).where(table.run_id == run_id))
             session.delete(row)
             return change
@@ -200,6 +222,7 @@ class Store:
             )}
             metric_rows: list[dict] = []
             layer_point_rows: list[dict] = []
+            field_rows: list[dict] = []
             for event in events:
                 # Clamp to now: a clock running ahead mustn't keep a dead run alive.
                 time = min(event.time or now, now)
@@ -235,9 +258,15 @@ class Store:
                             run_id, event.step, position, layer, layers, session, layer_point_rows
                         )
                     row.current_step = max(row.current_step, event.step)
+                elif isinstance(event, FieldEvent):
+                    field_rows.append(_field_row(run_id, event))
+                    row.current_step = max(row.current_step, event.step)
 
             _upsert(session, MetricPointRow, metric_rows, ("run_id", "name", "step"))
             _upsert(session, LayerPointRow, layer_point_rows, ("run_id", "layer", "step"))
+            # One at a time: each row is up to a megabyte or so.
+            for field_row in field_rows:
+                _upsert(session, FieldRow, [field_row], ("run_id", "name", "step"))
             changes.append(_change(row, "updated"))
         return changes
 
@@ -365,6 +394,38 @@ class Store:
                 for row in rows
                 if row.latest.get("gradNorm") is not None
             ]
+
+    # Field snapshots ------------------------------------------------------
+
+    def fields(self, run_id: str) -> list[dict]:
+        """Every logged field, with the steps it was logged at and their
+        error statistics; without the data itself."""
+        with self._sessions() as session:
+            self._find(session, run_id)
+            result = session.execute(
+                select(FieldRow.name, FieldRow.step, FieldRow.meta)
+                .where(FieldRow.run_id == run_id)
+                .order_by(FieldRow.name, FieldRow.step)
+            )
+            fields: dict[str, dict] = {}
+            for name, step, meta in result:
+                field = fields.setdefault(name, {"name": name, "steps": []})
+                field["shape"] = meta["shape"]  # The latest step's.
+                field["steps"].append({"step": step, "stats": meta.get("stats", {})})
+        return list(fields.values())
+
+    def field_snapshot(self, run_id: str, name: str, step: int | None) -> dict:
+        """One snapshot; the latest one if [step] is None."""
+        with self._sessions() as session:
+            self._find(session, run_id)
+            query = select(FieldRow).where(FieldRow.run_id == run_id, FieldRow.name == name)
+            query = (query.order_by(FieldRow.step.desc()).limit(1) if step is None
+                     else query.where(FieldRow.step == step))
+            row = session.scalars(query).first()
+            if row is None:
+                raise FieldNotFound(name if step is None else f"{name} at step {step}")
+            return {"name": row.name, "step": row.step, **row.meta,
+                    "prediction": row.prediction, "target": row.target}
 
     # Helpers --------------------------------------------------------------
 

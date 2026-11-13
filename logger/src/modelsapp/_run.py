@@ -12,6 +12,7 @@ import weakref
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional
 
+from ._fields import field_event
 from ._system import SystemMonitor, framework_versions, system_info
 from ._upload import ApiClient, RunFiles, Uploader
 from ._util import (
@@ -163,6 +164,41 @@ class Run:
                 layers = self._watcher.collect()
                 if layers:
                     self._files.append({"type": "layers", "step": step, "time": now, "layers": layers})
+
+    def log_field(self, name: str, prediction: Any, target: Any = None,
+                  step: Optional[int] = None, *, max_size: int = 128) -> None:
+        """Logs a snapshot of a predicted field, e.g. a PDE solution, with the
+        true one ([target]) to compare it with, at [step] (default: the
+        latest step logged).
+
+        Arrays may be NumPy arrays or PyTorch tensors, 1D or 2D once
+        dimensions of size 1 are removed: log one sample, one channel (and
+        one slice of a 3D field). Log the same validation sample each time,
+        so the app can show it improving. The app shows the prediction, the
+        target and their difference, and the relative L2 error over time;
+        the errors are computed on the full arrays, but the snapshot is
+        averaged down to at most [max_size] points per axis.
+
+        Snapshots are larger than metrics: log one every few hundred steps
+        (or every validation), not every step.
+        """
+        if self._finished:
+            return
+        name = str(name).strip()[:200]
+        if not name:
+            raise ValueError("a field needs a name")
+        event, warning = field_event(name, prediction, target, max_size)
+        if warning:
+            self._warn_once(f"field:{name}", warning)
+        with self._lock:
+            step = max(self._last_step, 0) if step is None else int(step)
+            if step < 0:
+                raise ValueError("step must be 0 or more")
+            self._last_step = max(self._last_step, step)
+            record = {"type": "field", "step": step, "time": utc_now_iso(), **event}
+            if self._epoch is not None:
+                record["epoch"] = self._epoch
+            self._files.append(record)
 
     def watch(self, model, every: int = 100, layers: LayerFilter = None, max_layers: int = 64) -> None:
         """Collects per-layer statistics from a PyTorch model.

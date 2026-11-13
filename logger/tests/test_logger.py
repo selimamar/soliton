@@ -216,3 +216,87 @@ def test_online_mode_needs_a_server_and_token(tmp_path, monkeypatch):
     monkeypatch.delenv("MODELSAPP_TOKEN", raising=False)
     with pytest.raises(ValueError, match="server and a token"):
         modelsapp.init("x", mode="online", dir=str(tmp_path))
+
+
+# Field snapshots --------------------------------------------------------------
+
+np = pytest.importorskip("numpy")
+
+
+def decode_field(record, key="prediction"):
+    import base64
+
+    from modelsapp._fields import LEVELS, NAN_CODE
+
+    codes = np.frombuffer(base64.b64decode(record[key]), dtype="<u2").reshape(record["shape"])
+    values = record["min"] + codes / LEVELS * (record["max"] - record["min"])
+    return np.where(codes == NAN_CODE, np.nan, values)
+
+
+def test_a_field_snapshot_round_trips_through_16_bits(tmp_path):
+    x, y = np.meshgrid(np.linspace(0, 1, 40), np.linspace(0, 1, 30))
+    target = np.sin(2 * np.pi * x) * np.cos(np.pi * y)
+    prediction = target + 0.01
+    with offline(tmp_path) as run:
+        run.log({"train/loss": 1.0}, step=7)
+        run.log_field("u", prediction[None, None], target)  # Batch and channel dims dropped.
+    record = [r for r in records(run) if r["type"] == "field"][0]
+    assert record["step"] == 7, "the latest step"
+    assert record["shape"] == [30, 40] == record["originalShape"]
+    assert record["min"] == pytest.approx(target.min())
+    assert record["max"] == pytest.approx(prediction.max())
+    step = (record["max"] - record["min"]) / 65534
+    assert np.abs(decode_field(record) - prediction).max() <= step
+    assert np.abs(decode_field(record, "target") - target).max() <= step
+    stats = record["stats"]
+    assert stats["rmse"] == pytest.approx(0.01)
+    assert stats["maxError"] == pytest.approx(0.01)
+    assert stats["relL2"] == pytest.approx(0.01 / np.sqrt(np.mean(target**2)))
+
+
+def test_big_fields_are_averaged_down_but_errors_use_the_full_grid(tmp_path):
+    target = np.zeros((300, 256))
+    prediction = np.zeros((300, 256))
+    prediction[0, 0] = 1.0  # One bad point: averaged away, but not from maxError.
+    with offline(tmp_path) as run:
+        run.log_field("p", prediction, target, step=3, max_size=128)
+    record = [r for r in records(run) if r["type"] == "field"][0]
+    assert record["shape"] == [100, 128]  # Blocks of 3 x 2 points.
+    assert record["originalShape"] == [300, 256]
+    assert record["stats"]["maxError"] == 1.0
+    assert decode_field(record).max() == pytest.approx(1 / 6, abs=1e-4)
+
+
+def test_a_field_without_target_and_with_nan(tmp_path):
+    values = np.array([0.0, np.nan, 2.0, np.inf])
+    with offline(tmp_path) as run:
+        run.log_field("u(x)", values, step=0)
+    record = [r for r in records(run) if r["type"] == "field"][0]
+    assert record["target"] is None and record["stats"] == {}
+    decoded = decode_field(record)
+    assert decoded[0] == 0 and decoded[2] == pytest.approx(2)
+    assert np.isnan(decoded[1]) and np.isnan(decoded[3])
+    json.dumps(record, allow_nan=False)
+
+
+def test_fields_from_pytorch(tmp_path):
+    torch = pytest.importorskip("torch")
+    target = torch.randn(1, 16, 16)
+    prediction = (target + 0.1).requires_grad_()
+    with offline(tmp_path) as run:
+        run.log_field("u", prediction, target, step=0)
+    record = [r for r in records(run) if r["type"] == "field"][0]
+    assert record["shape"] == [16, 16]
+    assert record["stats"]["rmse"] == pytest.approx(0.1, rel=1e-4)
+
+
+@pytest.mark.parametrize("prediction, target, message", [
+    (np.zeros((4, 4, 4)), None, "1D or 2D"),
+    (np.zeros((4, 4)), np.zeros((4, 5)), "different shapes"),
+    (np.zeros(0), None, "empty"),
+    ("text", None, "expected an array"),
+])
+def test_fields_that_cannot_be_shown_are_refused(tmp_path, prediction, target, message):
+    with offline(tmp_path) as run:
+        with pytest.raises((ValueError, TypeError), match=message):
+            run.log_field("u", prediction, target)

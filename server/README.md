@@ -100,6 +100,8 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
 | `GET /api/runs/{id}/metrics?maxPoints=1000` | Every metric, downsampled keeping spikes and NaN |
 | `GET /api/runs/{id}/layers?maxPoints=500` | Per-layer statistics, in model order |
 | `GET /api/runs/{id}/grad-norms` | Each layer's latest gradient norm |
+| `GET /api/runs/{id}/fields` | The logged fields: each one's shape and steps, with error statistics |
+| `GET /api/runs/{id}/fields/snapshot?name=u&step=1200` | One field snapshot (the latest without `step`) |
 | `WS /api/live` | Live updates (below) |
 
 **Events** (`POST .../events` with `{"events": [...]}`, up to 5000 per batch):
@@ -110,8 +112,18 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
 {"type": "layers", "step": 1200, "layers": [{"layerName": "conv1",
  "activationMean": 0.1, "activationStd": 0.9, "gradNorm": 0.02, "deadFraction": 0.1,
  "activationHistogram": {"min": -2, "max": 3, "counts": [1, 5, 9], "zeroCount": 40}}]}
+{"type": "field", "step": 1200, "name": "vorticity", "shape": [128, 128],
+ "originalShape": [256, 256], "min": -3.1, "max": 2.8, "prediction": "<base64>",
+ "target": "<base64>", "stats": {"relL2": 0.031, "rmse": 0.02, "maxError": 0.4}}
 {"type": "status", "status": "crashed", "message": "RuntimeError: CUDA out of memory"}
 ```
+
+**Field snapshots** (`run.log_field(...)` in the logger): a 1D or 2D array
+of at most 512 points per axis, row by row, each point a little-endian
+unsigned 16-bit code: 0 is `min`, 65534 is `max`, 65535 is NaN. `target`
+(the true field, same shape and scale) may be `null`. `stats` are computed
+by the logger on the full-resolution arrays. A snapshot is keyed by run,
+field name and step, like a metric point.
 
 **Tags and notes** (`PATCH /api/runs/{id}` with `{"tags": ["baseline"], "notes": "..."}`;
 leave a field out to keep it): up to 20 tags of 1–40 characters (trimmed,

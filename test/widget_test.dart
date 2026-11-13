@@ -27,10 +27,10 @@ class FlakyRunRepository extends MockRunRepository {
   }
 }
 
-/// All four demo runs are listed. The list is lazy and the test screen only
+/// All five demo runs are listed. The list is lazy and the test screen only
 /// fits three cards, so the last one is checked by scrolling to it.
 void expectAllRuns(WidgetTester tester) {
-  expect(find.text('All · 4'), findsOneWidget);
+  expect(find.text('All · 5'), findsOneWidget);
   expect(find.text('resnet50-cifar'), findsOneWidget);
 }
 
@@ -54,7 +54,7 @@ void main() {
     expect(find.byType(RunCard), findsOneWidget);
     expect(find.text('unet-seg'), findsOneWidget);
 
-    await tester.tap(find.text('All · 4'));
+    await tester.tap(find.text('All · 5'));
     await tester.pumpAndSettle();
     expectAllRuns(tester);
   });

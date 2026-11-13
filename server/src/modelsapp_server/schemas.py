@@ -2,11 +2,22 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
+import math
 from datetime import datetime, timezone
 from typing import Annotated, Literal, Optional, Union
 
-from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
 
 from .floats import decode_float
 
@@ -112,6 +123,42 @@ class LayersEvent(_In):
     layers: list[LayerIn] = Field(max_length=1000)
 
 
+FIELD_MAX_SIZE = 512  # Points per axis.
+FieldStat = Annotated[str, StringConstraints(max_length=40)]
+
+
+class FieldEvent(_In):
+    """A snapshot of a predicted field and its target (see the logger's
+    _fields.py): base64 16-bit codes between [min] and [max]."""
+
+    type: Literal["field"]
+    step: int = Field(ge=0)
+    epoch: Optional[int] = Field(default=None, ge=0)
+    time: Time = None
+    name: Name
+    shape: list[Annotated[int, Field(ge=1, le=FIELD_MAX_SIZE)]] = Field(min_length=1, max_length=2)
+    originalShape: Optional[list[Annotated[int, Field(ge=1)]]] = Field(default=None, max_length=2)
+    min: JsonFloat
+    max: JsonFloat
+    prediction: str = Field(max_length=FIELD_MAX_SIZE**2 * 3)
+    target: Optional[str] = Field(default=None, max_length=FIELD_MAX_SIZE**2 * 3)
+    stats: dict[FieldStat, JsonFloat] = Field(default_factory=dict, max_length=20)
+
+    @model_validator(mode="after")
+    def _sizes_match(self) -> "FieldEvent":
+        expected = 2 * math.prod(self.shape)
+        for label, data in (("prediction", self.prediction), ("target", self.target)):
+            if data is None:
+                continue
+            try:
+                size = len(base64.b64decode(data, validate=True))
+            except (binascii.Error, ValueError):
+                raise ValueError(f"{label} is not base64") from None
+            if size != expected:
+                raise ValueError(f"{label} has {size} bytes, but shape {self.shape} needs {expected}")
+        return self
+
+
 class StatusEvent(_In):
     type: Literal["status"]
     status: Literal["finished", "crashed"]
@@ -119,7 +166,9 @@ class StatusEvent(_In):
     time: Time = None
 
 
-Event = Annotated[Union[MetricsEvent, LayersEvent, StatusEvent], Field(discriminator="type")]
+Event = Annotated[
+    Union[MetricsEvent, LayersEvent, FieldEvent, StatusEvent], Field(discriminator="type")
+]
 
 
 class EventsIn(_In):
