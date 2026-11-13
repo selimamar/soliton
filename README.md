@@ -101,9 +101,16 @@ What it does:
   at any logged step; rollouts played over time with their error frame by
   frame; 3D fields (and 3D rollouts) in a 3D view you can turn, as a volume,
   a maximum projection or isosurfaces, or in slices; and the field through
-  each layer of the model (in 3D too, for a 3D model).
+  each layer of the model (in 3D too, for a 3D model). Also: the energy
+  spectrum, conservation checks along a rollout, the error over the whole
+  validation set with its worst samples, error against resolution or a PDE
+  parameter, and the learned Fourier weights. Maps show the run's domain
+  coordinates; charts and maps export as PNG images.
+- **Sweep**: a project's runs as a grid over two hyperparameters (e.g.
+  Fourier modes × width) or a scatter of two metrics (error against cost).
 - **Live updates**: charts and the list refresh as the server receives data.
-- **Compare**: pick up to six runs on the runs list to overlay their curves.
+- **Compare**: pick up to six runs on the runs list to overlay their curves,
+  and see the fields they share side by side on one colour scale.
 - **Chart options**: log scale (loss, learning rate, gradient norm), and
   steps or epochs on the x-axis. Saved, like all settings.
 - **Alerts** while the app is open when a run finishes or crashes. For

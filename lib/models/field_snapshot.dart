@@ -10,15 +10,101 @@ abstract final class FieldStatKeys {
   static const relL2 = 'relL2';
   static const rmse = 'rmse';
   static const maxError = 'maxError';
+
+  /// Per frame of a rollout (the logger's conservation checks): mean (mass),
+  /// mean square (energy) and minimum (positivity), of the prediction and
+  /// of the target.
+  static const mean = 'mean';
+  static const meanSquare = 'meanSquare';
+  static const min = 'min';
+  static const targetMean = 'targetMean';
+  static const targetMeanSquare = 'targetMeanSquare';
+  static const targetMin = 'targetMin';
 }
 
 /// What a field shows: the model's output (next to the true field), or
 /// what one layer outputs inside the model.
 enum FieldKind {
   output,
-  layer;
+  layer,
 
-  static FieldKind parse(Object? json) => json == 'layer' ? layer : output;
+  /// One of a validation set's worst samples (`run.log_eval`).
+  worst,
+
+  /// A layer's learned Fourier weights, over the modes.
+  weights;
+
+  static FieldKind parse(Object? json) => values.where((k) => k.name == json).firstOrNull ?? output;
+}
+
+/// The radially averaged energy spectrum of a field (its last frame, for a
+/// rollout): energy per shell of wavenumber [k].
+class FieldSpectrum {
+  const FieldSpectrum({required this.k, required this.prediction, this.target});
+
+  factory FieldSpectrum.fromJson(Map<String, Object?> json) {
+    List<double> list(Object? values) =>
+        List.unmodifiable([for (final v in values! as List) decodeDouble(v)]);
+    return FieldSpectrum(
+      k: list(json['k']),
+      prediction: list(json['prediction']),
+      target: json['target'] == null ? null : list(json['target']),
+    );
+  }
+
+  final List<double> k;
+  final List<double> prediction;
+  final List<double>? target;
+
+  Map<String, Object?> toJson() => {
+    'k': [for (final v in k) encodeDouble(v)],
+    'prediction': [for (final v in prediction) encodeDouble(v)],
+    'target': target == null ? null : [for (final v in target!) encodeDouble(v)],
+  };
+}
+
+/// Where a field lives: (start, end) per axis, and the axes' names.
+class FieldDomain {
+  const FieldDomain({this.extent, this.axes});
+
+  /// Null when the run didn't say: then positions are grid indices.
+  final List<(double, double)>? extent;
+  final List<String>? axes;
+
+  bool get isEmpty => extent == null && axes == null;
+
+  /// Axis [axis]'s name: as logged, else "axis 0", "axis 1", ...
+  String axisName(int axis) => axes != null && axis < axes!.length ? axes![axis] : 'axis $axis';
+
+  /// Where grid point [index] of [count] along [axis] is: the domain
+  /// coordinate (cell centres), or the index itself.
+  double coordinate(int axis, double index, int count) {
+    final range = extent != null && axis < extent!.length ? extent![axis] : null;
+    if (range == null || count <= 0) return index;
+    return range.$1 + (index + 0.5) / count * (range.$2 - range.$1);
+  }
+
+  static FieldDomain fromJson(Map<String, Object?> json) => FieldDomain(
+    extent: switch (json['extent']) {
+      final List<Object?> e => List.unmodifiable([
+        for (final pair in e) (decodeDouble((pair! as List)[0]), decodeDouble((pair as List)[1])),
+      ]),
+      _ => null,
+    },
+    axes: switch (json['axes']) {
+      final List<Object?> a => List.unmodifiable([for (final n in a) n! as String]),
+      _ => null,
+    },
+  );
+
+  Map<String, Object?> toJson() => {
+    'extent': extent == null
+        ? null
+        : [
+            for (final (a, b) in extent!) [encodeDouble(a), encodeDouble(b)],
+          ],
+    'axes': axes,
+  };
 }
 
 /// One step at which a field was logged, with its error statistics.
@@ -57,6 +143,7 @@ class FieldSummary {
     this.frames = 1,
     this.layer,
     this.position,
+    this.worstOf,
   });
 
   factory FieldSummary.fromJson(Map<String, Object?> json) => FieldSummary(
@@ -66,6 +153,7 @@ class FieldSummary {
     frames: (json['frames'] as num?)?.toInt() ?? 1,
     layer: json['layer'] as String?,
     position: (json['position'] as num?)?.toInt(),
+    worstOf: json['worstOf'] as String?,
     steps: List.unmodifiable([
       for (final s in json['steps']! as List) FieldStep.fromJson(s as Map<String, Object?>),
     ]),
@@ -84,6 +172,9 @@ class FieldSummary {
   final String? layer;
   final int? position;
 
+  /// For a worst sample: the field it is a sample of.
+  final String? worstOf;
+
   /// In step order.
   final List<FieldStep> steps;
 
@@ -99,6 +190,7 @@ class FieldSummary {
     'frames': frames,
     'layer': layer,
     'position': position,
+    'worstOf': worstOf,
     'steps': [for (final s in steps) s.toJson()],
   };
 
@@ -141,6 +233,9 @@ class FieldSnapshot {
     this.layer,
     this.reduction,
     this.layerShape,
+    this.sample,
+    this.domain = const FieldDomain(),
+    this.spectrum,
   }) : originalShape = originalShape ?? shape,
        times = times ?? List.unmodifiable([for (var i = 0; i < frames; i++) i.toDouble()]) {
     if (shape.isEmpty || shape.length > 3) {
@@ -188,6 +283,12 @@ class FieldSnapshot {
       layer: json['layer'] as String?,
       reduction: json['reduction'] as String?,
       layerShape: ints(json['layerShape']),
+      sample: (json['sample'] as num?)?.toInt(),
+      domain: FieldDomain.fromJson(json),
+      spectrum: switch (json['spectrum']) {
+        final Map<String, Object?> s => FieldSpectrum.fromJson(s),
+        _ => null,
+      },
     );
   }
 
@@ -221,6 +322,15 @@ class FieldSnapshot {
   final String? layer;
   final String? reduction;
   final List<int>? layerShape;
+
+  /// For a worst sample: its index in the validation set.
+  final int? sample;
+
+  /// The domain, if the run logged one (else positions are grid indices).
+  final FieldDomain domain;
+
+  /// The energy spectrum, computed by the logger on the full arrays.
+  final FieldSpectrum? spectrum;
 
   int get dimensions => shape.length;
   bool get isRollout => frames > 1;
@@ -318,6 +428,9 @@ class FieldSnapshot {
       'layer': layer,
       'reduction': reduction,
       'layerShape': layerShape,
+      'sample': sample,
+      ...domain.toJson(),
+      'spectrum': spectrum?.toJson(),
     };
   }
 

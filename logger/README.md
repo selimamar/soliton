@@ -68,8 +68,19 @@ instructions for it.
 ### Metric names
 
 The app gives these their own charts: `train/loss`, `val/loss`,
-`val/accuracy`, `optim/lr` and `optim/grad_norm`. Anything else shows up under
-"Other metrics". Values may be Python, NumPy or PyTorch scalars (tensors are
+`val/accuracy`, `optim/lr` and `optim/grad_norm`. Groups of names share one
+chart:
+
+- `loss/<term>` (e.g. `loss/data`, `loss/pde`, `loss/bc`): the terms of a
+  composite or physics-informed loss, so you see when one takes over.
+- `val/rel_l2` and `val/rel_l2/<variable>` (e.g. `val/rel_l2/u`): the
+  validation error overall and per variable. The Sweep screen compares runs
+  on `val/rel_l2`.
+- `perf/inference_s` and `perf/solver_s`: seconds per sample for the model
+  and for the numerical solver it replaces. The Overview shows the speed-up;
+  the Sweep screen plots error against cost.
+
+Anything else shows up under "Other metrics". Values may be Python, NumPy or PyTorch scalars (tensors are
 read with `.item()`), and may be NaN or infinite: that's what a diverging run
 logs, and the app shows it. Names starting with `system/` are the logger's
 own (below) and go to the System tab.
@@ -201,6 +212,48 @@ All three:
   `run.log(..., step=step)` lands on the same step.
 - Snapshots are much larger than metrics: log them every few hundred steps,
   not every step. They need NumPy.
+- `extent=[(x0, x1), (y0, y1)]` and `axes=["y", "x"]` (one per array axis, in
+  order) give the domain: the app shows coordinates instead of grid indices,
+  and names the 3D view's axes.
+- `log_field` and `log_rollout` also send the **energy spectrum** (radially
+  averaged, on the full grid; a rollout's last frame) of the prediction and
+  the target, and a rollout sends per frame the **mean, mean square and
+  minimum** of both, for the app's conservation checks (mass, energy,
+  positivity).
+
+### Diagnostics: `run.log_eval`, `run.log_curve`, `run.log_fourier_weights`
+
+**`run.log_eval(name, predictions, targets, step=None, worst=4, sample_axis=0,
+max_size=64, extent=None, axes=None)`**: the whole validation set, one sample
+per entry along `sample_axis`. The relative L2 error of every sample is
+computed on the full arrays; only a summary (a 24-bin histogram, the median,
+90th percentile and worst) and the `worst` samples (as field snapshots, so
+the app can show them in full) are sent. A sample with no finite values
+counts as worst.
+
+```python
+with torch.no_grad():
+    pred = torch.cat([model(a) for a, _ in val_loader])     # [N, 1, 64, 64]
+run.log_eval("u", pred[:, 0], val_u[:, 0], step=step)
+```
+
+**`run.log_curve(name, x, y, step=None, x_label="", y_label="Relative L2",
+train_range=None)`**: a curve measured at one step. For **resolution
+invariance**, evaluate at several grids; for **generalization**, across a PDE
+parameter, with `train_range` the values seen in training (the app shades
+it):
+
+```python
+run.log_curve("error vs resolution", [64, 128, 256], errors, x_label="Resolution",
+              train_range=(64, 64))
+run.log_curve("error vs viscosity", nus, errors, x_label="Viscosity",
+              train_range=(5e-4, 2e-3))
+```
+
+**`run.log_fourier_weights(model, step=None, max_size=64)`**: for every complex
+parameter with 3 or more axes (FNO-style spectral weights, in × out ×
+modes...), |w| averaged over the channels, as a map over the modes. Weights
+still large at the highest kept mode suggest more modes would help.
 
 ### All `init()` options
 
@@ -213,6 +266,7 @@ All three:
 | `config` | none | Hyperparameters: a dict (nested is fine) or argparse namespace |
 | `train_samples`, `val_samples` | none | How many samples are trained and validated on: a number, a dataset, or a DataLoader (its dataset is counted, not its batches) |
 | `loss` | none | The loss: the criterion module (shown with the settings that differ from the defaults, e.g. `CrossEntropyLoss(label_smoothing=0.1)`), a function, or a string |
+| `pde` | none | What is solved, listed right after the data and loss: `{"equation": "Navier-Stokes 2D", "viscosity": 1e-3, "domain": "[0, 1]² periodic", "resolution": "64 × 64"}` (nested is fine). The equation becomes the `PDE` hyperparameter, which the app can group runs by |
 | `total_steps`, `total_epochs` | 0 | Progress bar, time left, epochs on the x-axis |
 | `host` | detected | Where it runs: `MODELSAPP_HOST`, else the Slurm cluster (e.g. "Sherlock"), the platform (Modal, RunPod, Colab, Kaggle, SageMaker, AWS Batch), the cloud (AWS, GCP, Azure, DigitalOcean, Hetzner, Oracle Cloud, Vultr, Linode), Kubernetes, else the machine's name |
 | `id` | new | Pass a previous run's id to continue it |

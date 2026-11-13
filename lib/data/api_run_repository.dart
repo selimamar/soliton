@@ -2,6 +2,7 @@ import '../models/field_snapshot.dart';
 import '../models/layer_stats.dart';
 import '../models/metric_series.dart';
 import '../models/run.dart';
+import '../models/run_insights.dart';
 import 'run_repository.dart';
 import 'services/api_client.dart';
 
@@ -68,6 +69,36 @@ class ApiRunRepository implements RunRepository {
       // The run or the snapshot: either way, there is nothing to show.
       throw FieldNotFoundException(name, step);
     }
+  }
+
+  @override
+  Future<List<LoggedSeries<EvalStep>>> fetchEvals(String runId) async {
+    final list = await _object(runId, '${_runPath(runId)}/evals');
+    return [
+      for (final json in (list as List).cast<Map<String, Object?>>())
+        LoggedSeries.fromJson(json, EvalStep.fromJson),
+    ];
+  }
+
+  @override
+  Future<List<LoggedSeries<CurveStep>>> fetchCurves(String runId) async {
+    final list = await _object(runId, '${_runPath(runId)}/curves');
+    return [
+      for (final json in (list as List).cast<Map<String, Object?>>())
+        LoggedSeries.fromJson(json, CurveStep.fromJson),
+    ];
+  }
+
+  @override
+  Future<Map<String, Map<String, LatestMetric>>> fetchLatestMetrics(List<String> names) async {
+    final json = await _client.getJson('/metrics/latest', query: {'names': names.join(',')});
+    return {
+      for (final run in (json! as Map<String, Object?>).entries)
+        run.key: {
+          for (final metric in (run.value! as Map<String, Object?>).entries)
+            metric.key: LatestMetric.fromJson(metric.value! as Map<String, Object?>),
+        },
+    };
   }
 
   @override

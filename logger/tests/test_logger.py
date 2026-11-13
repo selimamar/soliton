@@ -451,3 +451,97 @@ def test_capture_layers_by_name_and_channel_axis(tmp_path):
     (record,) = field_records(run)
     assert record["layer"] == "blocks.1.w"
     assert record["reduction"] == "norm over 8 channels"
+
+
+# Validation sets, curves, spectra, physics, domains, Fourier weights, PDE -----
+
+
+def test_a_whole_validation_set_and_its_worst_samples(tmp_path):
+    rng = np.random.default_rng(3)
+    targets = rng.random((60, 1, 16, 16)) + 1
+    noise = np.linspace(0.001, 0.1, 60)[:, None, None, None]   # Sample 59 is worst.
+    predictions = targets * (1 + noise)                          # Relative L2 = noise, exactly.
+    predictions[13] = np.nan                                     # Diverged: worst of all.
+    with offline(tmp_path) as run:
+        run.log_eval("u", predictions, targets, step=8, worst=3)
+    evals = [r for r in records(run) if r["type"] == "eval"]
+    worst = [r for r in field_records(run) if r["kind"] == "worst"]
+    (summary,) = evals
+    assert summary["count"] == 60 and summary["step"] == 8
+    assert summary["stats"]["nonFinite"] == 1
+    assert [w["sample"] for w in summary["worst"]][:2] == [13, 59]
+    assert summary["worst"][0]["relL2"] == "NaN", "as JSON allows"
+    assert sum(summary["histogram"]["counts"]) == 59
+    assert summary["stats"]["median"] < summary["stats"]["p90"] < summary["stats"]["max"]
+    assert [w["name"] for w in worst] == ["worst/u/1", "worst/u/2", "worst/u/3"]
+    assert worst[1]["sample"] == 59 and worst[1]["worstOf"] == "u"
+    assert worst[1]["shape"] == [16, 16]
+    json.dumps(records(run), allow_nan=False)
+
+
+def test_curves_are_sorted_and_keep_the_training_range(tmp_path):
+    with offline(tmp_path) as run:
+        run.log_curve("error vs viscosity", [1e-2, 1e-4, 1e-3], [0.3, 0.2, 0.05],
+                      x_label="Viscosity", train_range=(2e-3, 5e-4), step=2)
+        with pytest.raises(ValueError, match="x has 2 values"):
+            run.log_curve("bad", [1, 2], [1])
+    (curve,) = [r for r in records(run) if r["type"] == "curve"]
+    assert curve["x"] == [1e-4, 1e-3, 1e-2] and curve["y"] == [0.2, 0.05, 0.3]
+    assert curve["trainRange"] == [5e-4, 2e-3] and curve["xLabel"] == "Viscosity"
+
+
+def test_fields_carry_their_spectrum_and_domain(tmp_path):
+    x = np.linspace(0, 1, 64, endpoint=False)
+    xx, yy = np.meshgrid(x, x, indexing="ij")
+    field = np.sin(2 * np.pi * 3 * xx) + 0.1 * np.sin(2 * np.pi * 10 * yy)
+    with offline(tmp_path) as run:
+        run.log_field("u", field, field, extent=[(0, 1), (0, 2)], axes=["y", "x"], step=0)
+        with pytest.raises(ValueError, match="2 names"):
+            run.log_field("u", field, axes=["x"])
+    (record,) = field_records(run)
+    assert record["extent"] == [[0.0, 1.0], [0.0, 2.0]] and record["axes"] == ["y", "x"]
+    spectrum = record["spectrum"]
+    assert spectrum["k"][:3] == [1.0, 2.0, 3.0] and len(spectrum["k"]) == 32
+    peaks = sorted(range(32), key=lambda i: -spectrum["target"][i])[:2]
+    assert sorted(spectrum["k"][i] for i in peaks) == [3.0, 10.0]
+    assert spectrum["prediction"] == spectrum["target"]
+
+
+def test_a_rollout_carries_mass_energy_and_minimum_per_frame(tmp_path):
+    frames = np.stack([np.full((8, 8), 1.0 + t) for t in range(4)])
+    with offline(tmp_path) as run:
+        run.log_rollout("rho", frames * 1.01, frames, step=0)
+    stats = field_records(run)[0]["frameStats"]
+    assert stats["targetMean"] == [1.0, 2.0, 3.0, 4.0]
+    assert stats["mean"] == pytest.approx([1.01, 2.02, 3.03, 4.04])
+    assert stats["targetMeanSquare"] == [1.0, 4.0, 9.0, 16.0]
+    assert stats["min"] == pytest.approx(stats["mean"])
+
+
+def test_fourier_weights_are_mapped_over_the_modes(tmp_path):
+    torch = pytest.importorskip("torch")
+
+    class Spectral(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.weights1 = torch.nn.Parameter(torch.ones(4, 6, 5, 3, dtype=torch.cfloat) * 2)
+            self.bias = torch.nn.Parameter(torch.zeros(3))
+
+    with offline(tmp_path) as run:
+        run.log_fourier_weights(torch.nn.Sequential(Spectral()), step=4)
+    (record,) = field_records(run)
+    assert record["kind"] == "weights" and record["layer"] == "0.weights1"
+    assert record["shape"] == [5, 3] and record["layerShape"] == [4, 6, 5, 3]
+    assert record["reduction"] == "mean |w| over 4 × 6 channels"
+    assert decode_field(record) == pytest.approx(np.full((5, 3), 2.0), abs=1e-3)
+
+
+def test_the_pde_leads_the_hyperparameters(tmp_path):
+    run = offline(tmp_path, pde={"equation": "Darcy flow 2D", "resolution": "85 x 85",
+                                 "coefficients": {"contrast": 12}},
+                  config={"modes": 12})
+    hyperparameters = records(run)[0]["hyperparameters"]
+    assert list(hyperparameters)[:3] == ["PDE", "PDE resolution", "PDE coefficients contrast"]
+    assert hyperparameters["PDE"] == "Darcy flow 2D"
+    assert hyperparameters["modes"] == "12"
+    run.finish()

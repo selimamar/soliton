@@ -39,8 +39,22 @@ class MetricsTab extends ConsumerWidget {
         final accuracy = metrics[MetricKeys.valAccuracy];
         final learningRate = metrics[MetricKeys.learningRate];
         final gradNorm = metrics[MetricKeys.gradNorm];
+        final lossTerms = [
+          for (final e in metrics.entries)
+            if (MetricKeys.isLossTerm(e.key)) e,
+        ];
+        final relL2 = [
+          for (final e in metrics.entries)
+            if (MetricKeys.isRelL2(e.key)) e,
+        ]..sort((a, b) => a.key.length.compareTo(b.key.length)); // Overall first.
         final otherMetrics = metrics.entries
-            .where((e) => !MetricKeys.all.contains(e.key) && !MetricKeys.isSystem(e.key))
+            .where(
+              (e) =>
+                  !MetricKeys.all.contains(e.key) &&
+                  !MetricKeys.isSystem(e.key) &&
+                  !MetricKeys.isLossTerm(e.key) &&
+                  !MetricKeys.isRelL2(e.key),
+            )
             .toList();
 
         return SpacedListView(
@@ -57,6 +71,40 @@ class MetricsTab extends ConsumerWidget {
                   ChartLine(label: 'Validation', color: ChartColors.validation, series: valLoss),
               ],
             ),
+            if (lossTerms.isNotEmpty)
+              LineChartCard(
+                title: 'Loss terms',
+                logScale: log,
+                xAxis: xAxis,
+                showLatest: false,
+                lines: [
+                  for (final (i, e) in lossTerms.indexed)
+                    ChartLine(
+                      label: e.key.substring('loss/'.length),
+                      color: ChartColors.runs[i % ChartColors.runs.length],
+                      series: e.value,
+                    ),
+                ],
+              ),
+            if (relL2.isNotEmpty)
+              LineChartCard(
+                title: relL2.length > 1 ? 'Relative L2 per variable' : 'Relative L2 (validation)',
+                logScale: log,
+                xAxis: xAxis,
+                formatValue: formatRelativeError,
+                formatTick: (v, _) => formatRelativeError(v),
+                showLatest: relL2.length == 1,
+                lines: [
+                  for (final (i, e) in relL2.indexed)
+                    ChartLine(
+                      label: e.key == MetricKeys.relL2
+                          ? 'All variables'
+                          : e.key.substring(MetricKeys.relL2.length + 1),
+                      color: ChartColors.runs[i % ChartColors.runs.length],
+                      series: e.value,
+                    ),
+                ],
+              ),
             if (accuracy != null)
               LineChartCard(
                 title: 'Validation accuracy',

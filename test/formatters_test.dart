@@ -3,6 +3,16 @@ import 'package:models_app/shared/formatters.dart';
 import 'package:models_app/shared/widgets/line_chart_card.dart';
 
 void main() {
+  test('coordinates keep 3 significant digits, without trailing zeros', () {
+    expect(formatCoordinate(1), '1');
+    expect(formatCoordinate(0), '0');
+    expect(formatCoordinate(0.0078125), '0.00781');
+    expect(formatCoordinate(2 * 3.14159265), '6.28');
+    expect(formatCoordinate(-0.5), '-0.5');
+    expect(formatCoordinate(1.5e-6), '1.5e-6');
+    expect(formatCoordinate(2500), '2500');
+  });
+
   test('formatCount', () {
     expect(formatCount(512), '512');
     expect(formatCount(9408), '9.4k');

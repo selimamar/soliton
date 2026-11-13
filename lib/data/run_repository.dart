@@ -2,6 +2,7 @@ import '../models/field_snapshot.dart';
 import '../models/layer_stats.dart';
 import '../models/metric_series.dart';
 import '../models/run.dart';
+import '../models/run_insights.dart';
 
 /// The only way the UI gets data.
 ///
@@ -31,6 +32,16 @@ abstract interface class RunRepository {
   /// One snapshot of field [name] at [step]. Throws
   /// [FieldNotFoundException] if there is none.
   Future<FieldSnapshot> fetchFieldSnapshot(String runId, String name, int step);
+
+  /// Validation-set summaries (`run.log_eval`), per field name.
+  Future<List<LoggedSeries<EvalStep>>> fetchEvals(String runId);
+
+  /// Curves (`run.log_curve`), e.g. error against resolution, per name.
+  Future<List<LoggedSeries<CurveStep>>> fetchCurves(String runId);
+
+  /// For sweeps: per run id, the latest and lowest value of each metric in
+  /// [names] that the run logged.
+  Future<Map<String, Map<String, LatestMetric>>> fetchLatestMetrics(List<String> names);
 
   /// Replaces a run's [tags] and/or [notes] (null: unchanged) and returns
   /// the run as saved (tags trimmed, each once).

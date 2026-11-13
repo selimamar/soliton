@@ -13,7 +13,15 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
-from ._fields import DEFAULT_POINTS, capture, field_event, layer_event
+from ._fields import (
+    DEFAULT_POINTS,
+    capture,
+    curve_event,
+    eval_events,
+    field_event,
+    fourier_weight_events,
+    layer_event,
+)
 from ._system import SystemMonitor, framework_versions, system_info
 from ._upload import ApiClient, RunFiles, Uploader
 from ._util import (
@@ -22,6 +30,7 @@ from ._util import (
     describe_loss,
     detect_host,
     encode_float,
+    encode_floats,
     flatten_config,
     new_run_id,
     to_float,
@@ -53,6 +62,7 @@ class Run:
         train_samples: Any = None,
         val_samples: Any = None,
         loss: Any = None,
+        pde: Optional[Mapping[str, Any]] = None,
         tags: Optional[Iterable[str]] = None,
         notes: str = "",
         system_metrics: bool = True,
@@ -93,7 +103,7 @@ class Run:
             "startedAt": utc_now_iso(),
             "totalSteps": int(total_steps),
             "totalEpochs": int(total_epochs),
-            "hyperparameters": _hyperparameters(config, train_samples, val_samples, loss),
+            "hyperparameters": _hyperparameters(config, train_samples, val_samples, loss, pde),
             "architecture": None,
             "tags": _clean_tags(tags),
             "notes": str(notes or "")[:10_000],
@@ -168,7 +178,8 @@ class Run:
 
     def log_field(self, name: str, prediction: Any, target: Any = None,
                   step: Optional[int] = None, *, max_size: Optional[int] = None,
-                  max_points: int = DEFAULT_POINTS) -> None:
+                  max_points: int = DEFAULT_POINTS, extent: Optional[Sequence[Any]] = None,
+                  axes: Optional[Sequence[str]] = None) -> None:
         """Logs a snapshot of a predicted field, e.g. a PDE solution, with the
         true one ([target]) to compare it with, at [step] (default: the
         latest step logged).
@@ -184,19 +195,26 @@ class Run:
         (default 4M, at most 16M; 4M is about 11 MB to upload and to load in
         the app, per array).
 
+        [extent]: the domain, one (start, end) per axis, e.g. [(0, 2*pi),
+        (0, 1)]; [axes]: their names, e.g. ["x", "y"]. The app then shows
+        coordinates instead of grid indices. The energy spectrum of the
+        prediction and target is computed on the full arrays and sent along.
+
         Snapshots are larger than metrics: log one every few hundred steps
         (or every validation), not every step.
         """
         if self._finished:
             return
         event, warning = field_event(_field_name(name), prediction, target, max_size=max_size,
-                                     max_points=max_points)
+                                     max_points=max_points, extent=extent, axes=axes)
         self._append_field(event, step, warning)
 
     def log_rollout(self, name: str, prediction: Any, target: Any = None,
                     step: Optional[int] = None, *, times: Optional[Sequence[float]] = None,
                     time_axis: int = 0, max_size: Optional[int] = None,
-                    max_frames: int = 64, max_points: int = DEFAULT_POINTS) -> None:
+                    max_frames: int = 64, max_points: int = DEFAULT_POINTS,
+                    extent: Optional[Sequence[Any]] = None,
+                    axes: Optional[Sequence[str]] = None) -> None:
         """Logs a rollout: a field over time, e.g. an autoregressive
         prediction of [frames, x, y] next to the true trajectory.
 
@@ -208,13 +226,74 @@ class Run:
         (always the first and the last), each averaged down to at most
         [max_size] points per axis (default 128), and all frames together to
         at most [max_points] values (default 4M, at most 16M).
+
+        Per frame, the mean (mass), mean square (energy) and minimum
+        (positivity) of the prediction and the target are sent too, for the
+        app's conservation checks; [extent] and [axes] as for log_field
+        (space only).
         """
         if self._finished:
             return
         event, warning = field_event(_field_name(name), prediction, target, max_size=max_size,
                                      rollout=True, time_axis=time_axis, times=times,
-                                     max_frames=max_frames, max_points=max_points)
+                                     max_frames=max_frames, max_points=max_points,
+                                     extent=extent, axes=axes)
         self._append_field(event, step, warning)
+
+    def log_eval(self, name: str, predictions: Any, targets: Any, step: Optional[int] = None,
+                 *, worst: int = 4, sample_axis: int = 0, max_size: int = 64,
+                 extent: Optional[Sequence[Any]] = None,
+                 axes: Optional[Sequence[str]] = None) -> None:
+        """Logs how a whole validation set went: the relative L2 error of
+        every sample (as a histogram and its median, 90th percentile and
+        worst), and snapshots of the [worst] samples, so the app can show
+        which inputs the model gets wrong.
+
+        [predictions] and [targets]: one sample per entry along
+        [sample_axis], each 1D-3D once dimensions of size 1 are dropped (one
+        channel; log several names for several variables). Only the
+        summary and the worst samples are sent, not the whole set.
+        """
+        if self._finished:
+            return
+        body, worst_fields = eval_events(_field_name(name), predictions, targets, worst=worst,
+                                         sample_axis=sample_axis, max_size=max_size,
+                                         extent=extent, axes=axes)
+        with self._lock:
+            step = self._step_for(step)
+            for event in worst_fields:
+                self._append_record({"type": "field", "step": step, **event})
+            self._append_record({"type": "eval", "step": step, **body})
+
+    def log_curve(self, name: str, x: Sequence[Any], y: Sequence[Any],
+                  step: Optional[int] = None, *, x_label: str = "",
+                  y_label: str = "Relative L2",
+                  train_range: Optional[Sequence[float]] = None) -> None:
+        """Logs a curve measured at one step, e.g. the error against the
+        grid resolution (resolution invariance) or against a PDE parameter
+        (generalization): run.log_curve("error vs resolution", [64, 128,
+        256], errors, x_label="Resolution"). [train_range]: the (low, high)
+        of x seen in training, shaded in the app so extrapolation stands
+        out. The app shows each curve's latest step.
+        """
+        if self._finished:
+            return
+        body = curve_event(str(name).strip()[:200] or "curve", x, y, x_label=x_label,
+                           y_label=y_label, train_range=train_range)
+        with self._lock:
+            self._append_record({"type": "curve", "step": self._step_for(step), **body})
+
+    def log_fourier_weights(self, model, step: Optional[int] = None, *,
+                            max_size: int = 64) -> None:
+        """Logs how large each learned Fourier weight is: for every complex
+        parameter with 3 or more axes (the spectral weights of FNO-style
+        layers, in x out x modes), |w| averaged over the channels, as a map
+        over the modes. Shows whether the kept modes are used, and whether
+        more would help."""
+        if self._finished:
+            return
+        for event in fourier_weight_events(model, max_size=max_size):
+            self._append_field(event, step, None)
 
     @contextmanager
     def capture_layers(self, model, step: Optional[int] = None, *, layers: LayerFilter = None,
@@ -270,14 +349,26 @@ class Run:
         with self._lock:
             if self._finished:
                 return
-            step = max(self._last_step, 0) if step is None else int(step)
-            if step < 0:
-                raise ValueError("step must be 0 or more")
-            self._last_step = max(self._last_step, step)
-            record = {"type": "field", "step": step, "time": utc_now_iso(), **event}
-            if self._epoch is not None:
-                record["epoch"] = self._epoch
-            self._files.append(record)
+            self._append_record({"type": "field", "step": self._step_for(step), **event})
+
+    def _step_for(self, step: Optional[int]) -> int:
+        """[step], or the latest step logged; under the lock."""
+        step = max(self._last_step, 0) if step is None else int(step)
+        if step < 0:
+            raise ValueError("step must be 0 or more")
+        self._last_step = max(self._last_step, step)
+        return step
+
+    def _append_record(self, record: dict) -> None:
+        """Saves (and so uploads) a record with its time and epoch; under
+        the lock."""
+        if self._finished:
+            return
+        # NaN and infinity (a diverged sample, an empty frame) as strings.
+        record = encode_floats({**record, "time": utc_now_iso()})
+        if self._epoch is not None:
+            record["epoch"] = self._epoch
+        self._files.append(record)
 
     def watch(self, model, every: int = 100, layers: LayerFilter = None, max_layers: int = 64) -> None:
         """Collects per-layer statistics from a PyTorch model.
@@ -400,8 +491,24 @@ def _clean_tags(tags: Optional[Iterable[str]]) -> list:
     return clean[:20]
 
 
-def _hyperparameters(config, train_samples, val_samples, loss) -> dict:
-    """The data and loss first, then the config."""
+def _pde_entries(pde: Optional[Mapping[str, Any]]) -> dict:
+    """The PDE, as the app lists (and groups runs by) it: {"equation":
+    "Navier-Stokes 2D", "viscosity": 1e-3} becomes {"PDE": "Navier-Stokes
+    2D", "PDE viscosity": "0.001"}; nested dicts are flattened."""
+    if not pde:
+        return {}
+    entries = {}
+    for key, value in flatten_config(pde).items():
+        short = key.split(".")[-1]
+        if short.lower() in ("equation", "name", "pde"):
+            entries["PDE"] = value
+        else:
+            entries[f"PDE {key.replace('.', ' ')}"[:200]] = value
+    return entries
+
+
+def _hyperparameters(config, train_samples, val_samples, loss, pde=None) -> dict:
+    """The data, loss and PDE first, then the config."""
     first = {}
     for label, value in (("Training samples", train_samples),
                          ("Validation samples", val_samples)):
@@ -413,6 +520,7 @@ def _hyperparameters(config, train_samples, val_samples, loss) -> dict:
             warnings.warn(f"modelsapp: {label.lower()}: {error}", stacklevel=4)
     if loss is not None:
         first["Loss"] = describe_loss(loss)
+    first.update(_pde_entries(pde))
     return {**first, **{k: v for k, v in flatten_config(config).items() if k not in first}}
 
 

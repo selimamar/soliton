@@ -453,7 +453,8 @@ def test_a_field_snapshot_reads_back_whole(client):
     send(client, [field(0), sent])
     latest = client.get("/api/runs/tiny-1/fields/snapshot", params={"name": "u"}).json()
     defaults = {"times": None, "frameStats": {}, "layer": None, "position": None,
-                "reduction": None, "layerShape": None}
+                "reduction": None, "layerShape": None, "sample": None, "worstOf": None,
+                "extent": None, "axes": None, "spectrum": None}
     assert latest == {**defaults, **{k: v for k, v in sent.items() if k != "type"}}
     first = client.get("/api/runs/tiny-1/fields/snapshot", params={"name": "u", "step": 0})
     assert first.json()["step"] == 0
@@ -525,3 +526,75 @@ def test_layer_snapshots_come_after_outputs_in_model_order(client):
                           params={"name": "layers/blocks.0"}).json()
     assert snapshot["reduction"] == "mean of 32 channels"
     assert snapshot["layerShape"] == [32, 2, 3]
+
+
+# Validation sets, curves, and what's needed for sweeps -------------------------
+
+
+def test_a_field_keeps_its_domain_and_spectrum(client):
+    create_run(client)
+    sent = {**field(0), "extent": [[0, 6.28], [0, 1]], "axes": ["x", "y"],
+            "spectrum": {"k": [1, 2, 3], "prediction": [1.0, 0.1, "NaN"], "target": [1.0, 0.2, 0.01]}}
+    send(client, [sent])
+    back = client.get("/api/runs/tiny-1/fields/snapshot", params={"name": "u"}).json()
+    assert back["extent"] == [[0, 6.28], [0, 1]] and back["axes"] == ["x", "y"]
+    assert back["spectrum"]["prediction"] == [1.0, 0.1, "NaN"]
+    bad = {**field(1), "axes": ["x"]}  # One name for two axes.
+    assert client.post("/api/runs/tiny-1/events", json={"events": [bad]}).status_code == 422
+
+
+def test_a_validation_set_and_its_worst_samples(client):
+    create_run(client)
+    worst = {**field(5, name="worst/u/1"), "kind": "worst", "layer": "u #1", "position": 1,
+             "sample": 17, "worstOf": "u"}
+    summary = {"type": "eval", "step": 5, "name": "u", "count": 200,
+               "stats": {"median": 0.02, "p90": 0.05, "max": "NaN"},
+               "histogram": {"edges": [0.01, 0.1, 1], "counts": [150, 50]},
+               "worst": [{"rank": 1, "sample": 17, "relL2": 0.3}]}
+    send(client, [field(5), worst, summary])
+    assert client.get("/api/runs/tiny-1/evals").json() == [{"name": "u", "steps": [
+        {"step": 5, "count": 200, "stats": {"median": 0.02, "p90": 0.05, "max": "NaN"},
+         "histogram": {"edges": [0.01, 0.1, 1], "counts": [150, 50]},
+         "worst": [{"rank": 1, "sample": 17, "relL2": 0.3}]},
+    ]}]
+    fields = client.get("/api/runs/tiny-1/fields").json()
+    assert [f["name"] for f in fields] == ["u", "worst/u/1"], "worst samples after outputs"
+    assert fields[1]["worstOf"] == "u" and fields[1]["kind"] == "worst"
+
+
+def test_curves_and_fourier_weights(client):
+    create_run(client)
+    curve = {"type": "curve", "step": 3, "name": "error vs resolution", "x": [32, 64, 128],
+             "y": [0.03, 0.02, "NaN"], "xLabel": "Resolution", "yLabel": "Relative L2",
+             "trainRange": [32, 64]}
+    weights = {**field(3, name="weights/blocks.0.weights1", target=False), "kind": "weights",
+               "layer": "blocks.0.weights1", "position": 0, "stats": {}}
+    send(client, [curve, weights])
+    (stored,) = client.get("/api/runs/tiny-1/curves").json()
+    assert stored["steps"][0]["y"] == [0.03, 0.02, "NaN"]
+    assert stored["steps"][0]["trainRange"] == [32, 64]
+    assert client.get("/api/runs/tiny-1/fields").json()[0]["kind"] == "weights"
+    bad = {**curve, "y": [1]}
+    assert client.post("/api/runs/tiny-1/events", json={"events": [bad]}).status_code == 422
+
+
+def test_latest_and_best_metrics_across_runs(client):
+    create_run(client, run_id="a")
+    create_run(client, run_id="b")
+    send(client, [metrics(0, val__rel_l2=0.5), metrics(10, val__rel_l2=0.1),
+                  metrics(20, val__rel_l2=0.2, perf__inference_s=0.01)], run_id="a")
+    send(client, [metrics(0, val__rel_l2="NaN")], run_id="b")
+    latest = client.get("/api/metrics/latest", params={"names": "val/rel_l2,perf/inference_s"})
+    assert latest.json() == {
+        "a": {"val/rel_l2": {"latest": 0.2, "min": 0.1},
+              "perf/inference_s": {"latest": 0.01, "min": 0.01}},
+        "b": {"val/rel_l2": {"latest": "NaN", "min": None}},
+    }
+
+
+def test_deleting_a_run_deletes_its_evals_and_curves(client):
+    create_run(client)
+    send(client, [{"type": "curve", "step": 0, "name": "c", "x": [1], "y": [2]}])
+    client.delete("/api/runs/tiny-1")
+    create_run(client)
+    assert client.get("/api/runs/tiny-1/curves").json() == []

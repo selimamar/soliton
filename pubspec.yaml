@@ -28,6 +28,7 @@ dependencies:
   web_socket_channel: ^3.0.3
   # Remembers settings and the server login between launches.
   shared_preferences: ^2.5.6
+  share_plus: ^13.3.1
 
 dev_dependencies:
   flutter_test:

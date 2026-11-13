@@ -174,6 +174,23 @@ def create_app(
         """One snapshot of a field (the latest without [step])."""
         return store.field_snapshot(run_id, name, step)
 
+    @app.get("/api/runs/{run_id}/evals", dependencies=auth)
+    def evals(run_id: RunId):
+        """Validation-set summaries (run.log_eval), per name and step."""
+        return store.items(run_id, "eval")
+
+    @app.get("/api/runs/{run_id}/curves", dependencies=auth)
+    def curves(run_id: RunId):
+        """Curves (run.log_curve), per name and step."""
+        return store.items(run_id, "curve")
+
+    @app.get("/api/metrics/latest", dependencies=auth)
+    def latest_metrics(names: Annotated[str, Query(min_length=1, max_length=2000)]):
+        """For sweeps: {run id: {metric: {latest, min}}} for the
+        comma-separated metric [names] (at most 20)."""
+        wanted = [n.strip() for n in names.split(",") if n.strip()][:20]
+        return store.latest_metrics(wanted)
+
     @app.websocket("/api/live")
     async def live(websocket: WebSocket):
         """Pushes a message for every change to any run.

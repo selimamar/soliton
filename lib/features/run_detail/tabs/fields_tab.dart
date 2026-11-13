@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,10 +12,13 @@ import '../../../models/metric_series.dart';
 import '../../../shared/colormaps.dart';
 import '../../../shared/formatters.dart';
 import '../../../shared/widgets/async_value_view.dart';
+import '../../../shared/widgets/exportable.dart';
 import '../../../shared/widgets/line_chart_card.dart';
 import '../../../shared/widgets/section_card.dart';
 import '../../../shared/widgets/spaced_list_view.dart';
 import '../../../shared/widgets/stat_tile.dart';
+import '../../../shared/widgets/xy_chart_card.dart';
+import '../../../models/run_insights.dart';
 import '../volume/volume_card.dart';
 import '../widgets/field_heatmap.dart';
 
@@ -115,7 +119,17 @@ class _FieldsTabState extends ConsumerState<FieldsTab> {
           for (final f in usable)
             if (f.kind == FieldKind.layer) f,
         ];
-        final choices = outputs.isEmpty ? layers : outputs;
+        final weights = [
+          for (final f in usable)
+            if (f.kind == FieldKind.weights) f,
+        ];
+        final choices = outputs.isNotEmpty
+            ? outputs
+            : layers.isNotEmpty
+            ? layers
+            : weights.isNotEmpty
+            ? weights
+            : usable;
         final field = choices.firstWhere((f) => f.name == _name, orElse: () => choices.first);
         final index = _stepIndex(field);
         final step = field.steps[index];
@@ -159,6 +173,18 @@ class _FieldsTabState extends ConsumerState<FieldsTab> {
             else
               ..._snapshotViews(snapshot, loading),
             if (field.steps.any((s) => s.relL2 != null)) _ErrorOverTraining(field: field),
+            if (snapshot?.spectrum case final spectrum?)
+              _SpectrumCard(snapshot: snapshot!, spectrum: spectrum),
+            _ValidationCard(
+              runId: widget.runId,
+              field: field.name,
+              atStep: step.step,
+              worstFields: [
+                for (final f in usable)
+                  if (f.kind == FieldKind.worst && f.worstOf == field.name) f,
+              ],
+            ),
+            _CurvesCards(runId: widget.runId),
             if (outputs.isNotEmpty && layers.isNotEmpty)
               _LayersCard(
                 runId: widget.runId,
@@ -166,6 +192,20 @@ class _FieldsTabState extends ConsumerState<FieldsTab> {
                 atStep: step.step,
                 selected: _layer,
                 onSelected: (layer) => setState(() => _layer = _layer == layer ? null : layer),
+              ),
+            if (choices != weights && weights.isNotEmpty)
+              _LayersCard(
+                runId: widget.runId,
+                layers: weights,
+                atStep: step.step,
+                selected: _layer,
+                onSelected: (layer) => setState(() => _layer = _layer == layer ? null : layer),
+                title: 'Fourier weights',
+                description:
+                    'How large each layer\'s learned Fourier weights are, by mode (|w| '
+                    'averaged over channels; low modes at the top left). Still large at '
+                    'the edge: more modes may help.',
+                arrows: false,
               ),
           ],
         );
@@ -220,7 +260,8 @@ class _FieldsTabState extends ConsumerState<FieldsTab> {
           }),
           describePoint: (p) =>
               't = ${_formatTime(snapshot.times[p.row.clamp(0, snapshot.frames - 1)])}, '
-              'x point ${p.column}',
+              '${_describe(snapshot, {0: p.column})}',
+          axesNote: _axesNote(snapshot, columnAxis: 0, rows: 'time'),
           markedRow: frame,
           // Few frames of many points: stretch time so the map is readable.
           aspectRatio: (snapshot.shape.single / snapshot.frames).clamp(0.5, 1.6),
@@ -238,6 +279,7 @@ class _FieldsTabState extends ConsumerState<FieldsTab> {
           ?frameControls,
           VolumeCard(snapshot: snapshot, frame: frame, playing: _player != null, loading: loading),
           ?rolloutError,
+          if (snapshot.isRollout) _PhysicsCard(snapshot: snapshot),
         ];
       }
       views = [
@@ -261,24 +303,24 @@ class _FieldsTabState extends ConsumerState<FieldsTab> {
           subtitle: [
             if (snapshot.isRollout) 't = ${_formatTime(snapshot.times[frame])}',
             if (snapshot.dimensions == 3)
-              'slice ${slice + 1} of ${snapshot.shape[axis]} across axis $axis',
+              'slice ${slice + 1} of ${snapshot.shape[axis]} across '
+                  '${snapshot.domain.isEmpty ? 'axis $axis' : _describe(snapshot, {axis: slice})}',
           ].join(' · '),
           loading: loading,
           point: _point,
           onSelect: (p) => setState(() => _point = p),
           describePoint: (p) {
-            if (snapshot.dimensions == 2) return 'Row ${p.row}, column ${p.column}';
-            final indices = switch (axis) {
-              0 => [slice, p.row, p.column],
-              1 => [p.row, slice, p.column],
-              _ => [p.row, p.column, slice],
-            };
-            return 'Point (${indices.join(', ')})';
+            if (snapshot.dimensions == 2) return _describe(snapshot, {0: p.row, 1: p.column});
+            final (rowAxis, columnAxis) = _planeAxes(axis);
+            return _describe(snapshot, {axis: slice, rowAxis: p.row, columnAxis: p.column});
           },
+          axesNote: snapshot.dimensions == 2
+              ? _axesNote(snapshot, rowAxis: 0, columnAxis: 1)
+              : _axesNote(snapshot, rowAxis: _planeAxes(axis).$1, columnAxis: _planeAxes(axis).$2),
         ),
       ];
     }
-    return [...views, ?rolloutError];
+    return [...views, ?rolloutError, if (snapshot.isRollout) _PhysicsCard(snapshot: snapshot)];
   }
 
   /// The first of the shortest axes.
@@ -290,7 +332,57 @@ class _FieldsTabState extends ConsumerState<FieldsTab> {
     return best;
   }
 
-  static List<Widget> _lineCharts(FieldSnapshot snapshot, {required int frame}) {
+  static List<Widget> _lineCharts(FieldSnapshot snapshot, {required int frame}) =>
+      _fieldLineCharts(snapshot, frame: frame);
+}
+
+/// The rows and columns of a 3D field's slice across [axis].
+(int, int) _planeAxes(int axis) => switch (axis) {
+  0 => (1, 2),
+  1 => (0, 2),
+  _ => (0, 1),
+};
+
+/// Where a grid point is: "y = 0.42, x = 1.57" in the run's domain, else
+/// "Row 3, column 7" (2D) or "Point (1, 2, 3)" (3D). [indices]: axis ->
+/// grid index.
+String _describe(FieldSnapshot s, Map<int, int> indices) {
+  final axes = indices.keys.toList()..sort();
+  if (s.domain.isEmpty) {
+    if (axes.length == 2 && s.dimensions == 2) {
+      return 'Row ${indices[0]}, column ${indices[1]}';
+    }
+    if (axes.length == 1) return 'point ${indices[axes.single]}';
+    return 'Point (${[for (final a in axes) indices[a]].join(', ')})';
+  }
+  return [
+    for (final a in axes)
+      '${s.domain.axisName(a)} = '
+          '${formatCoordinate(s.domain.coordinate(a, indices[a]!.toDouble(), s.shape[a]))}',
+  ].join(', ');
+}
+
+/// Which way the axes run on a map, in the run's domain: "x 0 → 1 across,
+/// y 0 → 1 down". Null without a domain.
+String? _axesNote(FieldSnapshot s, {int? rowAxis, required int columnAxis, String? rows}) {
+  if (s.domain.isEmpty) return null;
+  String axis(int a) {
+    final range = s.domain.extent?[a];
+    return range == null
+        ? s.domain.axisName(a)
+        : '${s.domain.axisName(a)} ${formatCoordinate(range.$1)} → ${formatCoordinate(range.$2)}';
+  }
+
+  return [
+    '${axis(columnAxis)} across',
+    if (rowAxis != null) '${axis(rowAxis)} down' else if (rows != null) '$rows down',
+  ].join(', ');
+}
+
+/// A 1D field (one frame of a rollout) as lines: prediction and truth, and
+/// their difference.
+List<Widget> _fieldLineCharts(FieldSnapshot snapshot, {required int frame}) {
+  {
     MetricSeries series(String name, Float32List data) {
       final values = snapshot.plane(data, frame: frame).values;
       return MetricSeries(
@@ -300,7 +392,13 @@ class _FieldsTabState extends ConsumerState<FieldsTab> {
     }
 
     final when = snapshot.isRollout ? ' at t = ${_formatTime(snapshot.times[frame])}' : '';
-    const xAxis = ChartXAxis.positions('Point');
+    final domain = snapshot.domain;
+    final xAxis = ChartXAxis.positions(
+      domain.axes == null ? 'Point' : domain.axisName(0),
+      coordinate: domain.extent == null
+          ? null
+          : (i) => domain.coordinate(0, i, snapshot.shape.single),
+    );
     return [
       LineChartCard(
         title: '${snapshot.hasTarget ? 'Prediction and ground truth' : 'Prediction'}$when',
@@ -336,14 +434,6 @@ class _FieldsTabState extends ConsumerState<FieldsTab> {
         ),
     ];
   }
-}
-
-/// "3.2%", "0.45%", "0.0031%": relative errors span orders of magnitude.
-String formatRelativeError(double fraction) {
-  if (!fraction.isFinite) return formatMetric(fraction);
-  final percent = fraction * 100;
-  if (percent == 0) return '0%';
-  return '${percent >= 1 ? percent.toStringAsFixed(1) : percent.toStringAsPrecision(2)}%';
 }
 
 /// A frame's time: "0.3", "12", "1.5e-4".
@@ -681,10 +771,18 @@ class _MapsCard extends StatelessWidget {
     required this.describePoint,
     this.markedRow,
     this.aspectRatio,
+    this.axesNote,
+    this.title,
   });
 
   final FieldSnapshot snapshot;
   final FieldPlane Function(Float32List data) planes;
+
+  /// Which way the domain's axes run on the maps (see [_axesNote]).
+  final String? axesNote;
+
+  /// Default: the field's name.
+  final String? title;
   final String subtitle;
   final bool loading;
   final GridPoint? point;
@@ -759,33 +857,45 @@ class _MapsCard extends StatelessWidget {
       ].join(' · ');
     }
 
-    return SectionCard(
-      title: snapshot.name,
-      trailing: Text(shape == original ? shape : '$shape (of $original)', style: muted),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (subtitle.isNotEmpty) ...[Text(subtitle, style: muted), const SizedBox(height: 10)],
-          LayoutBuilder(
-            builder: (context, constraints) {
-              const gap = 12.0;
-              final perRow = constraints.maxWidth >= 560 ? maps.length : (maps.length == 1 ? 1 : 2);
-              final width = (constraints.maxWidth - gap * (perRow - 1)) / perRow;
-              return Wrap(
-                spacing: gap,
-                runSpacing: 16,
-                children: [for (final m in maps) SizedBox(width: width, child: m)],
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          SizedBox(height: 3, child: loading ? const LinearProgressIndicator() : null),
-          const SizedBox(height: 6),
-          Text(
-            point == null ? 'Tap a map to read the values at a point.' : readout(picked!),
-            style: muted,
-          ),
-        ],
+    return Exportable(
+      fileName: '${title ?? snapshot.name} step ${snapshot.step}',
+      builder: (context, exportButton) => SectionCard(
+        title: title ?? snapshot.name,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(shape == original ? shape : '$shape (of $original)', style: muted),
+            exportButton,
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (subtitle.isNotEmpty) ...[Text(subtitle, style: muted), const SizedBox(height: 10)],
+            LayoutBuilder(
+              builder: (context, constraints) {
+                const gap = 12.0;
+                final perRow = constraints.maxWidth >= 560
+                    ? maps.length
+                    : (maps.length == 1 ? 1 : 2);
+                final width = (constraints.maxWidth - gap * (perRow - 1)) / perRow;
+                return Wrap(
+                  spacing: gap,
+                  runSpacing: 16,
+                  children: [for (final m in maps) SizedBox(width: width, child: m)],
+                );
+              },
+            ),
+            if (axesNote != null) ...[const SizedBox(height: 8), Text(axesNote!, style: muted)],
+            const SizedBox(height: 12),
+            SizedBox(height: 3, child: loading ? const LinearProgressIndicator() : null),
+            const SizedBox(height: 6),
+            Text(
+              point == null ? 'Tap a map to read the values at a point.' : readout(picked!),
+              style: muted,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -882,8 +992,18 @@ class _LayersCard extends StatelessWidget {
     required this.atStep,
     required this.selected,
     required this.onSelected,
+    this.title = 'Inside the model',
+    this.description =
+        'What each layer outputs for one sample, in order through the network. '
+        'Channels are averaged; each map has its own colour scale.',
+    this.arrows = true,
   });
 
+  final String title;
+  final String description;
+
+  /// Arrows between the tiles: they follow each other through the network.
+  final bool arrows;
   final String runId;
   final List<FieldSummary> layers;
   final int atStep;
@@ -897,7 +1017,7 @@ class _LayersCard extends StatelessWidget {
     final steps = {for (final l in layers) _layerStep(l, atStep)};
     final open = layers.where((l) => l.name == selected).firstOrNull;
     return SectionCard(
-      title: 'Inside the model',
+      title: title,
       trailing: Text(
         steps.length == 1 ? 'Step ${formatInt(steps.single)}' : 'Nearest steps',
         style: muted,
@@ -905,21 +1025,19 @@ class _LayersCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'What each layer outputs for one sample, in order through the network. '
-            'Channels are averaged; each map has its own colour scale.',
-            style: muted,
-          ),
+          Text(description, style: muted),
           const SizedBox(height: 12),
           SizedBox(
             height: 176,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: layers.length,
-              separatorBuilder: (_, _) => const Padding(
-                padding: EdgeInsets.only(top: 50),
-                child: Icon(Icons.arrow_forward, size: 16),
-              ),
+              separatorBuilder: (_, _) => arrows
+                  ? const Padding(
+                      padding: EdgeInsets.only(top: 50),
+                      child: Icon(Icons.arrow_forward, size: 16),
+                    )
+                  : const SizedBox(width: 8),
               itemBuilder: (context, i) => _LayerTile(
                 runId: runId,
                 layer: layers[i],
@@ -1117,7 +1235,10 @@ class _LayerDetailState extends ConsumerState<_LayerDetail> {
     };
     final caption = Text(
       [
-        if (snapshot.layerShape case final s?) 'output ${s.join(' × ')} per sample',
+        if (snapshot.layerShape case final s?)
+          snapshot.kind == FieldKind.weights
+              ? 'weights ${s.join(' × ')}'
+              : 'output ${s.join(' × ')} per sample',
         ?snapshot.reduction,
         if (is3D) '3D: ${snapshot.shape.join(' × ')}',
       ].join(' · '),
@@ -1205,6 +1326,489 @@ class _LayerDetailState extends ConsumerState<_LayerDetail> {
               : 'Row ${point.row}, column ${point.column} · '
                     '${formatMetric(plane.values[point.row * plane.columns + point.column])}',
           style: muted,
+        ),
+      ],
+    );
+  }
+}
+
+// Diagnostics: spectrum, physics, the validation set, curves ---------------------
+
+/// The energy spectrum of the prediction and the truth, log-log: missing
+/// energy at high wavenumbers is a neural operator's typical failure.
+class _SpectrumCard extends StatelessWidget {
+  const _SpectrumCard({required this.snapshot, required this.spectrum});
+
+  final FieldSnapshot snapshot;
+  final FieldSpectrum spectrum;
+
+  @override
+  Widget build(BuildContext context) => XYChartCard(
+    title: 'Energy spectrum',
+    subtitle: [
+      'step ${formatInt(snapshot.step)}',
+      if (snapshot.isRollout) 'last frame, t = ${_formatTime(snapshot.times.last)}',
+      'on the full grid',
+    ].join(' · '),
+    xLabel: 'Wavenumber |k|',
+    logX: true,
+    logY: true,
+    series: [
+      XYSeries(
+        label: 'Prediction',
+        color: ChartColors.train,
+        points: [for (final (i, k) in spectrum.k.indexed) (k, spectrum.prediction[i])],
+      ),
+      if (spectrum.target case final target?)
+        XYSeries(
+          label: 'Ground truth',
+          color: ChartColors.validation,
+          points: [for (final (i, k) in spectrum.k.indexed) (k, target[i])],
+        ),
+    ],
+  );
+}
+
+/// What a rollout should conserve, frame by frame, for the prediction and
+/// the truth: its mean (mass), mean square (energy) and minimum.
+class _PhysicsCard extends StatefulWidget {
+  const _PhysicsCard({required this.snapshot});
+
+  final FieldSnapshot snapshot;
+
+  @override
+  State<_PhysicsCard> createState() => _PhysicsCardState();
+}
+
+class _PhysicsCardState extends State<_PhysicsCard> {
+  var _quantity = FieldStatKeys.mean;
+
+  static const _quantities = {
+    FieldStatKeys.mean: ('Mean', FieldStatKeys.targetMean),
+    FieldStatKeys.meanSquare: ('Mean square', FieldStatKeys.targetMeanSquare),
+    FieldStatKeys.min: ('Minimum', FieldStatKeys.targetMin),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final stats = widget.snapshot.frameStats;
+    final available = [
+      for (final key in _quantities.keys)
+        if (stats[key] != null) key,
+    ];
+    if (available.isEmpty) return const SizedBox.shrink();
+    final key = available.contains(_quantity) ? _quantity : available.first;
+    final (label, targetKey) = _quantities[key]!;
+    final times = widget.snapshot.times;
+    List<(double, double)> along(List<double> values) => [
+      for (final (i, v) in values.indexed) (times[i], v),
+    ];
+    return XYChartCard(
+      title: 'Physics along the rollout',
+      subtitle: 'What should be conserved stays flat; the truth shows what to expect.',
+      xLabel: 'Time',
+      controls: SegmentedButton<String>(
+        segments: [
+          for (final k in available) ButtonSegment(value: k, label: Text(_quantities[k]!.$1)),
+        ],
+        selected: {key},
+        showSelectedIcon: false,
+        onSelectionChanged: (s) => setState(() => _quantity = s.single),
+      ),
+      series: [
+        XYSeries(label: '$label, prediction', color: ChartColors.train, points: along(stats[key]!)),
+        if (stats[targetKey] case final target?)
+          XYSeries(label: '$label, truth', color: ChartColors.validation, points: along(target)),
+      ],
+    );
+  }
+}
+
+/// The whole validation set at the step shown (or the nearest before it):
+/// how the error is spread over samples, and the worst ones, to open.
+class _ValidationCard extends ConsumerWidget {
+  const _ValidationCard({
+    required this.runId,
+    required this.field,
+    required this.atStep,
+    required this.worstFields,
+  });
+
+  final String runId;
+  final String field;
+  final int atStep;
+  final List<FieldSummary> worstFields;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final series = ref
+        .watch(evalsProvider(runId))
+        .value
+        ?.where((e) => e.name == field && e.steps.isNotEmpty)
+        .firstOrNull;
+    if (series == null) return const SizedBox.shrink();
+    final eval = series.atOrBefore(atStep, (s) => s.step);
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    String stat(String key) => switch (eval.stats[key]) {
+      final v? => formatRelativeError(v),
+      null => '–',
+    };
+    final nonFinite = eval.stats['nonFinite'] ?? 0;
+    return Exportable(
+      fileName: '$field validation set step ${eval.step}',
+      builder: (context, exportButton) => SectionCard(
+        title: 'Validation set',
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('${formatInt(eval.count)} samples · step ${formatInt(eval.step)}', style: muted),
+            exportButton,
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: StatTile(label: 'Median', value: stat('median')),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: StatTile(label: '90% under', value: stat('p90')),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: StatTile(label: 'Worst', value: stat('max')),
+                ),
+              ],
+            ),
+            if (nonFinite > 0) ...[
+              const SizedBox(height: 6),
+              Text(
+                '${formatInt(nonFinite.round())} samples have no finite error (NaN or ∞).',
+                style: muted?.copyWith(color: theme.colorScheme.error),
+              ),
+            ],
+            if (eval.histogram case final histogram?) ...[
+              const SizedBox(height: 12),
+              _ErrorHistogramView(histogram: histogram),
+            ],
+            if (eval.worst.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text('Worst samples', style: theme.textTheme.labelLarge),
+              const SizedBox(height: 6),
+              SizedBox(
+                height: 150,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: eval.worst.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (context, i) {
+                    final worst = eval.worst[i];
+                    final summary = worstFields
+                        .where((f) => f.name == worst.fieldName(field))
+                        .firstOrNull;
+                    return _WorstTile(
+                      runId: runId,
+                      worst: worst,
+                      name: worst.fieldName(field),
+                      step: summary == null ? eval.step : _layerStep(summary, eval.step),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// How many samples have each error (relative L2, log scale).
+class _ErrorHistogramView extends StatelessWidget {
+  const _ErrorHistogramView({required this.histogram});
+
+  final ErrorHistogram histogram;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    final counts = histogram.counts;
+    final most = counts.fold(0, math.max);
+    final total = counts.fold(0, (a, b) => a + b);
+    return Semantics(
+      label:
+          'Error histogram: $total samples, from ${formatRelativeError(histogram.edges.first)} '
+          'to ${formatRelativeError(histogram.edges.last)}',
+      child: ExcludeSemantics(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              height: 72,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  for (final c in counts)
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 0.5),
+                        child: FractionallySizedBox(
+                          heightFactor: most == 0 ? 0 : math.max(c / most, c > 0 ? 0.04 : 0),
+                          alignment: Alignment.bottomCenter,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: ChartColors.validation.withValues(alpha: 0.75),
+                              borderRadius: const BorderRadius.vertical(top: Radius.circular(2)),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Text(formatRelativeError(histogram.edges.first), style: muted),
+                Expanded(
+                  child: Text(
+                    'relative L2 per sample (log scale)',
+                    textAlign: TextAlign.center,
+                    style: muted,
+                  ),
+                ),
+                Text(formatRelativeError(histogram.edges.last), style: muted),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One of the worst samples: its error map, rank, index and error. Tap to
+/// see it in full.
+class _WorstTile extends ConsumerWidget {
+  const _WorstTile({
+    required this.runId,
+    required this.worst,
+    required this.name,
+    required this.step,
+  });
+
+  final String runId;
+  final WorstSample worst;
+  final String name;
+  final int step;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final value = ref.watch(fieldSnapshotProvider((runId: runId, name: name, step: step)));
+    final snapshot = value.value;
+    return SizedBox(
+      width: 112,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: snapshot == null
+              ? null
+              : () => showModalBottomSheet<void>(
+                  context: context,
+                  isScrollControlled: true,
+                  showDragHandle: true,
+                  builder: (_) => _WorstSheet(snapshot: snapshot, worst: worst),
+                ),
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  height: 92,
+                  child: switch (snapshot) {
+                    final s? when s.error != null => Center(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: () {
+                          final plane = _layerPlaneOf(s, s.error!);
+                          return FieldHeatmap(
+                            data: plane.values,
+                            rows: plane.rows,
+                            columns: plane.columns,
+                            low: -s.maxAbsError,
+                            high: s.maxAbsError,
+                            colormap: Colormap.diverging,
+                            aspectRatio: plane.rows == 1 ? 6 : null,
+                            semanticLabel:
+                                'Error map of sample ${worst.sample}, '
+                                'relative L2 ${formatRelativeError(worst.relL2)}',
+                          );
+                        }(),
+                      ),
+                    ),
+                    null when value.hasError => const Center(child: Icon(Icons.error_outline)),
+                    _ => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                  },
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '#${worst.rank} · sample ${worst.sample}',
+                  style: theme.textTheme.labelMedium,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  formatRelativeError(worst.relL2),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A plane of [data] for a small tile: 1D as a strip, 2D as is, a 3D
+/// field's middle slice across its shortest axis.
+FieldPlane _layerPlaneOf(FieldSnapshot s, Float32List data) {
+  if (s.dimensions != 3) return s.plane(data);
+  final axis = _FieldsTabState._shortestAxis(s.shape);
+  return s.plane(data, axis: axis, index: s.shape[axis] ~/ 2);
+}
+
+/// A worst sample in full: prediction, truth and error, like the main view.
+class _WorstSheet extends StatefulWidget {
+  const _WorstSheet({required this.snapshot, required this.worst});
+
+  final FieldSnapshot snapshot;
+  final WorstSample worst;
+
+  @override
+  State<_WorstSheet> createState() => _WorstSheetState();
+}
+
+class _WorstSheetState extends State<_WorstSheet> {
+  GridPoint? _point;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.snapshot;
+    final title =
+        'Sample ${widget.worst.sample} · #${widget.worst.rank} worst · '
+        '${formatRelativeError(widget.worst.relL2)}';
+    final List<Widget> views;
+    if (s.dimensions == 1) {
+      views = _fieldLineCharts(s, frame: 0);
+    } else if (s.dimensions == 3) {
+      views = [VolumeCard(snapshot: s, frame: 0, playing: false, loading: false)];
+    } else {
+      views = [
+        _MapsCard(
+          snapshot: s,
+          title: title,
+          planes: (data) => s.plane(data),
+          subtitle: '',
+          loading: false,
+          point: _point,
+          onSelect: (p) => setState(() => _point = p),
+          describePoint: (p) => _describe(s, {0: p.row, 1: p.column}),
+          axesNote: _axesNote(s, rowAxis: 0, columnAxis: 1),
+        ),
+      ];
+    }
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.85,
+      maxChildSize: 0.95,
+      builder: (context, controller) => ListView(
+        controller: controller,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        children: [
+          if (s.dimensions != 2) ...[
+            Text(title, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+          ],
+          for (final v in views) ...[v, const SizedBox(height: 12)],
+        ],
+      ),
+    );
+  }
+}
+
+/// Every curve the run logs (`run.log_curve`), at its latest step: e.g. the
+/// error against resolution, or against a PDE parameter, with the range
+/// seen in training shaded.
+class _CurvesCards extends ConsumerWidget {
+  const _CurvesCards({required this.runId});
+
+  final String runId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final curves = ref.watch(curvesProvider(runId)).value ?? const [];
+    final shown = [
+      for (final c in curves)
+        if (c.steps.isNotEmpty) c,
+    ];
+    if (shown.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final (i, curve) in shown.indexed) ...[
+          if (i > 0) const SizedBox(height: 12),
+          _curveCard(curve),
+        ],
+      ],
+    );
+  }
+
+  static Widget _curveCard(LoggedSeries<CurveStep> curve) {
+    final latest = curve.steps.last;
+    bool spansDecades(List<double> v) {
+      final positive = [
+        for (final x in v)
+          if (x.isFinite && x > 0) x,
+      ];
+      return positive.length == v.where((x) => x.isFinite).length &&
+          positive.length > 1 &&
+          positive.reduce(math.max) / positive.reduce(math.min) >= 10;
+    }
+
+    final relative = latest.yLabel.toLowerCase().contains('relative');
+    final train = latest.trainRange;
+    return XYChartCard(
+      title: '${curve.name[0].toUpperCase()}${curve.name.substring(1)}',
+      subtitle: 'step ${formatInt(latest.step)}',
+      xLabel: latest.xLabel,
+      logX: spansDecades(latest.x),
+      logY: spansDecades(latest.y),
+      band: train,
+      bandLabel: train == null
+          ? null
+          : train.$1 == train.$2
+          ? 'Dashed: trained at ${formatCoordinate(train.$1)}'
+          : 'Shaded: seen in training',
+      formatY: relative ? formatRelativeError : formatMetric,
+      formatYTick: relative ? formatRelativeError : null,
+      series: [
+        XYSeries(
+          label: latest.yLabel.isEmpty ? curve.name : latest.yLabel,
+          color: ChartColors.validation,
+          points: [for (final (i, x) in latest.x.indexed) (x, latest.y[i])],
         ),
       ],
     );

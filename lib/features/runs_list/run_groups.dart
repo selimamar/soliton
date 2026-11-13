@@ -9,6 +9,7 @@ enum RunGrouping {
   project('Project'),
   model('Model'),
   dataset('Dataset'),
+  pde('PDE'),
   tag('Tag'),
   host('Host');
 
@@ -64,6 +65,7 @@ List<String> _keysOf(Run run, RunGrouping by) {
     RunGrouping.project => run.project,
     RunGrouping.host => run.host,
     RunGrouping.dataset => datasetOf(run),
+    RunGrouping.pde => pdeOf(run),
     // `Model` with nothing inside: the server's stand-in for a model it was
     // never shown (no `run.watch(model)`).
     RunGrouping.model =>
@@ -85,10 +87,21 @@ String? datasetOf(Run run) {
   return null;
 }
 
+/// The `PDE` hyperparameter (as `modelsapp.init(pde=...)` sets it, any
+/// case, possibly nested), if the run logged one.
+String? pdeOf(Run run) {
+  for (final MapEntry(:key, :value) in run.hyperparameters.entries) {
+    final name = key.toLowerCase();
+    if (name == 'pde' || name.endsWith('.pde')) return value;
+  }
+  return null;
+}
+
 String _restLabel(RunGrouping by) => switch (by) {
   RunGrouping.project => 'No project',
   RunGrouping.model => 'Model not logged',
   RunGrouping.dataset => 'No dataset logged',
+  RunGrouping.pde => 'No PDE logged',
   RunGrouping.tag => 'No tags',
   RunGrouping.host => 'Unknown host',
   RunGrouping.none => '',

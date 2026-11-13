@@ -7,6 +7,7 @@ import '../features/run_detail/run_detail_screen.dart';
 import '../features/runs_list/runs_list_screen.dart';
 import '../features/settings/server_screen.dart';
 import '../features/settings/settings_screen.dart';
+import '../features/sweep/sweep_screen.dart';
 
 /// All routes of the app (build locations with `AppRoutes`):
 ///
@@ -14,6 +15,7 @@ import '../features/settings/settings_screen.dart';
 ///   /runs/:runId          run detail; ?tab=metrics (or layers, fields,
 ///                         system) opens on that tab
 ///   /compare?runs=a,b     runs side by side
+///   /sweep                runs of a project by hyperparameters or metrics
 ///   /settings             settings
 ///   /settings/server      connect to a server
 ///
@@ -46,6 +48,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               ],
             ),
           ),
+          GoRoute(path: 'sweep', builder: (context, state) => const SweepScreen()),
           GoRoute(
             path: 'settings',
             builder: (context, state) => const SettingsScreen(),

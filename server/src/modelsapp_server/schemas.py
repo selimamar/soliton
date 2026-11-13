@@ -123,6 +123,15 @@ class LayersEvent(_In):
     layers: list[LayerIn] = Field(max_length=1000)
 
 
+FloatList = Annotated[list[JsonFloat], Field(max_length=1000)]
+
+
+class SpectrumIn(_In):
+    k: FloatList
+    prediction: FloatList
+    target: Optional[FloatList] = None
+
+
 FIELD_MAX_SIZE = 512  # Points per axis.
 FIELD_MAX_POINTS = 1 << 24  # Values per array, all frames together (~43 MB of JSON).
 FIELD_MAX_FRAMES = 256
@@ -141,7 +150,9 @@ class FieldEvent(_In):
     epoch: Optional[int] = Field(default=None, ge=0)
     time: Time = None
     name: Name
-    kind: Literal["output", "layer"] = "output"
+    # "worst": one of a validation set's worst samples ("worst/<name>/<rank>");
+    # "weights": a layer's learned Fourier weights ("weights/<param>").
+    kind: Literal["output", "layer", "worst", "weights"] = "output"
     shape: list[Axis] = Field(min_length=1, max_length=3)
     originalShape: Optional[list[Annotated[int, Field(ge=1)]]] = Field(default=None, max_length=3)
     frames: int = Field(default=1, ge=1, le=FIELD_MAX_FRAMES)
@@ -157,6 +168,18 @@ class FieldEvent(_In):
     position: Optional[int] = Field(default=None, ge=0)  # The layer's order in the model.
     reduction: Optional[str] = Field(default=None, max_length=100)  # E.g. "mean of 32 channels".
     layerShape: Optional[list[Annotated[int, Field(ge=1)]]] = Field(default=None, max_length=8)
+    # A worst sample: its index in the validation set, and which field it is of.
+    sample: Optional[int] = Field(default=None, ge=0)
+    worstOf: Optional[str] = Field(default=None, max_length=200)
+    # The domain: (start, end) per axis, and the axes' names.
+    extent: Optional[list[Annotated[list[JsonFloat], Field(min_length=2, max_length=2)]]] = Field(
+        default=None, max_length=3
+    )
+    axes: Optional[list[Annotated[str, StringConstraints(max_length=20)]]] = Field(
+        default=None, max_length=3
+    )
+    # Radial energy spectrum of the (last frame of the) prediction and target.
+    spectrum: Optional[SpectrumIn] = None
 
     @model_validator(mode="after")
     def _sizes_match(self) -> "FieldEvent":
@@ -170,6 +193,9 @@ class FieldEvent(_In):
                 raise ValueError(f"frameStats.{key} has {len(values)} values for {self.frames} frames")
         if self.kind == "layer" and self.layer is None:
             raise ValueError("a layer snapshot needs its layer")
+        for label, values in (("extent", self.extent), ("axes", self.axes)):
+            if values is not None and len(values) != len(self.shape):
+                raise ValueError(f"{label} needs one entry per axis ({len(self.shape)})")
         for label, data in (("prediction", self.prediction), ("target", self.target)):
             if data is None:
                 continue
@@ -185,6 +211,52 @@ class FieldEvent(_In):
         return self
 
 
+class HistogramOut(_In):
+    edges: FloatList
+    counts: list[Annotated[int, Field(ge=0)]] = Field(max_length=1000)
+
+
+class WorstSample(_In):
+    rank: int = Field(ge=1)
+    sample: int = Field(ge=0)
+    relL2: JsonFloat
+
+
+class EvalEvent(_In):
+    """A whole validation set: the error of every sample, summarized."""
+
+    type: Literal["eval"]
+    step: int = Field(ge=0)
+    epoch: Optional[int] = Field(default=None, ge=0)
+    time: Time = None
+    name: Name
+    count: int = Field(ge=1)
+    stats: dict[FieldStat, JsonFloat] = Field(default_factory=dict, max_length=20)
+    histogram: Optional[HistogramOut] = None
+    worst: list[WorstSample] = Field(default_factory=list, max_length=20)
+
+
+class CurveEvent(_In):
+    """A curve measured at one step: e.g. error against resolution."""
+
+    type: Literal["curve"]
+    step: int = Field(ge=0)
+    epoch: Optional[int] = Field(default=None, ge=0)
+    time: Time = None
+    name: Name
+    x: FloatList
+    y: FloatList
+    xLabel: str = Field(default="", max_length=60)
+    yLabel: str = Field(default="", max_length=60)
+    trainRange: Optional[Annotated[list[JsonFloat], Field(min_length=2, max_length=2)]] = None
+
+    @model_validator(mode="after")
+    def _same_length(self) -> "CurveEvent":
+        if len(self.x) != len(self.y) or not self.x:
+            raise ValueError("x and y need the same, non-zero number of values")
+        return self
+
+
 class StatusEvent(_In):
     type: Literal["status"]
     status: Literal["finished", "crashed"]
@@ -193,7 +265,8 @@ class StatusEvent(_In):
 
 
 Event = Annotated[
-    Union[MetricsEvent, LayersEvent, FieldEvent, StatusEvent], Field(discriminator="type")
+    Union[MetricsEvent, LayersEvent, FieldEvent, EvalEvent, CurveEvent, StatusEvent],
+    Field(discriminator="type"),
 ]
 
 

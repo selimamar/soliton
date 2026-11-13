@@ -26,6 +26,18 @@ def encode_float(value: float) -> JsonNumber:
     return value
 
 
+def encode_floats(value: Any) -> Any:
+    """[value] with every non-finite float, however deeply nested in dicts and
+    lists, replaced as encode_float does: ready for JSON."""
+    if isinstance(value, float):
+        return encode_float(value)
+    if isinstance(value, dict):
+        return {k: encode_floats(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [encode_floats(v) for v in value]
+    return value
+
+
 def to_float(value: Any) -> Optional[float]:
     """A Python, NumPy or PyTorch scalar as a float; None if it isn't one."""
     if isinstance(value, bool):

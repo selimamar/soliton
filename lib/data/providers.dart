@@ -4,6 +4,7 @@ import '../models/field_snapshot.dart';
 import '../models/layer_stats.dart';
 import '../models/metric_series.dart';
 import '../models/run.dart';
+import '../models/run_insights.dart';
 import 'api_run_repository.dart';
 import 'mock/mock_run_repository.dart';
 import 'run_repository.dart';
@@ -118,6 +119,24 @@ final fieldSnapshotProvider = FutureProvider.autoDispose.family<FieldSnapshot, F
   (ref, key) => ref.watch(runRepositoryProvider).fetchFieldSnapshot(key.runId, key.name, key.step),
   retry: retryDataRequest,
 );
+
+final evalsProvider = FutureProvider.autoDispose.family<List<LoggedSeries<EvalStep>>, String>(
+  (ref, runId) => ref.watch(runRepositoryProvider).fetchEvals(runId),
+  retry: retryDataRequest,
+);
+
+final curvesProvider = FutureProvider.autoDispose.family<List<LoggedSeries<CurveStep>>, String>(
+  (ref, runId) => ref.watch(runRepositoryProvider).fetchCurves(runId),
+  retry: retryDataRequest,
+);
+
+/// Per run, the latest and lowest value of the metrics named in the key
+/// (comma-separated, so equal requests share one fetch).
+final latestMetricsProvider = FutureProvider.autoDispose
+    .family<Map<String, Map<String, LatestMetric>>, String>(
+      (ref, names) => ref.watch(runRepositoryProvider).fetchLatestMetrics(names.split(',')),
+      retry: retryDataRequest,
+    );
 
 /// Saves what people add to runs (tags, notes).
 final runNotesEditorProvider = Provider<RunNotesEditor>(RunNotesEditor.new);

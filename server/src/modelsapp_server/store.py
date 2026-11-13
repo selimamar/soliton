@@ -15,9 +15,18 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from .db import FieldRow, LayerPointRow, LayerRow, MetricPointRow, RunNotesRow, RunRow, RunSystemRow
+from .db import FieldRow, LayerPointRow, RunItemRow, LayerRow, MetricPointRow, RunNotesRow, RunRow, RunSystemRow
 from .floats import decode_float, downsample, encode_float, from_columns, to_columns
-from .schemas import FieldEvent, LayersEvent, MetricsEvent, RunIn, RunNotesIn, StatusEvent
+from .schemas import (
+    CurveEvent,
+    EvalEvent,
+    FieldEvent,
+    LayersEvent,
+    MetricsEvent,
+    RunIn,
+    RunNotesIn,
+    StatusEvent,
+)
 
 TRAIN_LOSS = "train/loss"
 LOSS_PREVIEW_POINTS = 60
@@ -127,10 +136,39 @@ def _field_row(run_id: str, event: FieldEvent) -> dict:
             "position": event.position,
             "reduction": event.reduction,
             "layerShape": event.layerShape,
+            "sample": event.sample,
+            "worstOf": event.worstOf,
+            "extent": None if event.extent is None else [
+                [encode_float(a), encode_float(b)] for a, b in event.extent
+            ],
+            "axes": event.axes,
+            "spectrum": None if event.spectrum is None else {
+                "k": [encode_float(v) for v in event.spectrum.k],
+                "prediction": [encode_float(v) for v in event.spectrum.prediction],
+                "target": None if event.spectrum.target is None
+                else [encode_float(v) for v in event.spectrum.target],
+            },
         },
         "prediction": event.prediction,
         "target": event.target,
     }
+
+
+def _item_row(run_id: str, event) -> dict:
+    """An eval or curve, as the app reads it (non-finite numbers as strings)."""
+    data = event.model_dump(exclude={"type", "step", "epoch", "time", "name"})
+    return {"run_id": run_id, "type": event.type, "name": event.name, "step": event.step,
+            "data": _encode_floats(data)}
+
+
+def _encode_floats(value):
+    if isinstance(value, float):
+        return encode_float(value)
+    if isinstance(value, dict):
+        return {k: _encode_floats(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_encode_floats(v) for v in value]
+    return value
 
 
 def _default_architecture(name: str) -> dict:
@@ -213,8 +251,8 @@ class Store:
         with self._sessions.begin() as session:
             row = self._find(session, run_id)
             change = _change(row, "deleted")
-            for table in (MetricPointRow, LayerPointRow, LayerRow, FieldRow, RunNotesRow,
-                          RunSystemRow):
+            for table in (MetricPointRow, LayerPointRow, LayerRow, FieldRow, RunItemRow,
+                          RunNotesRow, RunSystemRow):
                 session.execute(delete(table).where(table.run_id == run_id))
             session.delete(row)
             return change
@@ -233,6 +271,7 @@ class Store:
             metric_rows: list[dict] = []
             layer_point_rows: list[dict] = []
             field_rows: list[dict] = []
+            item_rows: list[dict] = []
             for event in events:
                 # Clamp to now: a clock running ahead mustn't keep a dead run alive.
                 time = min(event.time or now, now)
@@ -271,9 +310,13 @@ class Store:
                 elif isinstance(event, FieldEvent):
                     field_rows.append(_field_row(run_id, event))
                     row.current_step = max(row.current_step, event.step)
+                elif isinstance(event, (EvalEvent, CurveEvent)):
+                    item_rows.append(_item_row(run_id, event))
+                    row.current_step = max(row.current_step, event.step)
 
             _upsert(session, MetricPointRow, metric_rows, ("run_id", "name", "step"))
             _upsert(session, LayerPointRow, layer_point_rows, ("run_id", "layer", "step"))
+            _upsert(session, RunItemRow, item_rows, ("run_id", "type", "name", "step"))
             # One at a time: each row is up to a megabyte or so.
             for field_row in field_rows:
                 _upsert(session, FieldRow, [field_row], ("run_id", "name", "step"))
@@ -428,11 +471,60 @@ class Store:
                     layer=meta.get("layer"),
                     position=meta.get("position"),
                 )
+                if meta.get("worstOf") is not None:
+                    field["worstOf"] = meta["worstOf"]
                 field["steps"].append({"step": step, "stats": meta.get("stats", {})})
-        # Outputs by name, then layers in model order.
+        # Outputs by name, then layers in model order, worst samples by rank,
+        # Fourier weights in model order.
+        kinds = {"output": 0, "layer": 1, "worst": 2, "weights": 3}
         return sorted(fields.values(), key=lambda f: (
-            f["kind"] == "layer", f["position"] if f["position"] is not None else 0, f["name"]
+            kinds.get(f["kind"], 4),
+            f.get("worstOf") or "",
+            f["position"] if f["position"] is not None else 0,
+            f["name"],
         ))
+
+    def items(self, run_id: str, kind: str) -> list[dict]:
+        """A run's evals or curves: per name, every step logged, in order."""
+        with self._sessions() as session:
+            self._find(session, run_id)
+            result = session.execute(
+                select(RunItemRow.name, RunItemRow.step, RunItemRow.data)
+                .where(RunItemRow.run_id == run_id, RunItemRow.type == kind)
+                .order_by(RunItemRow.name, RunItemRow.step)
+            )
+            items: dict[str, dict] = {}
+            for name, step, data in result:
+                items.setdefault(name, {"name": name, "steps": []})["steps"].append(
+                    {"step": step, **data}
+                )
+        return list(items.values())
+
+    def latest_metrics(self, names: Sequence[str]) -> dict:
+        """For every run that logged them: each metric's latest value (by
+        step) and its lowest finite value. For sweeps across runs."""
+        result: dict[str, dict] = defaultdict(dict)
+        with self._sessions() as session:
+            rows = session.execute(
+                select(MetricPointRow.run_id, MetricPointRow.name, MetricPointRow.step,
+                       MetricPointRow.value, MetricPointRow.code)
+                .where(MetricPointRow.name.in_(list(names)))
+                .order_by(MetricPointRow.run_id, MetricPointRow.name, MetricPointRow.step)
+            )
+            for run_id, name, _step, value, code in rows:
+                number = from_columns(value, code)
+                entry = result[run_id].setdefault(name, {"latest": number, "min": None})
+                entry["latest"] = number
+                if number == number and abs(number) != float("inf"):
+                    entry["min"] = number if entry["min"] is None else min(entry["min"], number)
+        return {
+            run_id: {
+                name: {"latest": encode_float(e["latest"]),
+                       "min": None if e["min"] is None else encode_float(e["min"])}
+                for name, e in metrics.items()
+            }
+            for run_id, metrics in result.items()
+        }
 
     def field_snapshot(self, run_id: str, name: str, step: int | None) -> dict:
         """One snapshot; the latest one if [step] is None."""

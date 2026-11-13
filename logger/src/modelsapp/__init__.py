@@ -37,6 +37,7 @@ def init(
     train_samples: Any = None,
     val_samples: Any = None,
     loss: Any = None,
+    pde: Optional[Mapping[str, Any]] = None,
     tags: Optional[Iterable[str]] = None,
     notes: str = "",
     system_metrics: bool = True,
@@ -57,7 +58,9 @@ def init(
     samples are trained and validated on: a number, a dataset or a DataLoader
     (its dataset is counted). loss: the loss, e.g. the criterion module
     ("CrossEntropyLoss(label_smoothing=0.1)"), a function or a string.
-    These three are listed first among the hyperparameters. tags, notes:
+    These three are listed first among the hyperparameters, then pde: what
+    is solved, e.g. {"equation": "Navier-Stokes 2D", "viscosity": 1e-3,
+    "resolution": "64 x 64"} (the app can group runs by PDE). tags, notes:
     to organise runs in the app (e.g. tags=["baseline"]); they only set the
     starting values, which are then edited in the app. system_metrics:
     sample GPU, memory and CPU usage every system_interval seconds (the
@@ -77,6 +80,7 @@ def init(
         train_samples=train_samples,
         val_samples=val_samples,
         loss=loss,
+        pde=pde,
         tags=tags,
         notes=notes,
         system_metrics=system_metrics,

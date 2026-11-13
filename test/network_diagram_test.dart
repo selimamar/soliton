@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:models_app/data/mock/mock_run_repository.dart';
+import 'package:models_app/data/providers.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:models_app/data/mock/mock_architectures.dart';
 import 'package:models_app/data/mock/mock_flows.dart';
@@ -262,6 +264,9 @@ void main() {
       final run = withoutFlow(buildMockRuns(DateTime(2026, 11, 12)).first.run);
       await tester.pumpWidget(
         ProviderScope(
+          overrides: [
+            runRepositoryProvider.overrideWithValue(MockRunRepository(latency: Duration.zero)),
+          ],
           child: MaterialApp(
             home: Scaffold(body: OverviewTab(run: run)),
           ),

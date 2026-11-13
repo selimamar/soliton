@@ -217,3 +217,27 @@ def test_rollouts_3d_fields_and_layers_reach_the_server(tmp_path, database_url):
         assert fields["p"]["shape"] == [40, 40, 40]
         layer = server.get(f"/api/runs/{run.id}/fields/snapshot?name=layers/0")
         assert layer["reduction"] == "mean of 4 channels" and layer["shape"] == [16, 16]
+
+
+def test_validation_sets_curves_and_spectra_reach_the_server(tmp_path, database_url):
+    np = pytest.importorskip("numpy")
+    rng = np.random.default_rng(0)
+    targets = rng.random((20, 16, 16)) + 1
+    predictions = targets * 1.05
+    predictions[3] = np.nan
+    with LiveServer(database_url) as server:
+        run = modelsapp.init("eval", server=server.url, token=TOKEN, dir=str(tmp_path),
+                             system_metrics=False, pde={"equation": "Darcy 2D"})
+        run.log_field("u", predictions[0], targets[0], step=1, extent=[(0, 1), (0, 1)],
+                      axes=["y", "x"])
+        run.log_eval("u", predictions, targets, step=1, worst=2)
+        run.log_curve("error vs resolution", [16, 32], [0.05, "NaN"], step=1)
+        run.finish()
+        (evals,) = server.get(f"/api/runs/{run.id}/evals")
+        assert evals["steps"][0]["worst"][0] == {"rank": 1, "sample": 3, "relL2": "NaN"}
+        assert server.get(f"/api/runs/{run.id}/curves")[0]["steps"][0]["y"] == [0.05, "NaN"]
+        field = server.get(f"/api/runs/{run.id}/fields/snapshot?name=u")
+        assert field["axes"] == ["y", "x"] and len(field["spectrum"]["k"]) == 8
+        names = [f["name"] for f in server.get(f"/api/runs/{run.id}/fields")]
+        assert names == ["u", "worst/u/1", "worst/u/2"]
+        assert server.get(f"/api/runs/{run.id}")["hyperparameters"]["PDE"] == "Darcy 2D"

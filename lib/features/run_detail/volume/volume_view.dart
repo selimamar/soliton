@@ -24,6 +24,7 @@ class VolumeView extends StatefulWidget {
     required this.semanticLabel,
     this.onInteracting,
     this.draft = false,
+    this.axisNames,
   });
 
   final Volume volume;
@@ -32,6 +33,9 @@ class VolumeView extends StatefulWidget {
   final ValueChanged<VolumeCamera> onCamera;
   final ValueChanged<bool>? onInteracting;
   final bool draft;
+
+  /// Names for the box's axes (e.g. x, y, z); default 0, 1, 2.
+  final List<String>? axisNames;
   final String semanticLabel;
 
   /// Pixels across, sharp and while turning.
@@ -156,6 +160,7 @@ class _VolumeViewState extends State<VolumeView> {
                     color: scheme.onSurfaceVariant,
                     labelStyle: Theme.of(context).textTheme.labelSmall!
                         .copyWith(color: scheme.onSurfaceVariant),
+                    names: widget.axisNames,
                   ),
                 ),
               ),
@@ -231,12 +236,14 @@ class _BoxPainter extends CustomPainter {
     required this.sizes,
     required this.color,
     required this.labelStyle,
+    this.names,
   });
 
   final VolumeCamera camera;
   final List<int> sizes;
   final Color color;
   final TextStyle labelStyle;
+  final List<String>? names;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -265,7 +272,10 @@ class _BoxPainter extends CustomPainter {
     for (final (axis, end) in [(0, at(1, -1, -1)), (1, at(-1, 1, -1)), (2, at(-1, -1, 1))]) {
       canvas.drawLine(origin, end, axisPaint);
       final label = TextPainter(
-        text: TextSpan(text: '$axis', style: labelStyle),
+        text: TextSpan(
+          text: names != null && axis < names!.length ? names![axis] : '$axis',
+          style: labelStyle,
+        ),
         textDirection: TextDirection.ltr,
       )..layout();
       final away = end - origin;
@@ -277,5 +287,8 @@ class _BoxPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_BoxPainter old) =>
-      old.camera != camera || old.color != color || !identical(old.sizes, sizes);
+      old.camera != camera ||
+      old.color != color ||
+      !identical(old.sizes, sizes) ||
+      old.names != names;
 }

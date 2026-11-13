@@ -39,6 +39,44 @@ String formatMetric(double value) {
   return formatCount(value);
 }
 
+/// A position in a domain, with up to 3 significant digits and no trailing
+/// zeros: 1 -> "1", 0.0078125 -> "0.00781", 6.2832 -> "6.28", 1.5e-6 ->
+/// "1.5e-6".
+String formatCoordinate(double value) {
+  if (!value.isFinite) return formatMetric(value);
+  final abs = value.abs();
+  if (abs == 0) return '0';
+  if (abs < 1e-3 || abs >= 1e5) {
+    return value
+        .toStringAsExponential(1)
+        .replaceFirst(RegExp(r'\.0e'), 'e')
+        .replaceFirst('e+', 'e');
+  }
+  var text = abs >= 1000 ? value.round().toString() : value.toStringAsPrecision(3);
+  if (text.contains('.') && !text.contains('e')) {
+    text = text.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+  }
+  return text;
+}
+
+/// "3.2%", "0.45%", "0.0031%": relative errors span orders of magnitude.
+String formatRelativeError(double fraction) {
+  if (!fraction.isFinite) return formatMetric(fraction);
+  final percent = fraction * 100;
+  if (percent == 0) return '0%';
+  return '${percent >= 1 ? percent.toStringAsFixed(1) : percent.toStringAsPrecision(2)}%';
+}
+
+/// A duration in seconds, in the unit that reads best: "4.2 ms",
+/// "850 µs", "2.1 s", "3m 12s".
+String formatSeconds(double seconds) {
+  if (!seconds.isFinite) return formatMetric(seconds);
+  if (seconds >= 60) return formatDuration(Duration(milliseconds: (seconds * 1000).round()));
+  if (seconds >= 1) return '${formatCoordinate(seconds)} s';
+  if (seconds >= 1e-3) return '${formatCoordinate(seconds * 1e3)} ms';
+  return '${formatCoordinate(seconds * 1e6)} µs';
+}
+
 /// 0.913 -> "91.3%".
 String formatPercent(double fraction) => '${(fraction * 100).toStringAsFixed(1)}%';
 

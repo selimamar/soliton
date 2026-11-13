@@ -5,6 +5,7 @@ import '../../models/layer_stats.dart';
 import '../../models/metric_series.dart';
 import '../../models/model_flow.dart';
 import '../../models/run.dart';
+import '../../models/run_insights.dart';
 import '../../models/system_info.dart';
 import 'curve_generator.dart';
 import 'mock_architectures.dart';
@@ -18,17 +19,25 @@ class MockRun {
     required this.metrics,
     required this.layerStats,
     this.fields = const [],
+    this.extras,
   });
 
   final Run run;
   final Map<String, MetricSeries> metrics;
   final List<LayerStats> layerStats;
 
-  /// Field snapshots (for the neural operator run).
+  /// Field snapshots (for the neural operator runs).
   final List<MockField> fields;
+
+  /// Validation sets and curves (for the neural operator runs).
+  final MockExtras? extras;
+
+  List<LoggedSeries<EvalStep>> get evals => extras?.evals ?? const [];
+  List<LoggedSeries<CurveStep>> get curves => extras?.curves ?? const [];
 }
 
-/// The six demo runs: four live, one crashed, one finished.
+/// The demo runs: four live, one crashed, and five finished (four of them a
+/// small sweep over an FNO's modes and width).
 List<MockRun> buildMockRuns(DateTime now) => [
   _buildRun(
     id: 'resnet50-cifar',
@@ -222,6 +231,14 @@ List<MockRun> buildMockRuns(DateTime now) => [
     peakLearningRate: 1e-3,
     fields: (current, total, seed) =>
         navierStokesFields(currentStep: current, totalSteps: total, every: 500, seed: seed),
+    extras: (curves, fields, current, total, seed) => navierStokesExtras(
+      curves: curves,
+      fields: fields,
+      currentStep: current,
+      totalSteps: total,
+      every: 500,
+      seed: seed,
+    ),
     seed: 5,
   ),
   _buildRun(
@@ -272,6 +289,14 @@ List<MockRun> buildMockRuns(DateTime now) => [
     peakLearningRate: 1e-3,
     fields: (current, total, seed) =>
         turbulence3dFields(currentStep: current, totalSteps: total, every: 500, seed: seed),
+    extras: (curves, fields, current, total, seed) => turbulence3dExtras(
+      curves: curves,
+      fields: fields,
+      currentStep: current,
+      totalSteps: total,
+      every: 500,
+      seed: seed,
+    ),
     seed: 6,
   ),
   _buildRun(
@@ -316,6 +341,7 @@ List<MockRun> buildMockRuns(DateTime now) => [
     peakLearningRate: 1e-3,
     seed: 4,
   ),
+  ..._sweepRuns(now),
 ];
 
 MockRun _buildRun({
@@ -337,7 +363,16 @@ MockRun _buildRun({
   double? finalAccuracy,
   required double peakLearningRate,
   String? statusMessage,
+  List<String> tags = const [],
   List<MockField> Function(int currentStep, int totalSteps, int seed)? fields,
+  MockExtras Function(
+    CurveGenerator curves,
+    List<MockField> fields,
+    int currentStep,
+    int totalSteps,
+    int seed,
+  )?
+  extras,
   required int seed,
 }) {
   final crashed = status == RunStatus.crashed;
@@ -396,6 +431,9 @@ MockRun _buildRun({
       curves.layer(layer.name, depth: i / math.max(1, statLayers.length - 1), crashed: crashed),
   ];
 
+  final runFields = fields?.call(currentStep, totalSteps, seed) ?? const <MockField>[];
+  final runExtras = extras?.call(curves, runFields, currentStep, totalSteps, seed);
+
   final run = Run(
     id: id,
     name: id,
@@ -414,15 +452,52 @@ MockRun _buildRun({
     system: system,
     lossPreview: [for (final p in trainLoss.downsampled(40).points) p.value],
     statusMessage: statusMessage,
+    tags: tags,
   );
 
   return MockRun(
     run: run,
-    metrics: metrics,
+    metrics: {...metrics, ...?runExtras?.metrics},
     layerStats: layerStats,
-    fields: fields?.call(currentStep, totalSteps, seed) ?? const [],
+    fields: [...runFields, ...?runExtras?.fields],
+    extras: runExtras,
   );
 }
+
+/// A small sweep over an FNO's Fourier modes and width on the 2D
+/// Navier–Stokes problem: finished runs with only what a sweep compares.
+List<MockRun> _sweepRuns(DateTime now) => [
+  for (final (i, (modes, width)) in const [(8, 32), (8, 64), (16, 32), (16, 64)].indexed)
+    _buildRun(
+      id: 'fno-ns-m$modes-w$width',
+      project: 'neural-operators',
+      host: 'Sherlock',
+      status: RunStatus.finished,
+      startedAt: now.subtract(Duration(days: 1, hours: 6 - i)),
+      endedAt: now.subtract(Duration(hours: 20 - 2 * i)),
+      currentStep: 6000,
+      totalSteps: 6000,
+      totalEpochs: 120,
+      architecture: fno2d(),
+      hyperparameters: {
+        'Training samples': '1,000',
+        'Validation samples': '200',
+        'Loss': 'LpLoss (relative L2)',
+        'PDE': 'Navier–Stokes 2D, vorticity form',
+        'PDE viscosity': '1e-3',
+        'Fourier modes': '$modes × $modes',
+        'Width': '$width',
+        'Optimizer': 'Adam',
+        'Dataset': 'Navier–Stokes 2D (FNO benchmark)',
+      },
+      tags: const ['sweep'],
+      initialLoss: 0.95,
+      finalLoss: 0.02 * (12 / modes) * (32 / width),
+      peakLearningRate: 1e-3,
+      extras: (curves, _, _, _, _) => sweepExtras(curves: curves, modes: modes, width: width),
+      seed: 20 + i,
+    ),
+];
 
 /// What the logger's system monitor would have sampled on [system]: GPUs
 /// kept busy, memory filling up early, then steady.

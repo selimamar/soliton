@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../../data/providers.dart';
+import '../../../models/metric_series.dart';
 import '../../../models/run.dart';
 import '../../../shared/clock.dart';
 import '../../../shared/formatters.dart';
@@ -34,6 +36,7 @@ class OverviewTab extends StatelessWidget {
           right: StatTile(label: 'Host', value: run.host, icon: Icons.dns_outlined),
         ),
         _TimingTiles(run: run),
+        _SpeedTiles(runId: run.id),
         _ProgressCard(run: run),
         RunNotesCard(run: run),
         SectionCard(
@@ -58,6 +61,36 @@ class OverviewTab extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// How fast the model is per sample, and how much faster than the solver
+/// it stands in for (`perf/inference_s`, `perf/solver_s`): only when the run
+/// logs them.
+class _SpeedTiles extends ConsumerWidget {
+  const _SpeedTiles({required this.runId});
+
+  final String runId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final metrics = ref.watch(runMetricsProvider(runId)).value;
+    final inference = metrics?[MetricKeys.inferenceSeconds]?.latest;
+    if (inference == null) return const SizedBox.shrink();
+    final solver = metrics?[MetricKeys.solverSeconds]?.latest;
+    final speedup = solver != null && inference > 0 ? solver / inference : null;
+    return _TileRow(
+      left: StatTile(
+        label: 'Model, per sample',
+        value: formatSeconds(inference),
+        icon: Icons.bolt_outlined,
+      ),
+      right: StatTile(
+        label: solver == null ? 'Solver time not logged' : 'vs solver (${formatSeconds(solver)})',
+        value: speedup == null ? '–' : '${formatCount(speedup)}× faster',
+        icon: Icons.speed,
+      ),
     );
   }
 }

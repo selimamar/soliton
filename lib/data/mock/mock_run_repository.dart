@@ -2,6 +2,7 @@ import '../../models/field_snapshot.dart';
 import '../../models/layer_stats.dart';
 import '../../models/metric_series.dart';
 import '../../models/run.dart';
+import '../../models/run_insights.dart';
 import '../run_repository.dart';
 import '../tags.dart';
 import 'mock_runs.dart';
@@ -81,6 +82,38 @@ class MockRunRepository implements RunRepository {
       }
     }
     throw FieldNotFoundException(name, step);
+  }
+
+  @override
+  Future<List<LoggedSeries<EvalStep>>> fetchEvals(String runId) async {
+    await Future<void>.delayed(latency);
+    return _find(runId).evals;
+  }
+
+  @override
+  Future<List<LoggedSeries<CurveStep>>> fetchCurves(String runId) async {
+    await Future<void>.delayed(latency);
+    return _find(runId).curves;
+  }
+
+  @override
+  Future<Map<String, Map<String, LatestMetric>>> fetchLatestMetrics(List<String> names) async {
+    await Future<void>.delayed(latency);
+    return {
+      for (final mock in _runs)
+        if (names.where(mock.metrics.containsKey).isNotEmpty)
+          mock.run.id: {
+            for (final name in names)
+              if (mock.metrics[name] case final series? when series.points.isNotEmpty)
+                name: LatestMetric(
+                  latest: series.points.last.value,
+                  min: series.points
+                      .map((p) => p.value)
+                      .where((v) => v.isFinite)
+                      .fold<double?>(null, (a, b) => a == null || b < a ? b : a),
+                ),
+          },
+    };
   }
 
   MockRun _find(String runId) =>

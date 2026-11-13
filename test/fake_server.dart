@@ -80,6 +80,27 @@ class FakeServer {
             int.parse(request.url.queryParameters['step']!),
           )).toJson(),
         ),
+        ['runs', final id, 'evals'] => _json([
+          for (final series in await _data.fetchEvals((await _run(id)).id))
+            {
+              'name': series.name,
+              'steps': [for (final s in series.steps) s.toJson()],
+            },
+        ]),
+        ['runs', final id, 'curves'] => _json([
+          for (final series in await _data.fetchCurves((await _run(id)).id))
+            {
+              'name': series.name,
+              'steps': [for (final s in series.steps) s.toJson()],
+            },
+        ]),
+        ['metrics', 'latest'] => _json({
+          for (final run in (await _data.fetchLatestMetrics(
+            request.url.queryParameters['names']!.split(','),
+          )).entries)
+            if (runIds.contains(run.key))
+              run.key: {for (final m in run.value.entries) m.key: m.value.toJson()},
+        }),
         _ => _json({'detail': 'Not Found'}, status: 404),
       };
     } on FieldNotFoundException catch (error) {

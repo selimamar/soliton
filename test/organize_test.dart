@@ -57,7 +57,14 @@ void main() {
       expect(summary(groupRuns(runs, RunGrouping.project)), {
         'image-classification': ['resnet50-cifar', 'vit-small'],
         'language-models': ['gpt-tiny'],
-        'neural-operators': ['fno-navier-stokes', 'fno3d-turbulence'],
+        'neural-operators': [
+          'fno-navier-stokes',
+          'fno3d-turbulence',
+          'fno-ns-m8-w32',
+          'fno-ns-m8-w64',
+          'fno-ns-m16-w32',
+          'fno-ns-m16-w64',
+        ],
         'segmentation': ['unet-seg'],
       });
       expect(groupRuns(runs, RunGrouping.model).map((g) => g.label), [
@@ -159,8 +166,8 @@ void main() {
       await openGroupingMenu(tester);
       await tester.tap(find.text('By tag'));
       await tester.pumpAndSettle();
-      expect(find.text('No tags'), findsOneWidget);
       expect(find.text('1 run'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('No tags'), 300, scrollable: visibleList());
     });
 
     testWidgets('tags used elsewhere are suggested, and tags can be removed', (tester) async {

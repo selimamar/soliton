@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,16 +8,20 @@ import 'package:material_ui/material_ui.dart';
 import '../../app/routes.dart';
 import '../../app/theme.dart';
 import '../../data/providers.dart';
+import '../../models/field_snapshot.dart';
 import '../../models/metric_series.dart';
 import '../../models/run.dart';
 import '../../shared/chart_settings.dart';
+import '../../shared/colormaps.dart';
 import '../../shared/formatters.dart';
 import '../../shared/widgets/async_value_view.dart';
 import '../../shared/widgets/chart_controls.dart';
 import '../../shared/widgets/line_chart_card.dart';
 import '../../shared/widgets/section_card.dart';
 import '../../shared/widgets/spaced_list_view.dart';
+import '../../shared/widgets/exportable.dart';
 import '../../shared/widgets/status_chip.dart';
+import '../run_detail/widgets/field_heatmap.dart';
 
 /// Two or more runs side by side: a summary, then their loss and accuracy
 /// curves in the same charts. Open it from the runs list ("Compare runs").
@@ -130,6 +135,7 @@ class _Comparison extends ConsumerWidget {
             formatTick: formatPercentAxisTick,
             lines: accuracy,
           ),
+        _FieldsComparison(runs: runs),
       ],
     );
   }
@@ -201,5 +207,245 @@ class _Summary extends StatelessWidget {
       if (val.isNotEmpty) 'best val loss ${formatMetric(val.reduce(math.min))}',
       if (accuracy.isNotEmpty) 'best accuracy ${formatPercent(accuracy.reduce(math.max))}',
     ].join(' · ');
+  }
+}
+
+/// The same field from each run at its latest step: the truth once (from
+/// the first run), then each run's prediction and error, on colour scales
+/// shared by all runs so their maps compare. 3D fields show their middle
+/// slice across the shortest axis, rollouts their last frame. Only when two
+/// or more runs log a field of the same name.
+class _FieldsComparison extends ConsumerStatefulWidget {
+  const _FieldsComparison({required this.runs});
+
+  final List<_ComparedRun> runs;
+
+  @override
+  ConsumerState<_FieldsComparison> createState() => _FieldsComparisonState();
+}
+
+class _FieldsComparisonState extends ConsumerState<_FieldsComparison> {
+  String? _name;
+
+  @override
+  Widget build(BuildContext context) {
+    final perRun = <String, Map<String, FieldSummary>>{
+      for (final r in widget.runs)
+        r.run.id: {
+          for (final f in ref.watch(fieldsProvider(r.run.id)).value ?? const <FieldSummary>[])
+            if (f.kind == FieldKind.output && f.steps.isNotEmpty) f.name: f,
+        },
+    };
+    final counts = <String, int>{};
+    for (final fields in perRun.values) {
+      for (final name in fields.keys) {
+        counts[name] = (counts[name] ?? 0) + 1;
+      }
+    }
+    final shared = [
+      for (final e in counts.entries)
+        if (e.value >= 2) e.key,
+    ];
+    if (shared.isEmpty) return const SizedBox.shrink();
+    final name = shared.contains(_name) ? _name! : shared.first;
+    final snapshots = [
+      for (final r in widget.runs)
+        if (perRun[r.run.id]![name] case final field?)
+          (
+            run: r,
+            snapshot: ref
+                .watch(
+                  fieldSnapshotProvider((runId: r.run.id, name: name, step: field.steps.last.step)),
+                )
+                .value,
+          ),
+    ];
+    final loaded = [
+      for (final s in snapshots)
+        if (s.snapshot != null) (run: s.run, snapshot: s.snapshot!),
+    ];
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+
+    return Exportable(
+      fileName: 'compare $name',
+      builder: (context, exportButton) => SectionCard(
+        title: 'Fields',
+        trailing: exportButton,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (shared.length > 1) ...[
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final n in shared)
+                    ChoiceChip(
+                      label: Text(n),
+                      selected: n == name,
+                      onSelected: (_) => setState(() => _name = n),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
+            Text('Each run at its latest step, on shared colour scales.', style: muted),
+            const SizedBox(height: 12),
+            if (loaded.length < snapshots.length)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else
+              _ComparedFields(entries: loaded),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ComparedFields extends StatelessWidget {
+  const _ComparedFields({required this.entries});
+
+  final List<({_ComparedRun run, FieldSnapshot snapshot})> entries;
+
+  /// What to draw of a snapshot: its last frame, the middle slice of 3D.
+  static FieldPlane _plane(FieldSnapshot s, Float32List data) {
+    final frame = s.frames - 1;
+    if (s.dimensions != 3) return s.plane(data, frame: frame);
+    var axis = 0;
+    for (var a = 1; a < 3; a++) {
+      if (s.shape[a] < s.shape[axis]) axis = a;
+    }
+    return s.plane(data, frame: frame, axis: axis, index: s.shape[axis] ~/ 2);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    var low = double.infinity, high = double.negativeInfinity, error = 0.0;
+    for (final e in entries) {
+      low = math.min(low, e.snapshot.valueRange.min);
+      high = math.max(high, e.snapshot.valueRange.max);
+      error = math.max(error, e.snapshot.maxAbsError);
+    }
+    Widget map(FieldPlane plane, Colormap colormap, double lo, double hi, String label) =>
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: FieldHeatmap(
+            data: plane.values,
+            rows: plane.rows,
+            columns: plane.columns,
+            low: lo,
+            high: hi,
+            colormap: colormap,
+            aspectRatio: plane.rows == 1 ? 6 : null,
+            semanticLabel: label,
+          ),
+        );
+
+    final truth = entries.first.snapshot;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = math.min(220.0, (constraints.maxWidth - 12) / 2);
+        Widget column(String title, Widget child) => SizedBox(
+          width: width,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(title, style: theme.textTheme.labelMedium, overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 4),
+              child,
+            ],
+          ),
+        );
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (truth.target case final target?) ...[
+              // Its own size, like the maps below (not the card's width).
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: column(
+                  'Ground truth (${entries.first.run.label})',
+                  map(_plane(truth, target), Colormap.viridis, low, high, 'Ground truth'),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            for (final e in entries) ...[
+              Row(
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(color: e.run.color, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      e.run.label,
+                      style: theme.textTheme.titleSmall,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    [
+                      'step ${formatInt(e.snapshot.step)}',
+                      if (e.snapshot.stats[FieldStatKeys.relL2] case final v?)
+                        'rel. L2 ${formatRelativeError(v)}',
+                    ].join(' · '),
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                children: [
+                  column(
+                    'Prediction',
+                    map(
+                      _plane(e.snapshot, e.snapshot.prediction),
+                      Colormap.viridis,
+                      low,
+                      high,
+                      'Prediction of ${e.run.label}',
+                    ),
+                  ),
+                  if (e.snapshot.error case final err?)
+                    column(
+                      'Error',
+                      map(
+                        _plane(e.snapshot, err),
+                        Colormap.diverging,
+                        -error,
+                        error,
+                        'Error of ${e.run.label}',
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+            ],
+            Row(
+              children: [
+                Expanded(
+                  child: ColorBar(colormap: Colormap.viridis, low: low, high: high),
+                ),
+                const SizedBox(width: 12),
+                if (error > 0)
+                  Expanded(
+                    child: ColorBar(colormap: Colormap.diverging, low: -error, high: error),
+                  ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
   }
 }

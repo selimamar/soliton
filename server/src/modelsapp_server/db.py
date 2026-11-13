@@ -164,6 +164,21 @@ class FieldRow(Base):
     target: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class RunItemRow(Base):
+    """A summary logged at one step, as the app reads it: a validation
+    set's errors ("eval") or a curve ("curve"), keyed by name."""
+
+    __tablename__ = "run_items"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    type: Mapped[str] = mapped_column(String(16), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), primary_key=True)
+    step: Mapped[int] = mapped_column(Integer, primary_key=True)
+    data: Mapped[dict] = mapped_column(JSON)
+
+
 def make_engine(url: str) -> Engine:
     if url.startswith("sqlite"):
         engine = create_engine(url, connect_args={"check_same_thread": False, "timeout": 30})

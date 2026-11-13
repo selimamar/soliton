@@ -89,6 +89,11 @@ class RunsListScreen extends ConsumerWidget {
       const _LiveStatusButton(),
       const _GroupingButton(),
       IconButton(
+        icon: const Icon(Icons.grid_on),
+        tooltip: 'Sweep: runs by hyperparameters',
+        onPressed: () => context.go(AppRoutes.sweep),
+      ),
+      IconButton(
         icon: const Icon(Icons.compare_arrows),
         tooltip: 'Compare runs',
         onPressed: () => ref.read(compareSelectionProvider.notifier).start(),

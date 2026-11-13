@@ -2,6 +2,9 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../../models/field_snapshot.dart';
+import '../../models/metric_series.dart';
+import '../../models/run_insights.dart';
+import 'curve_generator.dart';
 
 /// A demo field: snapshots made up on demand (and kept), as a neural
 /// operator would log them.
@@ -15,6 +18,7 @@ class MockField {
     this.frames = 1,
     this.layer,
     this.position,
+    this.worstOf,
   });
 
   final String name;
@@ -24,6 +28,7 @@ class MockField {
   final int frames;
   final String? layer;
   final int? position;
+  final String? worstOf;
   final FieldSnapshot Function(int step) make;
   final _cache = <int, FieldSnapshot>{};
 
@@ -37,10 +42,17 @@ class MockField {
     frames: frames,
     layer: layer,
     position: position,
+    worstOf: worstOf,
     steps: List.unmodifiable([
       for (final step in steps)
         // Layers have no target, so no errors: no need to make them up yet.
-        FieldStep(step: step, stats: kind == FieldKind.layer ? const {} : snapshot(step)!.stats),
+        // Layers and weights have no target, so no errors: no need to make them up yet.
+        FieldStep(
+          step: step,
+          stats: kind == FieldKind.layer || kind == FieldKind.weights
+              ? const {}
+              : snapshot(step)!.stats,
+        ),
     ]),
   );
 }
@@ -72,6 +84,8 @@ List<MockField> navierStokesFields({
     required int frames,
     required Float32List Function(int frame, double? progress) frame,
     List<double>? times,
+    FieldDomain domain = const FieldDomain(),
+    List<double> Function(double? progress)? spectrum,
   }) => _outputSnapshot(
     name,
     step,
@@ -80,6 +94,8 @@ List<MockField> navierStokesFields({
     frames: frames,
     frame: frame,
     times: times,
+    domain: domain,
+    spectrum: spectrum,
   );
 
   const size = 64, line = 256;
@@ -97,6 +113,8 @@ List<MockField> navierStokesFields({
         const [size, size],
         frames: 1,
         frame: (_, p) => flow.grid(size, 0, p),
+        domain: _square,
+        spectrum: (p) => flow.spectrum(size, 0, p),
       ),
     ),
     MockField._(
@@ -109,6 +127,7 @@ List<MockField> navierStokesFields({
         const [line],
         frames: 1,
         frame: (_, p) => flow.line(line, 0.5, 0, p),
+        domain: _line,
       ),
     ),
     MockField._(
@@ -123,6 +142,8 @@ List<MockField> navierStokesFields({
         frames: frames,
         times: times,
         frame: (f, p) => flow.grid(rolloutSize, times[f], p),
+        domain: _square,
+        spectrum: (p) => flow.spectrum(rolloutSize, times.last, p),
       ),
     ),
     MockField._(
@@ -137,6 +158,7 @@ List<MockField> navierStokesFields({
         frames: frames,
         times: times,
         frame: (f, p) => flow.line(rolloutLine, 0.5, times[f], p),
+        domain: _line,
       ),
     ),
     // FNO-3D treats time as a third axis: one (x, y, t) volume, t last.
@@ -161,6 +183,7 @@ List<MockField> navierStokesFields({
           }
           return volume;
         },
+        domain: _spaceTime,
       ),
     ),
   ];
@@ -183,6 +206,8 @@ List<MockField> navierStokesFields({
         frames: cubeFrames,
         times: cubeTimes,
         frame: (f, p) => flow3d.grid(cube, cubeTimes[f], p),
+        domain: _box,
+        spectrum: (p) => flow3d.spectrum(cube, cubeTimes.last, p),
       ),
     ),
   );
@@ -252,6 +277,11 @@ FieldSnapshot _outputSnapshot(
   required int frames,
   required Float32List Function(int frame, double? progress) frame,
   List<double>? times,
+  FieldDomain domain = const FieldDomain(),
+  List<double> Function(double? progress)? spectrum,
+  FieldKind kind = FieldKind.output,
+  String? layer,
+  int? sample,
 }) {
   final size = shape.fold(1, (a, b) => a * b);
   final prediction = Float32List(frames * size);
@@ -263,6 +293,9 @@ FieldSnapshot _outputSnapshot(
   return FieldSnapshot(
     name: name,
     step: step,
+    kind: kind,
+    layer: layer,
+    sample: sample,
     shape: List.unmodifiable(shape),
     originalShape: List.unmodifiable([for (final n in shape) n * 2]),
     frames: frames,
@@ -270,6 +303,17 @@ FieldSnapshot _outputSnapshot(
     prediction: prediction,
     target: target,
     stats: Map.unmodifiable(_errorStats(prediction, target)),
+    domain: domain,
+    spectrum: spectrum == null
+        ? null
+        : () {
+            final predicted = spectrum(progress);
+            return FieldSpectrum(
+              k: List.unmodifiable([for (var k = 1; k <= predicted.length; k++) k.toDouble()]),
+              prediction: List.unmodifiable(predicted),
+              target: List.unmodifiable(spectrum(null)),
+            );
+          }(),
     frameStats: frames == 1
         ? const {}
         : Map.unmodifiable({
@@ -280,9 +324,44 @@ FieldSnapshot _outputSnapshot(
                   Float32List.sublistView(target, f * size, (f + 1) * size),
                 )[FieldStatKeys.relL2]!,
             ]),
+            ..._physics(prediction, target, frames, size),
           }),
   );
 }
+
+/// Per frame mean, mean square and minimum, as the logger sends them for a
+/// rollout's conservation checks.
+Map<String, List<double>> _physics(
+  Float32List prediction,
+  Float32List target,
+  int frames,
+  int size,
+) {
+  List<double> per(Float32List data, double Function(Float32List) of) => List.unmodifiable([
+    for (var f = 0; f < frames; f++) of(Float32List.sublistView(data, f * size, (f + 1) * size)),
+  ]);
+  double mean(Float32List v) => v.fold(0.0, (a, b) => a + b) / v.length;
+  double meanSquare(Float32List v) => v.fold(0.0, (a, b) => a + b * b) / v.length;
+  double minimum(Float32List v) => v.reduce(math.min);
+  return {
+    FieldStatKeys.mean: per(prediction, mean),
+    FieldStatKeys.meanSquare: per(prediction, meanSquare),
+    FieldStatKeys.min: per(prediction, minimum),
+    FieldStatKeys.targetMean: per(target, mean),
+    FieldStatKeys.targetMeanSquare: per(target, meanSquare),
+    FieldStatKeys.targetMin: per(target, minimum),
+  };
+}
+
+/// The demo domains: the unit square (rows are y), a cut along x, an
+/// (x, y, t) volume, and a periodic box of side 2π.
+const _square = FieldDomain(extent: [(0, 1), (0, 1)], axes: ['y', 'x']);
+const _line = FieldDomain(extent: [(0, 1)], axes: ['x']);
+const _spaceTime = FieldDomain(extent: [(0, 1), (0, 1), (0, 1.5)], axes: ['x', 'y', 't']);
+const _box = FieldDomain(
+  extent: [(0, 2 * math.pi), (0, 2 * math.pi), (0, 2 * math.pi)],
+  axes: ['x', 'y', 'z'],
+);
 
 /// A 3D turbulent flow in a periodic box, as a demo FNO-3D would log it: the
 /// vorticity at a fixed time, a rollout over time, and what each layer
@@ -313,6 +392,8 @@ List<MockField> turbulence3dFields({
         progress: progress(step),
         frames: 1,
         frame: (_, p) => flow.grid(size, 0, p),
+        domain: _box,
+        spectrum: (p) => flow.spectrum(size, 0, p),
       ),
     ),
     MockField._(
@@ -328,6 +409,8 @@ List<MockField> turbulence3dFields({
         frames: frames,
         times: times,
         frame: (f, p) => flow.grid(cube, times[f], p),
+        domain: _box,
+        spectrum: (p) => flow.spectrum(cube, times.last, p),
       ),
     ),
   ];
@@ -488,6 +571,17 @@ class _Flow {
     return Float32List.fromList(values);
   }
 
+  /// Energy per wavenumber shell |k| = 1 .. n/2 on an n × n grid at time
+  /// [t]: each sine mode of amplitude a puts a²/2 into its shell.
+  List<double> spectrum(int n, double t, double? progress) {
+    final energy = List<double>.filled(n ~/ 2, 0);
+    for (final c in _coefficients(t, progress)) {
+      final shell = math.sqrt(c.mode.kx * c.mode.kx + c.mode.ky * c.mode.ky).round();
+      if (shell >= 1 && shell <= energy.length) energy[shell - 1] += c.amplitude * c.amplitude / 2;
+    }
+    return energy;
+  }
+
   /// The vorticity along y = [y] at n points in x.
   Float32List line(int n, double y, double t, double? progress) {
     final values = Float64List(n);
@@ -524,18 +618,38 @@ class _Flow3d {
   final _modes =
       <({List<int> k, double size, double amplitude, double phase, double speed, double drift})>[];
 
+  ({double amplitude, double phase}) _mode(
+    ({List<int> k, double size, double amplitude, double phase, double speed, double drift}) m,
+    double t,
+    double? progress,
+  ) {
+    var amplitude = m.amplitude * math.exp(-0.04 * m.size * m.size * t);
+    var phase = m.phase + m.speed * t;
+    if (progress != null) {
+      amplitude *= 1 - math.exp(-progress * 25 / m.size);
+      phase += m.drift * t * (0.2 + math.exp(-progress * 8));
+    }
+    return (amplitude: amplitude, phase: phase);
+  }
+
+  /// Energy per wavenumber shell |k| = 1 .. n/2 on an n³ grid at time [t].
+  List<double> spectrum(int n, double t, double? progress) {
+    final energy = List<double>.filled(n ~/ 2, 0);
+    for (final m in _modes) {
+      final shell = m.size.round();
+      final a = _mode(m, t, progress).amplitude;
+      if (shell >= 1 && shell <= energy.length) energy[shell - 1] += a * a / 2;
+    }
+    return energy;
+  }
+
   /// The field on an n³ grid at time [t] (axis 0 slowest): the truth, or
   /// the prediction at training [progress]. Each mode is a product of
   /// per-axis complex exponentials, so no trigonometry per point.
   Float32List grid(int n, double t, double? progress) {
     final values = Float64List(n * n * n);
     for (final m in _modes) {
-      var amplitude = m.amplitude * math.exp(-0.04 * m.size * m.size * t);
-      var phase = m.phase + m.speed * t;
-      if (progress != null) {
-        amplitude *= 1 - math.exp(-progress * 25 / m.size);
-        phase += m.drift * t * (0.2 + math.exp(-progress * 8));
-      }
+      final (:amplitude, :phase) = _mode(m, t, progress);
       List<(double, double)> axis(int k) => [
         for (var i = 0; i < n; i++)
           (math.cos(2 * math.pi * k * i / n), math.sin(2 * math.pi * k * i / n)),
@@ -591,3 +705,367 @@ Map<String, double> _errorStats(Float32List prediction, Float32List target) {
     FieldStatKeys.maxError: maxError,
   };
 }
+
+// What a demo operator run logs besides its fields ---------------------------------
+
+/// A demo run's validation sets, curves, extra fields (worst samples,
+/// Fourier weights) and extra metrics (loss terms, per-variable errors,
+/// timings).
+class MockExtras {
+  MockExtras({
+    this.fields = const [],
+    this.makeEvals,
+    this.curves = const [],
+    this.metrics = const {},
+  });
+
+  final List<MockField> fields;
+  final List<LoggedSeries<EvalStep>> Function()? makeEvals;
+
+  /// Made on first use: they need the worst samples' snapshots.
+  late final List<LoggedSeries<EvalStep>> evals = makeEvals?.call() ?? const [];
+  final List<LoggedSeries<CurveStep>> curves;
+  final Map<String, MetricSeries> metrics;
+}
+
+/// For the 2D Navier–Stokes demo run.
+MockExtras navierStokesExtras({
+  required CurveGenerator curves,
+  required List<MockField> fields,
+  required int currentStep,
+  required int totalSteps,
+  required int every,
+  int seed = 7,
+}) {
+  final evalSteps = _stepsEvery(currentStep, every * 2);
+  final vorticity = fields.firstWhere((f) => f.name == 'vorticity');
+  final worst = [
+    for (var rank = 1; rank <= 4; rank++)
+      _worstField(
+        'vorticity',
+        rank,
+        evalSteps,
+        totalSteps,
+        seed: seed,
+        sample: 17 + 41 * rank,
+        (flow, p) {
+          return flow.grid(64, 0, p);
+        },
+        shape: const [64, 64],
+        domain: _square,
+        flow: _Flow(seed + 100 + rank),
+      ),
+  ];
+  return MockExtras(
+    fields: [
+      ...worst,
+      ..._weightFields(evalSteps, totalSteps, const [12, 12], seed),
+    ],
+    makeEvals: () => [
+      _evalSeries('vorticity', evalSteps, 200, seed, worst, (step) {
+        return vorticity.snapshot(step)!.stats[FieldStatKeys.relL2]!;
+      }),
+    ],
+    curves: _curves(currentStep, every * 4, totalSteps, resolutions: const [32, 64, 128, 256]),
+    metrics: {
+      ..._lossTerms(curves),
+      ..._errorMetrics(curves, ['vorticity', 'velocity'], finalError: 0.06),
+      ..._timings(curves, inference: 0.0042, solver: 2.1),
+    },
+  );
+}
+
+/// For the 3D turbulence demo run: 3D worst samples and 3D Fourier weights.
+MockExtras turbulence3dExtras({
+  required CurveGenerator curves,
+  required List<MockField> fields,
+  required int currentStep,
+  required int totalSteps,
+  required int every,
+  int seed = 11,
+}) {
+  final evalSteps = _stepsEvery(currentStep, every * 2);
+  final vorticity = fields.firstWhere((f) => f.name == 'vorticity');
+  final worst = [
+    for (var rank = 1; rank <= 3; rank++)
+      _worstField(
+        'vorticity',
+        rank,
+        evalSteps,
+        totalSteps,
+        seed: seed,
+        sample: 9 + 23 * rank,
+        (flow, p) => flow.grid(24, 0, p),
+        shape: const [24, 24, 24],
+        domain: _box,
+        flow: _Flow3d(seed + 100 + rank),
+      ),
+  ];
+  return MockExtras(
+    fields: [
+      ...worst,
+      ..._weightFields(evalSteps, totalSteps, const [8, 8, 8], seed),
+    ],
+    makeEvals: () => [
+      _evalSeries('vorticity', evalSteps, 100, seed, worst, (step) {
+        return vorticity.snapshot(step)!.stats[FieldStatKeys.relL2]!;
+      }),
+    ],
+    curves: _curves(currentStep, every * 4, totalSteps, resolutions: const [16, 32, 64]),
+    metrics: {
+      ..._lossTerms(curves),
+      ..._errorMetrics(curves, ['u', 'v', 'w'], finalError: 0.03),
+      ..._timings(curves, inference: 0.031, solver: 48),
+    },
+  );
+}
+
+/// For the small sweep runs: only what a sweep compares.
+MockExtras sweepExtras({required CurveGenerator curves, required int modes, required int width}) {
+  final error = 0.02 * math.pow(12 / modes, 0.6) * math.pow(32 / width, 0.4);
+  final cost = math.pow(modes / 12, 2) * math.pow(width / 32, 2);
+  return MockExtras(
+    metrics: {
+      ..._errorMetrics(curves, const [], finalError: error.toDouble()),
+      ..._timings(curves, inference: 0.0042 * cost, solver: 2.1),
+    },
+  );
+}
+
+List<int> _stepsEvery(int currentStep, int every) =>
+    List.unmodifiable([for (var s = 0; s <= currentStep; s += every) s]);
+
+/// A worst validation sample: a different flow, which the model gets
+/// worse (as if it had trained for a fraction of the time).
+MockField _worstField<F>(
+  String name,
+  int rank,
+  List<int> steps,
+  int totalSteps,
+  Float32List Function(F flow, double? progress) grid, {
+  required int seed,
+  required int sample,
+  required List<int> shape,
+  required FieldDomain domain,
+  required F flow,
+}) => MockField._(
+  name: 'worst/$name/$rank',
+  kind: FieldKind.worst,
+  layer: '$name #$rank',
+  position: rank,
+  worstOf: name,
+  shape: shape,
+  steps: steps,
+  make: (step) => _outputSnapshot(
+    'worst/$name/$rank',
+    step,
+    shape,
+    progress: step / totalSteps * (0.45 - 0.05 * rank),
+    frames: 1,
+    frame: (_, p) => grid(flow, p),
+    domain: domain,
+    kind: FieldKind.worst,
+    layer: '$name #$rank',
+    sample: sample,
+  ),
+);
+
+/// The validation set's errors at each step: lognormal around the shown
+/// sample's error, with the worst samples' real errors at the top.
+LoggedSeries<EvalStep> _evalSeries(
+  String name,
+  List<int> steps,
+  int count,
+  int seed,
+  List<MockField> worst,
+  double Function(int step) typical,
+) {
+  final random = math.Random(seed);
+  final shape = [for (var i = 0; i < count - worst.length; i++) random.nextDouble()];
+  double gaussian(double u, double v) =>
+      math.sqrt(-2 * math.log(u.clamp(1e-9, 1))) * math.cos(2 * math.pi * v);
+  final noise = [for (var i = 0; i + 1 < shape.length; i += 2) gaussian(shape[i], shape[i + 1])];
+  return LoggedSeries(
+    name: name,
+    steps: List.unmodifiable([
+      for (final step in steps)
+        () {
+          final worstErrors = [for (final w in worst) w.snapshot(step)!.stats[FieldStatKeys.relL2]!]
+            ..sort((a, b) => b.compareTo(a));
+          final cap = worstErrors.isEmpty ? double.infinity : worstErrors.last;
+          final base = typical(step);
+          final errors = [
+            for (var i = 0; i < count - worst.length; i++)
+              math.min(base * math.exp(0.35 * noise[i % noise.length]), cap * 0.98),
+            ...worstErrors,
+          ]..sort();
+          double quantile(double q) => errors[((errors.length - 1) * q).round()];
+          final low = math.log(errors.first) / math.ln10, high = math.log(errors.last) / math.ln10;
+          const bins = 24;
+          final counts = List<int>.filled(bins, 0);
+          for (final e in errors) {
+            final b = ((math.log(e) / math.ln10 - low) / (high - low) * bins).floor();
+            counts[b.clamp(0, bins - 1)]++;
+          }
+          return EvalStep(
+            step: step,
+            count: count,
+            stats: {
+              'median': quantile(0.5),
+              'p90': quantile(0.9),
+              'max': errors.last,
+              'min': errors.first,
+              'mean': errors.reduce((a, b) => a + b) / errors.length,
+              'nonFinite': 0,
+            },
+            histogram: ErrorHistogram(
+              edges: List.unmodifiable([
+                for (var i = 0; i <= bins; i++)
+                  math.pow(10, low + (high - low) * i / bins).toDouble(),
+              ]),
+              counts: List.unmodifiable(counts),
+            ),
+            worst: List.unmodifiable([
+              for (final (i, w) in worst.indexed)
+                WorstSample(rank: i + 1, sample: w.make(step).sample!, relL2: worstErrors[i]),
+            ]),
+          );
+        }(),
+    ]),
+  );
+}
+
+/// Four FNO blocks' spectral weights over [modes] (2D or 3D): large at low
+/// wavenumbers, and the high ones filling in as training goes on.
+List<MockField> _weightFields(List<int> steps, int totalSteps, List<int> modes, int seed) => [
+  for (var block = 0; block < 4; block++)
+    MockField._(
+      name: 'weights/blocks.$block.spectral.weights1',
+      kind: FieldKind.weights,
+      layer: 'blocks.$block.spectral.weights1',
+      position: block,
+      shape: modes,
+      steps: steps,
+      make: (step) {
+        final p = step / totalSteps;
+        final random = math.Random(seed + block);
+        final count = modes.fold(1, (a, b) => a * b);
+        final values = Float32List(count);
+        for (var i = 0; i < count; i++) {
+          var rest = i, k2 = 0;
+          for (final n in modes.reversed) {
+            final k = rest % n;
+            rest ~/= n;
+            k2 += k * k;
+          }
+          final k = math.sqrt(k2.toDouble());
+          values[i] = math.exp(-k / (1.5 + 7 * p + block)) * (0.6 + 0.4 * random.nextDouble());
+        }
+        final channels = modes.length == 3 ? 20 : 32;
+        return FieldSnapshot(
+          name: 'weights/blocks.$block.spectral.weights1',
+          step: step,
+          kind: FieldKind.weights,
+          shape: List.unmodifiable(modes),
+          prediction: values,
+          layer: 'blocks.$block.spectral.weights1',
+          reduction: 'mean |w| over $channels × $channels channels',
+          layerShape: List.unmodifiable([channels, channels, ...modes]),
+        );
+      },
+    ),
+];
+
+/// Error against resolution (the model trained at the second one) and
+/// against viscosity (trained on 5e-4 to 2e-3), every [every] steps.
+List<LoggedSeries<CurveStep>> _curves(
+  int currentStep,
+  int every,
+  int totalSteps, {
+  required List<double> resolutions,
+}) {
+  final steps = _stepsEvery(currentStep, every);
+  double base(int step) => 0.9 * math.exp(-5 * step / totalSteps) + 0.03;
+  const viscosities = [1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2];
+  double distance(double nu) => (math.log(nu / 1e-3) / math.ln10).abs();
+  return [
+    LoggedSeries(
+      name: 'error vs resolution',
+      steps: List.unmodifiable([
+        for (final step in steps)
+          CurveStep(
+            step: step,
+            x: List.unmodifiable(resolutions),
+            y: List.unmodifiable([
+              for (final (i, _) in resolutions.indexed)
+                base(step) * (1 + 0.12 * (i - 1).abs() + (i == 0 ? 0.15 : 0)),
+            ]),
+            xLabel: 'Resolution',
+            yLabel: 'Relative L2',
+            trainRange: (resolutions[1], resolutions[1]),
+          ),
+      ]),
+    ),
+    LoggedSeries(
+      name: 'error vs viscosity',
+      steps: List.unmodifiable([
+        for (final step in steps)
+          CurveStep(
+            step: step,
+            x: List.unmodifiable(viscosities),
+            y: List.unmodifiable([
+              for (final nu in viscosities)
+                base(step) * (1 + 1.8 * math.pow(math.max(0, distance(nu) - 0.3), 2)),
+            ]),
+            xLabel: 'Viscosity',
+            yLabel: 'Relative L2',
+            trainRange: (5e-4, 2e-3),
+          ),
+      ]),
+    ),
+  ];
+}
+
+/// A physics-informed loss in three terms: data, PDE residual, boundary.
+Map<String, MetricSeries> _lossTerms(CurveGenerator curves) => {
+  for (final (term, start, end) in [('data', 0.9, 0.012), ('pde', 2.5, 0.03), ('bc', 0.4, 0.002)])
+    'loss/$term': curves.decay('loss/$term', start: start, end: end),
+};
+
+/// The relative L2 error on validation, overall and per variable.
+Map<String, MetricSeries> _errorMetrics(
+  CurveGenerator curves,
+  List<String> variables, {
+  required double finalError,
+}) => {
+  'val/rel_l2': curves.decay('val/rel_l2', start: 0.95, end: finalError, interval: 100),
+  for (final (i, v) in variables.indexed)
+    'val/rel_l2/$v': curves.decay(
+      'val/rel_l2/$v',
+      start: 0.95,
+      end: finalError * (0.7 + 0.45 * i),
+      interval: 100,
+    ),
+};
+
+/// Seconds per sample: the model's inference and the numerical solver's.
+Map<String, MetricSeries> _timings(
+  CurveGenerator curves, {
+  required double inference,
+  required double solver,
+}) => {
+  'perf/inference_s': curves.approach(
+    'perf/inference_s',
+    start: inference * 1.1,
+    end: inference,
+    noise: inference * 0.03,
+    interval: 500,
+  ),
+  'perf/solver_s': curves.approach(
+    'perf/solver_s',
+    start: solver,
+    end: solver,
+    noise: solver * 0.01,
+    interval: 500,
+  ),
+};

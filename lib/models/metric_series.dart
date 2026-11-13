@@ -108,6 +108,20 @@ abstract final class MetricKeys {
 
   static const all = {trainLoss, valLoss, valAccuracy, learningRate, gradNorm};
 
+  /// The terms of a composite loss, e.g. `loss/data`, `loss/pde`,
+  /// `loss/bc`: charted together.
+  static bool isLossTerm(String name) => name.startsWith('loss/');
+
+  /// The validation relative L2 error, overall (`val/rel_l2`) and per
+  /// variable (`val/rel_l2/u`, ...): charted together.
+  static const relL2 = 'val/rel_l2';
+  static bool isRelL2(String name) => name == relL2 || name.startsWith('$relL2/');
+
+  /// Seconds per sample: the model (`perf/inference_s`) and the numerical
+  /// solver it replaces (`perf/solver_s`).
+  static const inferenceSeconds = 'perf/inference_s';
+  static const solverSeconds = 'perf/solver_s';
+
   /// GPU, memory and CPU usage, sampled by the logger: `system/cpu`,
   /// `system/memory` (%), `system/memory_gb`, and per GPU
   /// `system/gpu.<i>.utilization`, `.memory` (%), `.memory_gb`,

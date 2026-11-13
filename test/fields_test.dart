@@ -7,11 +7,11 @@ import 'package:models_app/data/api_run_repository.dart';
 import 'package:models_app/data/mock/mock_run_repository.dart';
 import 'package:models_app/data/run_repository.dart';
 import 'package:models_app/data/services/server_connection.dart';
-import 'package:models_app/features/run_detail/tabs/fields_tab.dart';
 import 'package:models_app/features/run_detail/volume/volume_renderer.dart';
 import 'package:models_app/features/run_detail/volume/volume_view.dart';
 import 'package:models_app/features/run_detail/widgets/field_heatmap.dart';
 import 'package:models_app/models/field_snapshot.dart';
+import 'package:models_app/shared/formatters.dart';
 import 'package:models_app/shared/colormaps.dart';
 
 import 'fake_server.dart';
@@ -173,7 +173,10 @@ void main() {
       '3D rollout',
     ]);
     expect(
-      [for (final f in fields.skip(6)) f.layer],
+      [
+        for (final f in fields)
+          if (f.kind == FieldKind.layer) f.layer,
+      ],
       ['lifting', 'blocks.0', 'blocks.1', 'blocks.2', 'blocks.3', 'projection'],
     );
     expect(fields.first.shape, [64, 64]);
@@ -214,9 +217,10 @@ void main() {
       expect(find.text('Latest of 15'), findsOneWidget);
       expect(find.byType(FieldHeatmap), findsNWidgets(3));
       for (final label in ['Prediction', 'Ground truth', 'Error', 'Relative L2', 'RMSE']) {
-        expect(find.text(label), findsOneWidget);
+        expect(find.text(label), findsWidgets);
       }
       expect(find.text('64 × 64 (of 128 × 128)'), findsOneWidget);
+      expect(find.text('x 0 → 1 across, y 0 → 1 down'), findsOneWidget, reason: 'its domain');
     });
 
     testWidgets('steps back through training', (tester) async {
@@ -236,11 +240,12 @@ void main() {
     });
 
     testWidgets('tapping a map reads the values there', (tester) async {
+      useTallScreen(tester);
       await openFieldsTab(tester, fno);
       expect(find.text('Tap a map to read the values at a point.'), findsOneWidget);
       await tester.tapAt(tester.getTopLeft(find.byType(FieldHeatmap).first) + const Offset(1, 1));
       await tester.pumpAndSettle();
-      expect(find.textContaining('Row 0, column 0 · prediction'), findsOneWidget);
+      expect(find.textContaining('y = 0.00781, x = 0.00781 · prediction'), findsOneWidget);
       expect(find.textContaining('· truth '), findsOneWidget);
     });
 
@@ -264,7 +269,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Rollout: t = 0'), findsOneWidget);
       for (final label in ['Prediction', 'Ground truth', 'Error']) {
-        expect(find.text(label), findsOneWidget);
+        expect(find.text(label), findsWidgets);
       }
       await tester.tap(find.byTooltip('Play the rollout'));
       await tester.pump(const Duration(milliseconds: 170));
@@ -373,9 +378,8 @@ void main() {
       expect(find.text('blocks.0'), findsOneWidget);
       expect(find.text('Step 7,000'), findsNWidgets(2), reason: 'the snapshot, and the layers');
       // Tap the map itself, not just the name: the map mustn't swallow it.
-      await tester.tap(
-        find.descendant(of: find.byType(ListView).last, matching: find.byType(FieldHeatmap)).first,
-      );
+      final strip = find.ancestor(of: find.text('lifting'), matching: find.byType(ListView));
+      await tester.tap(find.descendant(of: strip.first, matching: find.byType(FieldHeatmap)).first);
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
         find.text('output 64 × 64 × 32 per sample · mean of 32 channels'),

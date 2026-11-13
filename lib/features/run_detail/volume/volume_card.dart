@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../../models/field_snapshot.dart';
 import '../../../shared/colormaps.dart';
 import '../../../shared/formatters.dart';
+import '../../../shared/widgets/exportable.dart';
 import '../../../shared/widgets/section_card.dart';
 import '../widgets/field_heatmap.dart';
 import 'volume_renderer.dart';
@@ -88,6 +89,7 @@ class _VolumeCardState extends State<VolumeCard> {
                 onCamera: (camera) => setState(() => _camera = camera),
                 onInteracting: (turning) => setState(() => _turning = turning),
                 draft: draft,
+                axisNames: snapshot.domain.axes,
                 semanticLabel:
                     '$label of ${snapshot.name} in 3D at step ${formatInt(snapshot.step)}, '
                     '$shape, values ${formatMetric(low)} to ${formatMetric(high)}',
@@ -100,7 +102,11 @@ class _VolumeCardState extends State<VolumeCard> {
 
     final views = [
       view(
-        snapshot.kind == FieldKind.layer ? 'Output' : 'Prediction',
+        switch (snapshot.kind) {
+          FieldKind.layer => 'Output',
+          FieldKind.weights => '|w| by mode',
+          _ => 'Prediction',
+        },
         snapshot.prediction,
         Colormap.viridis,
         range.min,
@@ -202,10 +208,19 @@ class _VolumeCardState extends State<VolumeCard> {
       ],
     );
     if (!widget.framed) return content;
-    return SectionCard(
-      title: snapshot.name,
-      trailing: Text(shape == original ? shape : '$shape (of $original)', style: muted),
-      child: content,
+    return Exportable(
+      fileName: '${snapshot.name} step ${snapshot.step} 3D',
+      builder: (context, exportButton) => SectionCard(
+        title: snapshot.name,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(shape == original ? shape : '$shape (of $original)', style: muted),
+            exportButton,
+          ],
+        ),
+        child: content,
+      ),
     );
   }
 

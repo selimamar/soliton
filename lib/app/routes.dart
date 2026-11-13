@@ -5,6 +5,9 @@ abstract final class AppRoutes {
   static const settings = '/settings';
   static const server = '/settings/server';
 
+  /// Runs of a project side by side by what they varied.
+  static const sweep = '/sweep';
+
   static String run(String runId) => '/runs/${Uri.encodeComponent(runId)}';
 
   /// The compare screen for [runIds], e.g. `/compare?runs=a,b`.

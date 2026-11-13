@@ -50,8 +50,13 @@ fine, don't work around it.
   `run.log_field("u", pred[0, 0], target[0, 0])`; for time-dependent problems a
   rollout, `run.log_rollout("u", pred_frames, true_frames, times=t)` (frames on
   axis 0); and once in a while the layers, with
-  `with torch.no_grad(), run.capture_layers(model): model(x[:1])`. See
-  logger/README.md, "Fields".
+  `with torch.no_grad(), run.capture_layers(model): model(x[:1])`. Pass the
+  domain with `extent=` and `axes=`. Each evaluation, also log the whole
+  validation set with `run.log_eval("u", preds, targets)` and
+  `run.log({"val/rel_l2": err, "val/rel_l2/u": err_u, ...})`; name loss terms
+  `loss/data`, `loss/pde`, ...; log `perf/inference_s` (and `perf/solver_s` if
+  known) once. Pass `pde={...}` to `init()`. See logger/README.md, "Fields" and
+  "Diagnostics".
 - Use exactly these names for these quantities. Other names (e.g. `train/accuracy`)
   are fine and show under "Other metrics".
 - `step` is the global optimizer step: keep it increasing across epochs, never

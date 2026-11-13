@@ -102,6 +102,9 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
 | `GET /api/runs/{id}/grad-norms` | Each layer's latest gradient norm |
 | `GET /api/runs/{id}/fields` | The logged fields: each one's shape and steps, with error statistics |
 | `GET /api/runs/{id}/fields/snapshot?name=u&step=1200` | One field snapshot (the latest without `step`) |
+| `GET /api/runs/{id}/evals` | Validation-set summaries (`run.log_eval`), per name and step |
+| `GET /api/runs/{id}/curves` | Curves (`run.log_curve`), per name and step |
+| `GET /api/metrics/latest?names=val/rel_l2,perf/inference_s` | For sweeps: `{run id: {metric: {latest, min}}}`, up to 20 names |
 | `WS /api/live` | Live updates (below) |
 
 **Events** (`POST .../events` with `{"events": [...]}`, up to 5000 per batch):
@@ -135,7 +138,26 @@ frame). A layer snapshot has `kind: "layer"`, is named `layers/<layer>`, and
 has `layer`, `position` (its order in the model), `reduction` (e.g. "mean of
 32 channels") and `layerShape` (the layer's output for one sample). A
 snapshot is keyed by run, field name and step, like a metric point.
-`GET .../fields` lists output fields by name, then layers in model order.
+`GET .../fields` lists output fields by name, then layers in model order,
+then worst samples (`kind: "worst"`, named `worst/<field>/<rank>`, with
+`sample` and `worstOf`) and Fourier weights (`kind: "weights"`, named
+`weights/<parameter>`). Optional: `extent` (`[[start, end], ...]` per axis),
+`axes` (names) and `spectrum` (`{"k": [...], "prediction": [...], "target":
+[...]}`).
+
+**Validation sets and curves**:
+
+```json
+{"type": "eval", "step": 1200, "name": "u", "count": 200,
+ "stats": {"median": 0.03, "p90": 0.07, "max": 0.21, "nonFinite": 0},
+ "histogram": {"edges": [0.005, ...], "counts": [3, ...]},
+ "worst": [{"rank": 1, "sample": 17, "relL2": 0.21}]}
+{"type": "curve", "step": 1200, "name": "error vs resolution", "x": [64, 128, 256],
+ "y": [0.03, 0.033, 0.036], "xLabel": "Resolution", "yLabel": "Relative L2",
+ "trainRange": [64, 64]}
+```
+
+Both are keyed by run, name and step, so a resent one replaces itself.
 
 **Tags and notes** (`PATCH /api/runs/{id}` with `{"tags": ["baseline"], "notes": "..."}`;
 leave a field out to keep it): up to 20 tags of 1–40 characters (trimmed,

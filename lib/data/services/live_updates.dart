@@ -200,12 +200,15 @@ class LiveUpdates extends Notifier<LiveStatus> {
   void _refresh() {
     _refreshTimer = null;
     if (_refreshList) ref.invalidate(runsProvider);
+    if (_changedRuns.isNotEmpty) ref.invalidate(latestMetricsProvider);
     for (final runId in _changedRuns) {
       ref.invalidate(runProvider(runId));
       ref.invalidate(runMetricsProvider(runId));
       ref.invalidate(layerStatsProvider(runId));
       ref.invalidate(layerGradNormsProvider(runId));
       ref.invalidate(fieldsProvider(runId));
+      ref.invalidate(evalsProvider(runId));
+      ref.invalidate(curvesProvider(runId));
     }
     _changedRuns.clear();
     _refreshList = false;

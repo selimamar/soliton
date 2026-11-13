@@ -6,6 +6,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../models/metric_series.dart';
 import '../axis_scale.dart';
 import '../formatters.dart';
+import 'exportable.dart';
 import 'section_card.dart';
 
 /// One line of a [LineChartCard].
@@ -19,24 +20,33 @@ class ChartLine {
 
 /// What a chart's x-axis counts: training steps, or epochs.
 class ChartXAxis {
-  const ChartXAxis.steps() : stepsPerEpoch = null, label = 'Step';
+  const ChartXAxis.steps() : stepsPerEpoch = null, label = 'Step', coordinate = null;
 
   /// Epochs, assuming the same number of steps in each.
-  const ChartXAxis.epochs(double this.stepsPerEpoch) : label = 'Epoch';
+  const ChartXAxis.epochs(double this.stepsPerEpoch) : label = 'Epoch', coordinate = null;
 
   /// Positions that aren't training steps, e.g. grid points of a 1D field
-  /// (the series' "steps" are then the point indices).
-  const ChartXAxis.positions(this.label) : stepsPerEpoch = null;
+  /// (the series' "steps" are then the point indices). With [coordinate],
+  /// ticks and tooltips show where each index is (e.g. x = 0.25).
+  const ChartXAxis.positions(this.label, {this.coordinate}) : stepsPerEpoch = null;
 
   final double? stepsPerEpoch;
 
   /// "Step", "Epoch", or what the positions are, for tooltips.
   final String label;
 
+  /// Index -> domain coordinate, for positions.
+  final double Function(double index)? coordinate;
+
+  /// A tick label at [x], [interval] apart.
+  String tick(double x, double interval) =>
+      coordinate == null ? formatAxisTick(x, interval) : formatCoordinate(coordinate!(x));
+
   double position(int step) => stepsPerEpoch == null ? step.toDouble() : step / stepsPerEpoch!;
 
   /// "1,200" for steps, "3.4" for epochs.
   String describe(double x) {
+    if (coordinate != null) return formatCoordinate(coordinate!(x));
     if (stepsPerEpoch == null) return formatInt(x.round());
     final text = x.toStringAsFixed(2);
     return text.replaceFirst(RegExp(r'\.?0+$'), '');
@@ -62,6 +72,7 @@ class LineChartCard extends StatelessWidget {
     this.xAxis = const ChartXAxis.steps(),
     this.yRange,
     this.showLatest = true,
+    this.exportable = true,
   });
 
   final String title;
@@ -89,6 +100,9 @@ class LineChartCard extends StatelessWidget {
   /// that aren't over time (e.g. a field along x).
   final bool showLatest;
 
+  /// Shows a button that saves the chart as an image.
+  final bool exportable;
+
   /// The value's height on the chart, or null if it can't be drawn.
   double? _plotY(double value) {
     if (!value.isFinite) return null;
@@ -113,14 +127,33 @@ class LineChartCard extends StatelessWidget {
         ? 'No positive values to plot on a log scale'
         : 'No finite values to plot';
 
+    final value = latest == null
+        ? null
+        : Text(
+            formatValue(latest),
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+          );
+    if (!exportable || plottable.isEmpty) return _card(context, value, plottable, emptyText);
+    return Exportable(
+      fileName: title,
+      builder: (context, exportButton) => _card(
+        context,
+        Row(mainAxisSize: MainAxisSize.min, children: [?value, exportButton]),
+        plottable,
+        emptyText,
+      ),
+    );
+  }
+
+  Widget _card(
+    BuildContext context,
+    Widget? trailing,
+    List<ChartLine> plottable,
+    String emptyText,
+  ) {
     return SectionCard(
       title: title,
-      trailing: latest == null
-          ? null
-          : Text(
-              formatValue(latest),
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-            ),
+      trailing: trailing,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -240,7 +273,7 @@ class LineChartCard extends StatelessWidget {
             reservedSize: 22,
             interval: xInterval,
             getTitlesWidget: (value, meta) =>
-                _axisLabel(value, meta, formatAxisTick(value, xInterval), labelStyle),
+                _axisLabel(value, meta, xAxis.tick(value, xInterval), labelStyle),
           ),
         ),
       ),
