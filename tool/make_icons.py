@@ -106,17 +106,18 @@ def render(
         box = [off, off, off + body - 1, off + body - 1]
         tile = Image.new("RGBA", (n, n), (0, 0, 0, 0))
         ImageDraw.Draw(tile).rounded_rectangle(box, radius, fill=PANEL)
-        # The band, clipped to the tile's rounded corners.
-        band = Image.new("RGBA", (n, n), (0, 0, 0, 0))
-        top = off + band_top * body
-        ImageDraw.Draw(band).rectangle([off, top, off + body, top + BAND * body], fill=CRIMSON)
-        band.putalpha(ImageChops.multiply(band.getchannel("A"), tile.getchannel("A")))
-        tile = Image.alpha_composite(tile, band)
         # A hairline edge, except where the system draws its own mask.
         if shape != "square":
             ImageDraw.Draw(tile).rounded_rectangle(
                 box, radius, outline=HAIRLINE, width=max(1, round(n / 256))
             )
+        # The band, clipped to the tile's rounded corners. Drawn after the
+        # hairline, so the crimson reaches the very top edge.
+        band = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+        top = off + band_top * body
+        ImageDraw.Draw(band).rectangle([off, top, off + body, top + BAND * body], fill=CRIMSON)
+        band.putalpha(ImageChops.multiply(band.getchannel("A"), tile.getchannel("A")))
+        tile = Image.alpha_composite(tile, band)
         img = Image.alpha_composite(img, tile)
     if mark:
         ms = body * scale
@@ -159,9 +160,9 @@ def write_svg(path):
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {s} {s}">\n'
         f'<clipPath id="tile"><rect width="{s}" height="{s}" rx="{0.225 * s:.0f}"/></clipPath>\n'
         f'<g clip-path="url(#tile)"><rect width="{s}" height="{s}" fill="#F6F7F8"/>'
-        f'<rect width="{s}" height="{BAND * s:.0f}" fill="#981B2B"/></g>\n'
         f'<rect x="2" y="2" width="{s - 4}" height="{s - 4}" rx="{0.225 * s - 2:.0f}" fill="none" '
-        f'stroke="#CFD4DA" stroke-width="4"/>\n'
+        f'stroke="#CFD4DA" stroke-width="4"/>'
+        f'<rect width="{s}" height="{BAND * s:.0f}" fill="#981B2B"/></g>\n'
         f'<g transform="translate({s * 0.09:.1f} {s * (0.09 + DROP):.1f}) scale(0.82)">\n'
         f'<g stroke="{hexc(EDGE)}" stroke-width="{st["edge"] * s:.1f}">{edges}</g>\n'
         f'<path d="M{wave}" fill="none" stroke="#252A31" stroke-width="{st["wave"] * s:.1f}" '
