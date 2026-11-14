@@ -14,6 +14,12 @@ abstract final class AppRoutes {
   /// The Compute section: simulations.
   static const compute = '/compute';
 
+  /// The Data section: datasets.
+  static const data = '/data';
+
+  /// A dataset's page, e.g. `/data/ns2d-vorticity-v3`.
+  static String dataset(String id) => '/data/${Uri.encodeComponent(id)}';
+
   static String run(String runId) => '/runs/${Uri.encodeComponent(runId)}';
 
   /// A simulation's page, e.g. `/compute/kelvin-helmholtz-2048`.

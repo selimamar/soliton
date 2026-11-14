@@ -21,8 +21,8 @@ from .config import Settings
 from .db import make_engine, make_sessionmaker
 from .live import Broadcaster
 from .notify import NtfyNotifier
-from .schemas import RUN_ID_PATTERN, EventsIn, RunIn, RunNotesIn
-from .store import Change, FieldNotFound, RunNotFound, Store, utcnow
+from .schemas import RUN_ID_PATTERN, DatasetIn, EventsIn, RunIn, RunNotesIn
+from .store import Change, DatasetNotFound, FieldNotFound, RunNotFound, Store, utcnow
 
 log = logging.getLogger(__name__)
 
@@ -102,6 +102,11 @@ def create_app(
     @app.exception_handler(RunNotFound)
     async def run_not_found(_, error: RunNotFound):
         return JSONResponse(status_code=404, content={"detail": f"No run with id '{error.args[0]}'"})
+
+    @app.exception_handler(DatasetNotFound)
+    async def dataset_not_found(_, error: DatasetNotFound):
+        return JSONResponse(status_code=404,
+                            content={"detail": f"No dataset with id '{error.args[0]}'"})
 
     @app.exception_handler(FieldNotFound)
     async def field_not_found(_, error: FieldNotFound):
@@ -183,6 +188,30 @@ def create_app(
     def curves(run_id: RunId):
         """Curves (run.log_curve), per name and step."""
         return store.items(run_id, "curve")
+
+    def dataset_changed(dataset_id: str, event: str) -> None:
+        broadcaster.publish({"type": "dataset", "event": event, "datasetId": dataset_id})
+
+    @app.get("/api/datasets", dependencies=auth)
+    def list_datasets():
+        """Every dataset, most recently updated first (without previews)."""
+        return store.list_datasets()
+
+    @app.get("/api/datasets/{dataset_id}", dependencies=auth)
+    def get_dataset(dataset_id: RunId):
+        return store.get_dataset(dataset_id)
+
+    @app.put("/api/datasets/{dataset_id}", dependencies=auth)
+    def put_dataset(dataset_id: RunId, body: DatasetIn):
+        dataset = store.put_dataset(dataset_id, body)
+        dataset_changed(dataset_id, "updated")
+        return dataset
+
+    @app.delete("/api/datasets/{dataset_id}", dependencies=auth)
+    def delete_dataset(dataset_id: RunId):
+        store.delete_dataset(dataset_id)
+        dataset_changed(dataset_id, "deleted")
+        return Response(status_code=204)
 
     @app.get("/api/metrics/latest", dependencies=auth)
     def latest_metrics(names: Annotated[str, Query(min_length=1, max_length=2000)]):

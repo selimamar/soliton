@@ -130,6 +130,20 @@ String formatGb(double value) {
   return '${value.toStringAsFixed(value.abs() < 10 ? 2 : 1)} GB';
 }
 
+/// A size in bytes, in decimal units with up to 3 significant digits:
+/// 980000000 -> "980 MB", 1.34e9 -> "1.34 GB", 1.2e12 -> "1.2 TB", 512 -> "512 B".
+String formatBytes(num bytes) {
+  const units = ['B', 'kB', 'MB', 'GB', 'TB', 'PB'];
+  var value = bytes.toDouble();
+  var unit = 0;
+  while (value.abs() >= 999.5 && unit < units.length - 1) {
+    value /= 1000;
+    unit++;
+  }
+  if (unit == 0) return '${value.round()} B';
+  return '${formatCoordinate(double.parse(value.toStringAsPrecision(3)))} ${units[unit]}';
+}
+
 /// Like [formatAxisTick], for fractions shown as percentages:
 /// (0.4, 0.2) -> "40%", (0.95, 0.05) -> "95%", (0.925, 0.005) -> "92.5%".
 String formatPercentAxisTick(double fraction, double interval) =>

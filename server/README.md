@@ -104,6 +104,10 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
 | `GET /api/runs/{id}/fields/snapshot?name=u&step=1200` | One field snapshot (the latest without `step`) |
 | `GET /api/runs/{id}/evals` | Validation-set summaries (`run.log_eval`), per name and step |
 | `GET /api/runs/{id}/curves` | Curves (`run.log_curve`), per name and step |
+| `GET /api/datasets` | Every dataset, most recently updated first, without previews |
+| `GET /api/datasets/{id}` | One dataset, with its previews, `madeBy` and `usedBy` |
+| `PUT /api/datasets/{id}` | Registers or updates a dataset (the logger does this) |
+| `DELETE /api/datasets/{id}` | Forgets a dataset (the files are not touched) |
 | `GET /api/metrics/latest?names=val/rel_l2,perf/inference_s` | For sweeps: `{run id: {metric: {latest, min}}}`, up to 20 names |
 | `WS /api/live` | Live updates (below) |
 
@@ -135,6 +139,18 @@ metric `sim/t`. A run reads back with `simulation` set to that entry plus
 `time` (the latest `sim/t`), `preview` (the monitored value, downsampled)
 and `diverged`; training runs have `"simulation": null`. They're kept in
 their own table, so older databases get them without a migration.
+
+**Datasets** are described, not uploaded: `PUT /api/datasets/{id}` takes
+`name`, `version`, `description`, `samples`, `splits`, `sampleShape`,
+`sizeBytes`, `files`, `format`, `location`, `host`, `source`,
+`fingerprint`, `system`, `madeBy` (a run id), `variables` (name,
+description, unit, shape, dtype, min, max, mean, std) and up to 8
+`previews` (1D or 2D, at most 96 points per axis, encoded like field
+snapshots: `{"name", "shape", "min", "max", "data"}`). A run's description
+may list `datasets` (ids) it trains on; they read back on the run, and on
+each dataset as `usedBy`. A run may name a dataset before it is registered.
+Dataset changes are pushed live as `{"type": "dataset", "event":
+"updated", "datasetId": ...}`.
 
 **Field snapshots** (`run.log_field`, `run.log_rollout` and
 `run.capture_layers` in the logger): each frame a 1D, 2D or 3D array of at

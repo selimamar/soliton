@@ -77,6 +77,9 @@ class SimulationIn(_In):
     monitor: Optional[Name] = None
 
 
+DatasetId = Annotated[str, StringConstraints(pattern=RUN_ID_PATTERN)]
+
+
 class RunIn(_In):
     """A run's description, sent by the logger when the run starts."""
 
@@ -95,6 +98,9 @@ class RunIn(_In):
     system: SystemInfo = None
     # Set for a simulation (e.g. a PDE solve) rather than a training run.
     simulation: Optional[SimulationIn] = None
+    # The datasets it trains or is evaluated on (their ids); None leaves
+    # them as they are (an older logger).
+    datasets: Optional[list[DatasetId]] = Field(default=None, max_length=20)
 
 
 class RunNotesIn(_In):
@@ -268,6 +274,76 @@ class CurveEvent(_In):
         if len(self.x) != len(self.y) or not self.x:
             raise ValueError("x and y need the same, non-zero number of values")
         return self
+
+
+PREVIEW_MAX_SIZE = 96  # Points per axis of a dataset's sample preview.
+Label = Annotated[str, StringConstraints(max_length=200)]
+
+
+class DatasetVariableIn(_In):
+    """A variable in a dataset, e.g. the vorticity "w", with its range."""
+
+    name: Name
+    description: Label = ""
+    unit: Annotated[str, StringConstraints(max_length=40)] = ""
+    shape: Optional[list[Annotated[int, Field(ge=0)]]] = Field(default=None, max_length=8)
+    dtype: Annotated[str, StringConstraints(max_length=40)] = ""
+    min: Optional[JsonFloat] = None
+    max: Optional[JsonFloat] = None
+    mean: Optional[JsonFloat] = None
+    std: Optional[JsonFloat] = None
+
+
+class DatasetPreviewIn(_In):
+    """One sample, small: a 1D or 2D array of 16-bit codes between [min]
+    and [max], as field snapshots are sent (see FieldEvent)."""
+
+    name: Name
+    shape: list[Annotated[int, Field(ge=1, le=PREVIEW_MAX_SIZE)]] = Field(min_length=1, max_length=2)
+    min: JsonFloat
+    max: JsonFloat
+    data: str = Field(max_length=PREVIEW_MAX_SIZE * PREVIEW_MAX_SIZE * 3)
+
+    @model_validator(mode="after")
+    def _size_matches(self) -> "DatasetPreviewIn":
+        try:
+            size = len(base64.b64decode(self.data, validate=True))
+        except (binascii.Error, ValueError):
+            raise ValueError("data is not base64") from None
+        if size != 2 * math.prod(self.shape):
+            raise ValueError(f"data has {size} bytes, but shape {self.shape} needs "
+                             f"{2 * math.prod(self.shape)}")
+        return self
+
+
+class DatasetIn(_In):
+    """What a dataset is and where it lives (the data itself stays where
+    it is): sent by the logger's register_dataset or `modelsapp data`."""
+
+    name: Name
+    version: Annotated[str, StringConstraints(max_length=60)] = ""
+    description: Annotated[str, StringConstraints(max_length=2000)] = ""
+    samples: Optional[int] = Field(default=None, ge=0)
+    # E.g. {"train": 8000, "val": 1000, "test": 1000}.
+    splits: dict[Annotated[str, StringConstraints(min_length=1, max_length=40)],
+                 Annotated[int, Field(ge=0)]] = Field(default_factory=dict, max_length=10)
+    sampleShape: Optional[list[Annotated[int, Field(ge=0)]]] = Field(default=None, max_length=8)
+    sizeBytes: Optional[int] = Field(default=None, ge=0)
+    files: Optional[int] = Field(default=None, ge=0)
+    format: Annotated[str, StringConstraints(max_length=40)] = ""
+    # Where it is, e.g. "/scratch/users/me/ns2d/v3.h5", on [host] ("Sherlock").
+    location: Annotated[str, StringConstraints(max_length=1000)] = ""
+    host: Label = ""
+    # How it was obtained, e.g. "Simulated", "Experiment", "FNO benchmark".
+    source: Label = ""
+    # Changes when the files do (their names, sizes and dates).
+    fingerprint: Annotated[str, StringConstraints(max_length=100)] = ""
+    # The machine it was made on, as a run's system (see _system.py).
+    system: SystemInfo = None
+    # The run or simulation that made it.
+    madeBy: Optional[DatasetId] = None
+    variables: list[DatasetVariableIn] = Field(default_factory=list, max_length=50)
+    previews: list[DatasetPreviewIn] = Field(default_factory=list, max_length=8)
 
 
 class StatusEvent(_In):

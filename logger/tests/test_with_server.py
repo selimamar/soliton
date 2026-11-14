@@ -263,3 +263,33 @@ def test_a_simulation_reaches_the_server_and_diverges_there(tmp_path, database_u
         }
         assert stored["hyperparameters"] == {"equation": "Burgers 1D"}
         assert [f["name"] for f in server.get(f"/api/runs/{sim.id}/fields")] == ["u"]
+
+
+def test_datasets_reach_the_server_with_who_made_and_used_them(tmp_path, database_url,
+                                                               monkeypatch):
+    np = pytest.importorskip("numpy")
+    path = tmp_path / "snapshots.npy"
+    np.save(path, np.random.default_rng(1).standard_normal((6, 16, 16)))
+    with LiveServer(database_url) as server:
+        sim = modelsapp.simulate("gen", server=server.url, token=TOKEN, dir=str(tmp_path),
+                                 system_metrics=False)
+        dataset = sim.register_dataset(path, version="v1", source="Simulated")
+        sim.finish()
+        run = modelsapp.init("fno", server=server.url, token=TOKEN, dir=str(tmp_path),
+                             system_metrics=False, datasets=[dataset])
+        run.finish()
+        stored = server.get(f"/api/datasets/{dataset.id}")
+        assert (stored["samples"], stored["sampleShape"]) == (6, [16, 16])
+        assert stored["madeBy"]["id"] == sim.id and stored["madeBy"]["simulation"] is True
+        assert [r["id"] for r in stored["usedBy"]] == [run.id]
+        assert len(stored["previews"]) == 4
+
+        # Saved while offline, uploaded by `modelsapp sync`.
+        monkeypatch.delenv("MODELSAPP_SERVER", raising=False)
+        modelsapp.register_dataset(path, name="later", dir=str(tmp_path / "offline"))
+        monkeypatch.setenv("MODELSAPP_SERVER", server.url)
+        monkeypatch.setenv("MODELSAPP_TOKEN", TOKEN)
+        with pytest.raises(SystemExit):
+            cli_main(["sync", str(tmp_path / "offline")])
+        assert server.get("/api/datasets/later")["samples"] == 6
+        assert not list((tmp_path / "offline" / "datasets").iterdir()), "uploaded, then removed"

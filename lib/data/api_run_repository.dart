@@ -1,3 +1,4 @@
+import '../models/dataset.dart';
 import '../models/field_snapshot.dart';
 import '../models/layer_stats.dart';
 import '../models/metric_series.dart';
@@ -108,6 +109,21 @@ class ApiRunRepository implements RunRepository {
       return Run.fromJson(json! as Map<String, Object?>);
     } on NotFoundException {
       throw RunNotFoundException(runId);
+    }
+  }
+
+  @override
+  Future<List<Dataset>> fetchDatasets() async => [
+    for (final json in await _list('/datasets')) Dataset.fromJson(json),
+  ];
+
+  @override
+  Future<Dataset> fetchDataset(String datasetId) async {
+    try {
+      final json = await _client.getJson('/datasets/${Uri.encodeComponent(datasetId)}');
+      return Dataset.fromJson(json! as Map<String, Object?>);
+    } on NotFoundException {
+      throw DatasetNotFoundException(datasetId);
     }
   }
 

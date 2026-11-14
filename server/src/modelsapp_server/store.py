@@ -16,6 +16,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from .db import (
+    DatasetRow,
+    DatasetUseRow,
     FieldRow,
     LayerPointRow,
     LayerRow,
@@ -29,6 +31,7 @@ from .db import (
 from .floats import decode_float, downsample, encode_float, from_columns, to_columns
 from .schemas import (
     CurveEvent,
+    DatasetIn,
     EvalEvent,
     FieldEvent,
     LayersEvent,
@@ -45,6 +48,10 @@ _CHUNK = 500  # Rows per INSERT statement.
 
 
 class RunNotFound(Exception):
+    pass
+
+
+class DatasetNotFound(Exception):
     pass
 
 
@@ -235,6 +242,11 @@ class Store:
                 else:  # Resent: keep whether it diverged.
                     simulation.info = {**info, **{k: v for k, v in simulation.info.items()
                                                   if k == "diverged"}}
+            if body.datasets is not None:
+                session.execute(delete(DatasetUseRow).where(DatasetUseRow.run_id == run_id))
+                session.flush()
+                for dataset_id in dict.fromkeys(body.datasets):
+                    session.add(DatasetUseRow(run_id=run_id, dataset_id=dataset_id))
             if (body.tags or body.notes) and session.get(RunNotesRow, run_id) is None:
                 session.add(RunNotesRow(run_id=run_id, tags=list(body.tags), notes=body.notes,
                                         updated_at=now))
@@ -271,7 +283,7 @@ class Store:
             row = self._find(session, run_id)
             change = _change(row, "deleted")
             for table in (MetricPointRow, LayerPointRow, LayerRow, FieldRow, RunItemRow,
-                          RunNotesRow, RunSystemRow, RunSimulationRow):
+                          RunNotesRow, RunSystemRow, RunSimulationRow, DatasetUseRow):
                 session.execute(delete(table).where(table.run_id == run_id))
             session.delete(row)
             return change
@@ -631,4 +643,81 @@ class Store:
             "notes": notes.notes if notes else "",
             "system": system.info if system else None,
             "simulation": cls._simulation_json(session, row.id),
+            "datasets": list(session.scalars(
+                select(DatasetUseRow.dataset_id).where(DatasetUseRow.run_id == row.id)
+                .order_by(DatasetUseRow.dataset_id)
+            )),
         }
+
+    # Datasets -------------------------------------------------------------
+
+    def put_dataset(self, dataset_id: str, body: DatasetIn) -> dict:
+        """Registers a dataset, or updates its description."""
+        now = self._clock()
+        # NaN and infinity (a variable's range) as strings, as JSON allows.
+        info = _encode_floats(body.model_dump(exclude={"previews"}, exclude_none=True))
+        previews = [_encode_floats(p.model_dump()) for p in body.previews]
+        with self._sessions.begin() as session:
+            row = session.get(DatasetRow, dataset_id)
+            if row is None:
+                row = DatasetRow(id=dataset_id, created_at=now)
+                session.add(row)
+            row.name, row.info, row.previews, row.updated_at = body.name, info, previews, now
+            session.flush()
+            return self._dataset_json(session, row, full=True)
+
+    def list_datasets(self) -> list[dict]:
+        with self._sessions() as session:
+            rows = session.scalars(select(DatasetRow).order_by(DatasetRow.updated_at.desc()))
+            return [self._dataset_json(session, row, full=False) for row in rows]
+
+    def get_dataset(self, dataset_id: str) -> dict:
+        with self._sessions() as session:
+            row = session.get(DatasetRow, dataset_id)
+            if row is None:
+                raise DatasetNotFound(dataset_id)
+            return self._dataset_json(session, row, full=True)
+
+    def delete_dataset(self, dataset_id: str) -> None:
+        """Forgets a dataset (the files aren't touched); runs keep naming it."""
+        with self._sessions.begin() as session:
+            row = session.get(DatasetRow, dataset_id)
+            if row is None:
+                raise DatasetNotFound(dataset_id)
+            session.delete(row)
+
+    @staticmethod
+    def _run_summary(session: Session, run_id: str) -> dict | None:
+        row = session.get(RunRow, run_id)
+        if row is None:
+            return None
+        return {
+            "id": row.id, "name": row.name, "project": row.project, "status": row.status,
+            "simulation": session.get(RunSimulationRow, row.id) is not None,
+        }
+
+    @classmethod
+    def _dataset_json(cls, session: Session, row: DatasetRow, *, full: bool) -> dict:
+        """As the app reads it: the description, who made it, who used it;
+        [full] adds the previews."""
+        users = [
+            summary for run_id in session.scalars(
+                select(DatasetUseRow.run_id).where(DatasetUseRow.dataset_id == row.id)
+            )
+            if (summary := cls._run_summary(session, run_id)) is not None
+        ]
+        users.sort(key=lambda r: r["name"])
+        made_by = row.info.get("madeBy")
+        result = {
+            **row.info,
+            "id": row.id,
+            "createdAt": iso(row.created_at),
+            "updatedAt": iso(row.updated_at),
+            "madeBy": None if made_by is None else (
+                cls._run_summary(session, made_by) or {"id": made_by, "name": made_by}
+            ),
+            "usedBy": users,
+        }
+        if full:
+            result["previews"] = row.previews
+        return result

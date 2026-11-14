@@ -162,6 +162,9 @@ class LiveUpdates extends Notifier<LiveStatus> {
       case 'error':
         state = LiveStatus.rejected;
         _closeSocket();
+      case 'dataset':
+        ref.invalidate(datasetsProvider);
+        if (message['datasetId'] case final String id) ref.invalidate(datasetProvider(id));
       case 'run':
         _onRunChange(message);
     }

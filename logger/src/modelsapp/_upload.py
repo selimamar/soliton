@@ -42,6 +42,9 @@ class ApiClient:
     def put_run(self, run_id: str, body: dict) -> None:
         self._request("PUT", f"/api/runs/{run_id}", body)
 
+    def put_dataset(self, dataset_id: str, body: dict) -> None:
+        self._request("PUT", f"/api/datasets/{dataset_id}", body)
+
     def post_events(self, run_id: str, events: List[dict]) -> None:
         self._request("POST", f"/api/runs/{run_id}/events", {"events": events})
 

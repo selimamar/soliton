@@ -101,6 +101,12 @@ What it does:
   (`sim.log_curve`), the same field views as runs (2D, 3D, rollouts), the
   setup, the machine and its cost. Steady solves go by iteration instead
   of simulated time.
+- **Data**: the datasets you have, registered with
+  `modelsapp.register_dataset(path)` or `modelsapp data scan FOLDER`: size,
+  samples and splits, where they're stored, the arrays in them with their
+  ranges, a few sample previews, what made them (a simulation, on which
+  machine) and which runs trained on them. Only the description reaches
+  the server, never the data.
 - **Cost**: roughly what a run has cost and, while it runs, will cost in
   all: run time × the machine's price per hour, rounded (e.g. "≈ $38").
   The price is the run's own (`price_per_hour=`) or a typical cloud price
@@ -164,6 +170,7 @@ lib/
     run_detail/                 Overview, Metrics and Layers tabs + their widgets
     compare/                    runs side by side
     compute/                    simulations: list, Overview, Diagnostics
+    data/                       datasets: list and a dataset's page
     settings/                   settings screen, server login screen
     not_found/                  shown for unknown URLs
   shared/

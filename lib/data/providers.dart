@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/dataset.dart';
 import '../models/field_snapshot.dart';
 import '../models/layer_stats.dart';
 import '../models/metric_series.dart';
@@ -71,6 +72,7 @@ final runRepositoryProvider = Provider<RunRepository>((ref) {
 /// run, a rejected token).
 Duration? retryDataRequest(int retryCount, Object error) {
   if (error is RunNotFoundException ||
+      error is DatasetNotFoundException ||
       error is FieldNotFoundException ||
       error is UnauthorizedException) {
     return null;
@@ -93,6 +95,17 @@ final runsProvider = FutureProvider<List<Run>>(
   ],
   // allRunsProvider has retried already.
   retry: _noRetry,
+);
+
+/// The datasets (the Data section), most recently updated first.
+final datasetsProvider = FutureProvider.autoDispose<List<Dataset>>(
+  (ref) => ref.watch(runRepositoryProvider).fetchDatasets(),
+  retry: retryDataRequest,
+);
+
+final datasetProvider = FutureProvider.autoDispose.family<Dataset, String>(
+  (ref, datasetId) => ref.watch(runRepositoryProvider).fetchDataset(datasetId),
+  retry: retryDataRequest,
 );
 
 /// The simulations (the Compute section).

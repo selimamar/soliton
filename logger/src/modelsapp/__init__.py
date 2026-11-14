@@ -33,10 +33,15 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Mapping, Optional
 
+import os
+
+from ._datasets import Dataset
+from ._datasets import describe as _describe_dataset
+from ._datasets import upload as _upload_dataset
 from ._run import Run
 from ._simulation import Diverged, Simulation
 
-__all__ = ["Diverged", "Run", "Simulation", "init", "simulate"]
+__all__ = ["Dataset", "Diverged", "Run", "Simulation", "init", "register_dataset", "simulate"]
 __version__ = "0.1.0"
 
 
@@ -49,6 +54,7 @@ def init(
     val_samples: Any = None,
     loss: Any = None,
     pde: Optional[Mapping[str, Any]] = None,
+    datasets: Optional[Iterable[Any]] = None,
     tags: Optional[Iterable[str]] = None,
     notes: str = "",
     system_metrics: bool = True,
@@ -72,7 +78,9 @@ def init(
     ("CrossEntropyLoss(label_smoothing=0.1)"), a function or a string.
     These three are listed first among the hyperparameters, then pde: what
     is solved, e.g. {"equation": "Navier-Stokes 2D", "viscosity": 1e-3,
-    "resolution": "64 x 64"} (the app can group runs by PDE). tags, notes:
+    "resolution": "64 x 64"} (the app can group runs by PDE). datasets:
+    what it trains on, so the app lists it under each dataset: Datasets from
+    register_dataset(), dataset ids, or paths (registered on the way). tags, notes:
     to organise runs in the app (e.g. tags=["baseline"]); they only set the
     starting values, which are then edited in the app. system_metrics:
     sample GPU, memory and CPU usage every system_interval seconds (the
@@ -95,6 +103,7 @@ def init(
         val_samples=val_samples,
         loss=loss,
         pde=pde,
+        datasets=datasets,
         tags=tags,
         notes=notes,
         system_metrics=system_metrics,
@@ -167,3 +176,48 @@ def simulate(
         mode=mode,
         dir=dir,
     )
+
+
+def register_dataset(
+    path: Optional[Any] = None,
+    *,
+    name: Optional[str] = None,
+    version: str = "",
+    description: str = "",
+    source: str = "",
+    samples: Optional[int] = None,
+    splits: Optional[Mapping[str, int]] = None,
+    sample_shape: Optional[Iterable[int]] = None,
+    variables: Optional[Iterable[Mapping[str, Any]]] = None,
+    previews: Optional[Iterable[Any]] = None,
+    made_by: Optional[str] = None,
+    host: Optional[str] = None,
+    server: Optional[str] = None,
+    token: Optional[str] = None,
+    dir: Optional[str] = None,
+) -> Dataset:
+    """Tells the server about a dataset, so the app's Data section lists it:
+    its size, where it is, what is in it, and (as runs name it in
+    `init(datasets=...)`) which models were trained on it. The data itself
+    is not uploaded.
+
+    path: a file or folder to describe (its size, files, format, a
+    fingerprint, and for NumPy, HDF5, NetCDF, MAT or Zarr files its arrays,
+    their ranges over the first samples, and a few sample previews). name
+    (default: the file's name) and version make its id, e.g.
+    "ns2d-vorticity-v3". source: how it was obtained, e.g. "Simulated",
+    "Experiment", "FNO benchmark". splits: e.g. {"train": 8000, "val":
+    1000}. samples, sample_shape, variables ([{"name": "w", "description":
+    "vorticity", "unit": "1/s"}]) and previews (arrays, one per sample) add
+    to or replace what is read. made_by: the id of the run or simulation that
+    made it (or use `run.register_dataset`). Without a server (or if it's
+    unreachable), it is saved to dir/datasets for `modelsapp sync`.
+    """
+    dataset = _describe_dataset(
+        path, name=name, version=version, description=description, source=source,
+        samples=samples, splits=splits, sample_shape=sample_shape, variables=variables,
+        previews=previews, made_by=made_by, host=host,
+    )
+    _upload_dataset(dataset, server or os.environ.get("MODELSAPP_SERVER"),
+                    token or os.environ.get("MODELSAPP_TOKEN"), dir)
+    return dataset

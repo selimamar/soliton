@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart' show GlobalKey, NavigatorState;
 
 import '../features/compare/compare_screen.dart';
+import '../features/data/data_screen.dart';
+import '../features/data/dataset_screen.dart';
 import '../features/compute/simulation_screen.dart';
 import '../features/compute/simulations_screen.dart';
 import '../features/farm/farm_screen.dart';
@@ -27,8 +29,10 @@ import 'sections_shell.dart';
 ///   /compute              simulations
 ///   /compute/:id          a simulation; ?tab=diagnostics (or fields,
 ///                         system) opens on that tab
+///   /data                 datasets
+///   /data/:id             a dataset
 ///
-/// The runs list and the simulations share a shell that switches between
+/// The runs list, the simulations and the datasets share a shell that switches between
 /// them; every other screen covers it.
 /// Any other path shows [NotFoundScreen].
 final routerProvider = Provider<GoRouter>((ref) {
@@ -88,6 +92,18 @@ final routerProvider = Provider<GoRouter>((ref) {
                     builder: (context, state) => const ServerScreen(),
                   ),
                 ],
+              ),
+            ],
+          ),
+          GoRoute(
+            path: '/data',
+            builder: (context, state) => const DataScreen(),
+            routes: [
+              GoRoute(
+                parentNavigatorKey: root,
+                path: ':datasetId',
+                builder: (context, state) =>
+                    DatasetScreen(datasetId: state.pathParameters['datasetId']!),
               ),
             ],
           ),

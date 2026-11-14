@@ -1,3 +1,4 @@
+import '../models/dataset.dart';
 import '../models/field_snapshot.dart';
 import '../models/layer_stats.dart';
 import '../models/metric_series.dart';
@@ -43,6 +44,12 @@ abstract interface class RunRepository {
   /// [names] that the run logged.
   Future<Map<String, Map<String, LatestMetric>>> fetchLatestMetrics(List<String> names);
 
+  /// Every dataset the server knows about (without their previews).
+  Future<List<Dataset>> fetchDatasets();
+
+  /// One dataset, with its previews. Throws [DatasetNotFoundException].
+  Future<Dataset> fetchDataset(String datasetId);
+
   /// Replaces a run's [tags] and/or [notes] (null: unchanged) and returns
   /// the run as saved (tags trimmed, each once).
   Future<Run> updateNotes(String runId, {List<String>? tags, String? notes});
@@ -57,6 +64,16 @@ class FieldNotFoundException implements Exception {
 
   @override
   String toString() => 'FieldNotFoundException: no field "$name" at step $step';
+}
+
+/// The requested dataset doesn't exist. Retrying won't help.
+class DatasetNotFoundException implements Exception {
+  const DatasetNotFoundException(this.datasetId);
+
+  final String datasetId;
+
+  @override
+  String toString() => 'DatasetNotFoundException: no dataset with id "$datasetId"';
 }
 
 /// The requested run doesn't exist (e.g. a stale or mistyped link).

@@ -23,6 +23,9 @@ from ._fields import (
     fourier_weight_events,
     layer_event,
 )
+from ._datasets import Dataset
+from ._datasets import describe as describe_dataset
+from ._datasets import upload as upload_dataset
 from ._system import SystemMonitor, framework_versions, system_info
 from ._upload import ApiClient, RunFiles, Uploader
 from ._util import (
@@ -64,6 +67,7 @@ class Run:
         val_samples: Any = None,
         loss: Any = None,
         pde: Optional[Mapping[str, Any]] = None,
+        datasets: Optional[Iterable[Any]] = None,
         tags: Optional[Iterable[str]] = None,
         notes: str = "",
         system_metrics: bool = True,
@@ -116,6 +120,11 @@ class Run:
         if _simulation is not None:
             # What makes it a simulation (see _simulation.py).
             self._description["simulation"] = _simulation
+        self._server, self._token = server, token
+        if datasets is not None:
+            self._description["datasets"] = [
+                self._dataset_id(d, mode, dir) for d in datasets
+            ][:20]
         # Added to the final status record, e.g. that a simulation diverged.
         self._status_extra: dict = {}
         self._files = RunFiles(self.directory)
@@ -143,6 +152,35 @@ class Run:
             self._monitor = SystemMonitor(self._log_system, interval=system_interval)
             self._monitor.start()
         _register(self)
+
+    # Datasets -------------------------------------------------------------
+
+    def _dataset_id(self, dataset: Any, mode: str, directory: Optional[str]) -> str:
+        """A dataset's id: given, of a registered Dataset, or registered now
+        from a path."""
+        if isinstance(dataset, Dataset):
+            return dataset.id
+        if isinstance(dataset, (str, os.PathLike)) and Path(dataset).expanduser().exists():
+            registered = describe_dataset(dataset)
+            if mode != "disabled":
+                upload_dataset(registered, self._server if mode == "online" else None,
+                               self._token, directory)
+            return registered.id
+        text = str(dataset)
+        if not RUN_ID.match(text):
+            raise ValueError(f"datasets: {text!r} is neither a dataset id nor an existing path")
+        return text
+
+    def register_dataset(self, path: Any = None, **options: Any) -> Dataset:
+        """Registers a dataset this run (or simulation) made, e.g. the
+        snapshots a solver wrote: as `modelsapp.register_dataset`, with this
+        run as its maker and this machine as where it was made."""
+        dataset = describe_dataset(path, made_by=self.id,
+                                   system=self._description.get("system") or None, **options)
+        if self.mode != "disabled":
+            upload_dataset(dataset, self._server if self.mode == "online" else None, self._token,
+                           self.directory.parent)
+        return dataset
 
     # Logging --------------------------------------------------------------
 

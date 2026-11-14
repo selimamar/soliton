@@ -74,6 +74,11 @@ fine, don't work around it.
   (or `with sim:`). Don't replace NaN before logging it: the first NaN marks
   the simulation as diverged. See logger/README.md, "Simulations".
 
+- Register the training data once: `ds = modelsapp.register_dataset(path, name=...,
+  version=..., source=..., splits={"train": ..., "val": ...})`, and pass
+  `datasets=[ds]` to `init` (a path works too). A script that generates data
+  registers what it wrote with `run.register_dataset(path)` (or the simulation's).
+
 **Check it works** with a short run (a few hundred steps), then:
 `curl -s -H "Authorization: Bearer $MODELSAPP_TOKEN" "$MODELSAPP_SERVER/api/runs"`
 The new run should be in the list.

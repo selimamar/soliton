@@ -29,7 +29,12 @@ void main() {
         handle.dispose();
       });
 
-      for (final location in ['/compute', '/compute/burgers-shock-fd']) {
+      for (final location in [
+        '/compute',
+        '/compute/burgers-shock-fd',
+        '/data',
+        '/data/ns2d-vorticity-v3',
+      ]) {
         testWidgets('$location meets accessibility guidelines ($name)', (tester) async {
           final handle = tester.ensureSemantics();
           await openApp(tester, location);

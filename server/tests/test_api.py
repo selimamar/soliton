@@ -12,6 +12,7 @@ RUN_KEYS = {
     "id", "name", "project", "host", "status", "startedAt", "endedAt", "currentStep",
     "totalSteps", "currentEpoch", "totalEpochs", "hyperparameters", "architecture",
     "lossPreview", "statusMessage", "tags", "notes", "system", "simulation",
+    "datasets",
 }
 LAYER_KEYS = {
     "layerName", "activationMean", "activationStd", "gradNorm", "activationHistogram",
@@ -638,3 +639,62 @@ def test_bad_simulation_settings_are_rejected(client):
     for bad in ({"tEnd": 0}, {"tEnd": "NaN"}, {"cflLimit": -1}, {"monitor": ""}):
         response = client.put("/api/runs/s", json={"name": "s", "simulation": bad})
         assert response.status_code == 422, bad
+
+
+PREVIEW = {"name": "sample 0, w", "shape": [2, 2], "min": -1.0, "max": 1.0,
+           "data": "AAD//wAA//8="}
+DATASET = {
+    "name": "ns2d-vorticity", "version": "v3", "samples": 10000,
+    "splits": {"train": 8000, "val": 1000, "test": 1000}, "sampleShape": [64, 64, 50],
+    "sizeBytes": 42_000_000_000, "format": "HDF5", "location": "/scratch/ns2d/v3.h5",
+    "host": "Sherlock", "source": "Simulated", "fingerprint": "a41f",
+    "variables": [{"name": "w", "description": "vorticity", "min": -4.1, "max": "NaN"}],
+    "previews": [PREVIEW],
+}
+
+
+def test_a_dataset_is_registered_and_listed_without_its_previews(client):
+    assert client.get("/api/datasets").json() == []
+    stored = client.put("/api/datasets/ns2d-vorticity-v3", json=DATASET).json()
+    assert stored["id"] == "ns2d-vorticity-v3" and stored["previews"] == [PREVIEW]
+    assert stored["variables"][0]["max"] == "NaN"
+    assert stored["usedBy"] == [] and stored["madeBy"] is None
+    (listed,) = client.get("/api/datasets").json()
+    assert "previews" not in listed and listed["samples"] == 10000
+    assert client.get("/api/datasets/nope").status_code == 404
+
+
+def test_runs_that_use_a_dataset_and_the_simulation_that_made_it(client):
+    create_run(client, "gen", simulation={"tEnd": 1})
+    client.put("/api/datasets/ns2d", json={**DATASET, "madeBy": "gen"})
+    # A run may name a dataset before it is registered.
+    assert create_run(client, "fno-1", datasets=["ns2d", "ns2d", "later"])["datasets"] == [
+        "later", "ns2d"]
+    create_run(client, "fno-2", datasets=["ns2d"])
+    dataset = client.get("/api/datasets/ns2d").json()
+    assert dataset["madeBy"] == {"id": "gen", "name": "tiny", "project": "tests",
+                                 "status": "live", "simulation": True}
+    assert [r["id"] for r in dataset["usedBy"]] == ["fno-1", "fno-2"]
+    # Resent without datasets (an older logger): kept. With: replaced.
+    assert create_run(client, "fno-1")["datasets"] == ["later", "ns2d"]
+    assert create_run(client, "fno-1", datasets=[])["datasets"] == []
+    client.delete("/api/runs/fno-2")
+    assert client.get("/api/datasets/ns2d").json()["usedBy"] == []
+    assert client.delete("/api/datasets/ns2d").status_code == 204
+    assert client.get("/api/datasets/ns2d").status_code == 404
+
+
+def test_bad_datasets_are_rejected(client):
+    for bad in ({"name": ""}, {**DATASET, "samples": -1},
+                {**DATASET, "previews": [{**PREVIEW, "shape": [3, 3]}]},
+                {**DATASET, "previews": [{**PREVIEW, "shape": [200, 200]}]}):
+        assert client.put("/api/datasets/d", json=bad).status_code == 422
+    assert client.put("/api/datasets/bad id", json=DATASET).status_code in (404, 422)
+
+
+def test_dataset_changes_are_announced_live(client):
+    with client.websocket_connect("/api/live") as socket:
+        socket.send_json({"type": "auth", "token": TOKEN})
+        assert socket.receive_json()["type"] == "ready"
+        client.put("/api/datasets/d", json=DATASET)
+        assert socket.receive_json() == {"type": "dataset", "event": "updated", "datasetId": "d"}

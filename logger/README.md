@@ -307,6 +307,51 @@ with sim:
 Solvers that aren't in Python can still report: write a small Python driver
 that reads the solver's output as it runs and calls `sim.log`.
 
+### Datasets: `modelsapp.register_dataset`, `modelsapp data`
+
+The app's **Data** section lists the datasets you have: how big they are,
+where they live, what's in them, what made them, and which runs trained on
+them. Only their description is uploaded, never the data.
+
+```python
+import modelsapp
+
+ds = modelsapp.register_dataset(
+    "/scratch/users/me/ns2d/v3.h5", name="ns2d-vorticity", version="v3",
+    source="Simulated", splits={"train": 8000, "val": 1000, "test": 1000},
+    variables=[{"name": "u", "description": "vorticity"}])
+
+run = modelsapp.init("fno-ns", datasets=[ds])     # listed under the dataset
+```
+
+- From a path, the logger reads the size, the number of files, the format
+  and a fingerprint (from the files' names, sizes and dates: it changes
+  when they do). For NumPy (`.npy`, `.npz`), HDF5, NetCDF, MAT and Zarr
+  files it also reads each array's shape and type, the range, mean and
+  spread over the first 64 samples, and four small sample previews (a
+  sample's trailing axes beyond two are cut at their last index, e.g. the
+  last time step). Only headers and those first samples are read, so a
+  terabyte file is as quick as a small one. HDF5, NetCDF 4 and MAT v7.3
+  need `h5py`; Zarr needs `zarr`; older MAT files need SciPy.
+- What you pass wins over what is read: `name` (default: the file's name)
+  and `version` make the id (`ns2d-vorticity-v3`); `samples`, `splits`,
+  `sample_shape`, `variables` and `previews` (arrays, one per sample) add
+  to or replace it. `source` says how it was obtained.
+- `init(datasets=[...])` takes registered datasets, dataset ids, or paths
+  (registered on the way). Registering the same dataset again updates it.
+- A run or simulation that writes a dataset registers it with
+  `run.register_dataset(path, ...)` (or `sim.register_dataset`): the app
+  then shows what made it and on which machine.
+- Without a server (or if it's unreachable), datasets are saved to
+  `$MODELSAPP_DIR/datasets` and uploaded by `modelsapp sync`.
+
+From a shell, without writing Python:
+
+```bash
+modelsapp data add /scratch/users/me/ns2d/v3.h5 --version v3 --source Simulated
+modelsapp data scan $SCRATCH/data          # each data file or folder of them in there
+```
+
 ### All `init()` options
 
 | Option | Default | |
@@ -319,6 +364,7 @@ that reads the solver's output as it runs and calls `sim.log`.
 | `config` | none | Hyperparameters: a dict (nested is fine) or argparse namespace |
 | `train_samples`, `val_samples` | none | How many samples are trained and validated on: a number, a dataset, or a DataLoader (its dataset is counted, not its batches) |
 | `loss` | none | The loss: the criterion module (shown with the settings that differ from the defaults, e.g. `CrossEntropyLoss(label_smoothing=0.1)`), a function, or a string |
+| `datasets` | none | What it trains on: datasets from `register_dataset()`, dataset ids, or paths (registered on the way). The app lists the run under each one |
 | `pde` | none | What is solved, listed right after the data and loss: `{"equation": "Navier-Stokes 2D", "viscosity": 1e-3, "domain": "[0, 1]² periodic", "resolution": "64 × 64"}` (nested is fine). The equation becomes the `PDE` hyperparameter, which the app can group runs by |
 | `total_steps`, `total_epochs` | 0 | Progress bar, time left, epochs on the x-axis |
 | `host` | detected | Where it runs: `MODELSAPP_HOST`, else the Slurm cluster (e.g. "Sherlock"), the platform (Modal, RunPod, Colab, Kaggle, SageMaker, AWS Batch), the cloud (AWS, GCP, Azure, DigitalOcean, Hetzner, Oracle Cloud, Vultr, Linode), Kubernetes, else the machine's name |

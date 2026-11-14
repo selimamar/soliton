@@ -130,6 +130,32 @@ class RunSimulationRow(Base):
     info: Mapped[dict] = mapped_column(JSON)
 
 
+class DatasetRow(Base):
+    """A dataset's description (schemas.DatasetIn, as JSON), without its
+    previews, which are only read on its own page."""
+
+    __tablename__ = "datasets"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    info: Mapped[dict] = mapped_column(JSON)
+    previews: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
+class DatasetUseRow(Base):
+    """A run (or simulation) that trains or is evaluated on a dataset. The
+    dataset may be registered after the run names it, so no foreign key."""
+
+    __tablename__ = "dataset_uses"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    dataset_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+
+
 class LayerRow(Base):
     """A watched layer, with its latest statistics."""
 

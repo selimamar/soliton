@@ -40,6 +40,10 @@ void main() {
         '/sweep',
         '/compare?runs=resnet50-cifar,unet-seg',
         '/compute',
+        '/data',
+        '/data/ns2d-vorticity-v3',
+        '/data/rb3d-snapshots',
+        '/data/openwebtext',
       ]) {
         await visit(location);
       }

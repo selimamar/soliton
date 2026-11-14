@@ -33,6 +33,7 @@ class Run {
     this.notes = '',
     this.system,
     this.simulation,
+    this.datasets = const [],
   });
 
   factory Run.fromJson(Map<String, Object?> json) => Run(
@@ -68,6 +69,9 @@ class Run {
       final Map<String, Object?> simulation => SimulationInfo.fromJson(simulation),
       _ => null,
     },
+    datasets: List.unmodifiable([
+      for (final id in (json['datasets'] as List?) ?? const []) id as String,
+    ]),
   );
 
   final String id;
@@ -116,6 +120,9 @@ class Run {
   final SimulationInfo? simulation;
 
   bool get isSimulation => simulation != null;
+
+  /// The ids of the datasets it trains or is evaluated on.
+  final List<String> datasets;
 
   int get parameterCount => architecture.totalParameters;
 
@@ -181,6 +188,7 @@ class Run {
     'notes': notes,
     'system': system?.toJson(),
     'simulation': simulation?.toJson(),
+    'datasets': datasets,
   };
 
   @override
@@ -205,10 +213,11 @@ class Run {
       deepListEquals(other.tags, tags) &&
       other.notes == notes &&
       other.system == system &&
-      other.simulation == simulation;
+      other.simulation == simulation &&
+      deepListEquals(other.datasets, datasets);
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     name,
     project,
@@ -230,5 +239,6 @@ class Run {
     notes,
     system,
     simulation,
-  );
+    Object.hashAll(datasets),
+  ]);
 }

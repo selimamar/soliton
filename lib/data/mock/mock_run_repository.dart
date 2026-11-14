@@ -1,3 +1,4 @@
+import '../../models/dataset.dart';
 import '../../models/field_snapshot.dart';
 import '../../models/layer_stats.dart';
 import '../../models/metric_series.dart';
@@ -6,6 +7,7 @@ import '../../models/run_insights.dart';
 import '../run_repository.dart';
 import '../tags.dart';
 import 'mock_runs.dart';
+import 'mock_datasets.dart';
 import 'mock_simulations.dart';
 
 /// A [RunRepository] serving generated demo data, with a fake network delay.
@@ -15,9 +17,37 @@ class MockRunRepository implements RunRepository {
     : _runs = _build(DateTime.now());
 
   static List<MockRun> _build(DateTime now) => [
-    ...buildMockRuns(now),
-    ...buildMockSimulations(now),
+    for (final r in [...buildMockRuns(now), ...buildMockSimulations(now)])
+      if (mockRunDatasets(r.run.id) case final datasets when datasets.isNotEmpty)
+        MockRun(
+          run: Run.fromJson({...r.run.toJson(), 'datasets': datasets}),
+          metrics: r.metrics,
+          layerStats: r.layerStats,
+          fields: r.fields,
+          extras: r.extras,
+        )
+      else
+        r,
   ];
+
+  late final List<Dataset> _datasets = buildMockDatasets(DateTime.now(), [
+    for (final r in _runs) r.run,
+  ]);
+
+  @override
+  Future<List<Dataset>> fetchDatasets() async {
+    await Future<void>.delayed(latency);
+    return _datasets;
+  }
+
+  @override
+  Future<Dataset> fetchDataset(String datasetId) async {
+    await Future<void>.delayed(latency);
+    for (final dataset in _datasets) {
+      if (dataset.id == datasetId) return dataset;
+    }
+    throw DatasetNotFoundException(datasetId);
+  }
 
   final Duration latency;
   final List<MockRun> _runs;

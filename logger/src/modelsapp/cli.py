@@ -1,4 +1,4 @@
-"""`modelsapp` command: upload saved runs, or run a demo training."""
+"""`modelsapp` command: upload saved runs, register datasets, or run a demo training."""
 
 from __future__ import annotations
 
@@ -8,6 +8,9 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
+from ._datasets import FORMATS, OTHER_FORMATS, saved_datasets
+from ._datasets import describe as describe_dataset
+from ._datasets import upload as upload_dataset
 from ._upload import EVENTS_FILE, ApiClient, RetryLater, RunFiles, UploadError, upload_pending
 
 
@@ -35,11 +38,23 @@ def _client(args) -> ApiClient:
 
 def sync(args) -> int:
     client = _client(args)
-    folders = _run_folders(args.paths or [os.environ.get("MODELSAPP_DIR") or "modelsapp-runs"])
+    roots = args.paths or [os.environ.get("MODELSAPP_DIR") or "modelsapp-runs"]
+    failures = 0
+    # Datasets first: runs name them.
+    for root in roots:
+        for dataset_id, description, file in saved_datasets(Path(root)):
+            try:
+                client.put_dataset(dataset_id, description)
+            except (RetryLater, UploadError) as error:
+                print(f"dataset {dataset_id}: failed: {error}", file=sys.stderr)
+                failures += 1
+                continue
+            file.unlink()
+            print(f"dataset {dataset_id}: uploaded")
+    folders = _run_folders(roots)
     if not folders:
         print("modelsapp: no saved runs found")
-        return 0
-    failures = 0
+        return 1 if failures else 0
     for folder in folders:
         files = RunFiles(folder)
         try:
@@ -50,6 +65,52 @@ def sync(args) -> int:
             continue
         print(f"{folder.name}: " + (f"uploaded {sent:,} records" if sent else "up to date"))
     return 1 if failures else 0
+
+
+def data(args) -> int:
+    """Registers datasets: one path (`add`), or every data file and folder
+    of data files in a folder (`scan`)."""
+    server = args.server or os.environ.get("MODELSAPP_SERVER")
+    token = args.token or os.environ.get("MODELSAPP_TOKEN")
+    if args.action == "add":
+        targets = [Path(args.path)]
+    else:
+        root = Path(args.path)
+        if not root.is_dir():
+            sys.exit(f"modelsapp: {root}: not a folder")
+        targets = sorted(p for p in root.iterdir()
+                         if p.suffix.lower() in FORMATS or (p.is_dir() and _has_data(p)))
+        if not targets:
+            print(f"modelsapp: no data files in {root}")
+            return 0
+    failures = 0
+    for target in targets:
+        try:
+            dataset = describe_dataset(
+                target, name=args.name if args.action == "add" else None,
+                version=args.version or "", source=args.source or "",
+                description=args.description or "",
+            )
+        except (OSError, ValueError) as error:
+            print(f"{target}: {error}", file=sys.stderr)
+            failures += 1
+            continue
+        try:
+            sent = upload_dataset(dataset, server, token)
+        except UploadError as error:
+            print(f"{dataset.id}: failed: {error}", file=sys.stderr)
+            failures += 1
+            continue
+        size = dataset.description.get("sizeBytes", 0) / 1e9
+        samples = dataset.description.get("samples")
+        print(f"{dataset.id}: {size:,.2f} GB" + (f", {samples:,} samples" if samples else "")
+              + ("" if sent else " (saved, not uploaded)"))
+    return 1 if failures else 0
+
+
+def _has_data(folder: Path) -> bool:
+    known = set(FORMATS) | set(OTHER_FORMATS)
+    return any(p.suffix.lower() in known for p in folder.rglob("*"))
 
 
 def demo(args) -> int:
@@ -74,6 +135,20 @@ def main(argv: Optional[List[str]] = None) -> None:
     sync_parser.add_argument("--server", help="default: $MODELSAPP_SERVER")
     sync_parser.add_argument("--token", help="default: $MODELSAPP_TOKEN")
     sync_parser.set_defaults(handler=sync)
+
+    data_parser = commands.add_parser(
+        "data", help="register datasets with the server (their description, not the data)"
+    )
+    data_parser.add_argument("action", choices=["add", "scan"],
+                             help="add: one file or folder; scan: each data file or folder in a folder")
+    data_parser.add_argument("path")
+    data_parser.add_argument("--name", help="add only; default: the file's name")
+    data_parser.add_argument("--version")
+    data_parser.add_argument("--source", help='how it was obtained, e.g. "Simulated", "Experiment"')
+    data_parser.add_argument("--description")
+    data_parser.add_argument("--server", help="default: $MODELSAPP_SERVER")
+    data_parser.add_argument("--token", help="default: $MODELSAPP_TOKEN")
+    data_parser.set_defaults(handler=data)
 
     demo_parser = commands.add_parser(
         "demo", help="train a small model on random data, to try the app (needs PyTorch)"

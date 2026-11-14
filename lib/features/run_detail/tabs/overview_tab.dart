@@ -1,8 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../data/providers.dart';
 import '../../../models/metric_series.dart';
+import '../../../app/routes.dart';
 import '../../../app/theme.dart';
 import '../../../models/run.dart';
 import '../../../models/run_cost.dart';
@@ -39,6 +41,7 @@ class OverviewTab extends StatelessWidget {
         _SpeedStrip(runId: run.id),
         if (HourlyPrice.of(run.system) case final price?) CostStrip(run: run, price: price),
         RunNotesCard(run: run),
+        if (run.datasets.isNotEmpty) _DatasetsCard(datasets: run.datasets),
         SectionCard(
           title: 'Hyperparameters',
           child: KeyValueGrid(entries: run.hyperparameters, caption: 'Settings of this run.'),
@@ -111,6 +114,33 @@ class CostStrip extends ConsumerWidget {
           'Estimated: run time × ${price.basis}.',
           style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
+      ),
+    );
+  }
+}
+
+/// The datasets the run trains on, each opening its page in Data.
+class _DatasetsCard extends StatelessWidget {
+  const _DatasetsCard({required this.datasets});
+
+  final List<String> datasets;
+
+  @override
+  Widget build(BuildContext context) {
+    return SectionCard(
+      title: 'Trained on',
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final id in datasets)
+            ActionChip(
+              avatar: const Icon(Icons.storage_outlined, size: 16),
+              label: Text(id),
+              tooltip: 'Open dataset $id',
+              onPressed: () => context.go(AppRoutes.dataset(id)),
+            ),
+        ],
       ),
     );
   }
