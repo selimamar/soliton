@@ -3,8 +3,8 @@ import 'model_helpers.dart';
 import 'run.dart';
 import 'system_info.dart';
 
-/// A dataset the server knows about (`modelsapp.register_dataset`, or
-/// `modelsapp data scan`): what it is, where it lives, what is in it, who
+/// A dataset the server knows about (`soliton.register_dataset`, or
+/// `soliton data scan`): what it is, where it lives, what is in it, who
 /// made it and who trained on it. The data itself stays where it is.
 class Dataset {
   const Dataset({

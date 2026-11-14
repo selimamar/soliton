@@ -1,14 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:models_app/app/theme.dart';
-import 'package:models_app/data/mock/mock_run_repository.dart';
-import 'package:models_app/data/mock/mock_runs.dart';
-import 'package:models_app/data/services/settings_store.dart';
-import 'package:models_app/features/runs_list/run_groups.dart';
-import 'package:models_app/features/settings/settings_providers.dart';
-import 'package:models_app/models/metric_series.dart';
-import 'package:models_app/models/run.dart';
-import 'package:models_app/models/run_insights.dart';
+import 'package:soliton/app/theme.dart';
+import 'package:soliton/data/mock/mock_run_repository.dart';
+import 'package:soliton/data/mock/mock_runs.dart';
+import 'package:soliton/data/services/settings_store.dart';
+import 'package:soliton/features/runs_list/run_groups.dart';
+import 'package:soliton/features/settings/settings_providers.dart';
+import 'package:soliton/models/metric_series.dart';
+import 'package:soliton/models/run.dart';
+import 'package:soliton/models/run_insights.dart';
 
 import 'test_app.dart';
 

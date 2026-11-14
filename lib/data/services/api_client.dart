@@ -42,7 +42,7 @@ class ServerErrorException extends ApiException {
   String toString() => 'ServerErrorException: HTTP $statusCode';
 }
 
-/// Raw HTTP access to the ModelsApp server. Returns decoded JSON; mapping it
+/// Raw HTTP access to the Soliton server. Returns decoded JSON; mapping it
 /// to models is the repository's job.
 class ApiClient {
   ApiClient(this.connection, {http.Client? httpClient, this.timeout = const Duration(seconds: 20)})

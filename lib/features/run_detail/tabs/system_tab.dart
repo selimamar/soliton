@@ -36,7 +36,7 @@ class SystemTab extends ConsumerWidget {
         if (info == null && usage.isEmpty) {
           return _Note(
             'No system information for this ${run.isSimulation ? 'simulation' : 'run'}. '
-            'The modelsapp logger records the machine, its GPUs and their use; update it '
+            'The soliton logger records the machine, its GPUs and their use; update it '
             'to see them here.',
           );
         }

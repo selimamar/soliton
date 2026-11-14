@@ -8,8 +8,8 @@ from argparse import Namespace
 
 import pytest
 
-import modelsapp
-from modelsapp._util import (
+import soliton
+from soliton._util import (
     count_samples,
     describe_loss,
     detect_host,
@@ -28,7 +28,7 @@ def records(run):
 def offline(tmp_path, name="tiny", **kwargs):
     # No usage sampling unless asked: its records would land between the ones tests count.
     kwargs.setdefault("system_metrics", False)
-    return modelsapp.init(name, mode="offline", dir=str(tmp_path), host="test", **kwargs)
+    return soliton.init(name, mode="offline", dir=str(tmp_path), host="test", **kwargs)
 
 
 # Helpers ----------------------------------------------------------------------
@@ -57,7 +57,7 @@ def test_run_ids_are_readable_and_valid():
 def test_the_host_is_detected(tmp_path):
     nowhere = tmp_path / "plain"  # No cloud vendor files.
     assert detect_host({"SLURM_CLUSTER_NAME": "sherlock"}, nowhere) == "Sherlock"
-    assert detect_host({"MODELSAPP_HOST": "Lab box", "SLURM_CLUSTER_NAME": "sherlock"}) == "Lab box"
+    assert detect_host({"SOLITON_HOST": "Lab box", "SLURM_CLUSTER_NAME": "sherlock"}) == "Lab box"
     assert detect_host({}, nowhere) != ""
 
 
@@ -68,7 +68,7 @@ def test_the_host_is_detected(tmp_path):
 ])
 def test_platforms_are_recognized_by_their_environment(tmp_path, variable, platform):
     assert detect_host({variable: "x"}, tmp_path) == platform
-    assert detect_host({variable: "x", "MODELSAPP_HOST": "Mine"}, tmp_path) == "Mine"
+    assert detect_host({variable: "x", "SOLITON_HOST": "Mine"}, tmp_path) == "Mine"
 
 
 def vendor(tmp_path, sys_vendor, product=""):
@@ -205,17 +205,17 @@ def test_an_exception_marks_the_run_crashed(tmp_path):
 
 
 def test_disabled_runs_do_nothing(tmp_path):
-    run = modelsapp.init("x", mode="disabled", dir=str(tmp_path))
+    run = soliton.init("x", mode="disabled", dir=str(tmp_path))
     run.log({"x": 1})
     run.finish()
     assert not any(tmp_path.iterdir())
 
 
 def test_online_mode_needs_a_server_and_token(tmp_path, monkeypatch):
-    monkeypatch.delenv("MODELSAPP_SERVER", raising=False)
-    monkeypatch.delenv("MODELSAPP_TOKEN", raising=False)
+    monkeypatch.delenv("SOLITON_SERVER", raising=False)
+    monkeypatch.delenv("SOLITON_TOKEN", raising=False)
     with pytest.raises(ValueError, match="server and a token"):
-        modelsapp.init("x", mode="online", dir=str(tmp_path))
+        soliton.init("x", mode="online", dir=str(tmp_path))
 
 
 # Field snapshots --------------------------------------------------------------
@@ -226,7 +226,7 @@ np = pytest.importorskip("numpy")
 def decode_field(record, key="prediction"):
     import base64
 
-    from modelsapp._fields import LEVELS, NAN_CODE
+    from soliton._fields import LEVELS, NAN_CODE
 
     codes = np.frombuffer(base64.b64decode(record[key]), dtype="<u2").reshape(record["shape"])
     values = record["min"] + codes / LEVELS * (record["max"] - record["min"])
@@ -358,7 +358,7 @@ def test_3d_fields_are_averaged_down_to_128_per_axis(tmp_path):
 
 
 def test_snapshots_stay_under_the_server_limit():
-    from modelsapp._fields import MAX_POINTS, shrink
+    from soliton._fields import MAX_POINTS, shrink
 
     small = shrink(np.zeros((4, 64, 64, 64)), 64, first_axis=1, max_points=4 * 32 ** 3)
     assert small.shape == (4, 32, 32, 32)
@@ -382,7 +382,7 @@ def test_names_for_layers_are_kept_apart(tmp_path):
     ([100], None),            # Just features.
 ])
 def test_the_channel_axis_is_guessed_from_the_shape(shape, axis):
-    from modelsapp._fields import channel_axis
+    from soliton._fields import channel_axis
 
     assert channel_axis(shape) == axis
 

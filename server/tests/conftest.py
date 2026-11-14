@@ -14,9 +14,9 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 
-from modelsapp_server.app import create_app
-from modelsapp_server.config import Settings, normalize_database_url
-from modelsapp_server.db import Base
+from soliton_server.app import create_app
+from soliton_server.config import Settings, normalize_database_url
+from soliton_server.db import Base
 
 TOKEN = "test-token"
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
@@ -35,8 +35,8 @@ class FakeClock:
 
 @pytest.fixture(scope="session")
 def postgres_url():
-    """MODELSAPP_TEST_POSTGRES_URL if set, else a throwaway local server."""
-    url = os.environ.get("MODELSAPP_TEST_POSTGRES_URL")
+    """SOLITON_TEST_POSTGRES_URL if set, else a throwaway local server."""
+    url = os.environ.get("SOLITON_TEST_POSTGRES_URL")
     if url:
         yield normalize_database_url(url)
         return
@@ -45,13 +45,13 @@ def postgres_url():
     except ImportError:
         pytest.skip("pgserver is not installed")
     # Unix socket paths are limited to ~100 characters, so not under tmp_path.
-    root = Path(os.environ.get("MODELSAPP_ROOT", Path(__file__).parents[2]))
+    root = Path(os.environ.get("SOLITON_ROOT", Path(__file__).parents[2]))
     try:
         server = pgserver.get_server(root / ".cache" / "pg-tests", cleanup_mode="stop")
     except Exception:
         pytest.skip(
             "local PostgreSQL did not start (on macOS usually because other apps hold all "
-            "System V shared memory segments); set MODELSAPP_TEST_POSTGRES_URL to use another"
+            "System V shared memory segments); set SOLITON_TEST_POSTGRES_URL to use another"
         )
     yield normalize_database_url(server.get_uri())
 

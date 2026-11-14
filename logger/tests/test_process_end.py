@@ -15,8 +15,8 @@ import pytest
 
 def start(tmp_path: Path, body: str) -> subprocess.Popen:
     script = textwrap.dedent(f"""
-        import time, modelsapp
-        run = modelsapp.init("p", id="proc-run", mode="offline", dir={str(tmp_path)!r}, host="test")
+        import time, soliton
+        run = soliton.init("p", id="proc-run", mode="offline", dir={str(tmp_path)!r}, host="test")
         run.log({{"train/loss": 1.0}}, step=0)
         print("ready", flush=True)
     """) + textwrap.dedent(body)
@@ -61,9 +61,9 @@ def test_sigterm_marks_the_run_crashed_and_still_ends_the_process(tmp_path):
 def test_a_script_with_its_own_sigterm_handler_keeps_it(tmp_path):
     process = subprocess.Popen(
         [sys.executable, "-c", textwrap.dedent(f"""
-            import signal, sys, time, modelsapp
+            import signal, sys, time, soliton
             signal.signal(signal.SIGTERM, lambda *_: (print("mine", flush=True), sys.exit(3)))
-            run = modelsapp.init("p", id="proc-run", mode="offline", dir={str(tmp_path)!r}, host="t")
+            run = soliton.init("p", id="proc-run", mode="offline", dir={str(tmp_path)!r}, host="t")
             print("ready", flush=True)
             time.sleep(60)
         """)],

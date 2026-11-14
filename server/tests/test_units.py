@@ -5,10 +5,10 @@ import stat
 
 import pytest
 
-from modelsapp_server.config import Settings, load_or_create_token, normalize_database_url
-from modelsapp_server.floats import decode_float, downsample, encode_float, from_columns, to_columns
-from modelsapp_server.notify import NtfyNotifier
-from modelsapp_server.store import Change
+from soliton_server.config import Settings, load_or_create_token, normalize_database_url
+from soliton_server.floats import decode_float, downsample, encode_float, from_columns, to_columns
+from soliton_server.notify import NtfyNotifier
+from soliton_server.store import Change
 
 
 @pytest.mark.parametrize("value", [1.5, 0.0, -2.0, math.inf, -math.inf])
@@ -60,13 +60,13 @@ def test_a_generated_token_is_saved_privately(tmp_path):
 
 def test_settings_from_env(tmp_path):
     settings = Settings.from_env({
-        "MODELSAPP_DATA_DIR": str(tmp_path),
-        "MODELSAPP_TOKEN": "abc",
-        "MODELSAPP_STALE_MINUTES": "2.5",
-        "MODELSAPP_CORS_ORIGINS": "https://a.example, https://b.example",
-        "MODELSAPP_NOTIFY_ON": "crashed",
+        "SOLITON_DATA_DIR": str(tmp_path),
+        "SOLITON_TOKEN": "abc",
+        "SOLITON_STALE_MINUTES": "2.5",
+        "SOLITON_CORS_ORIGINS": "https://a.example, https://b.example",
+        "SOLITON_NOTIFY_ON": "crashed",
     })
-    assert settings.database_url == f"sqlite:///{(tmp_path / 'modelsapp.db').resolve()}"
+    assert settings.database_url == f"sqlite:///{(tmp_path / 'soliton.db').resolve()}"
     assert settings.token == "abc"
     assert settings.stale_after.total_seconds() == 150
     assert settings.cors_origins == ("https://a.example", "https://b.example")

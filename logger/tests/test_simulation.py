@@ -1,10 +1,10 @@
-"""modelsapp.simulate: simulations monitored like runs."""
+"""soliton.simulate: simulations monitored like runs."""
 
 from __future__ import annotations
 
 import pytest
 
-import modelsapp
+import soliton
 from test_logger import records
 
 np = pytest.importorskip("numpy")
@@ -12,7 +12,7 @@ np = pytest.importorskip("numpy")
 
 def simulation(tmp_path, name="kh", **kwargs):
     kwargs.setdefault("system_metrics", False)
-    return modelsapp.simulate(name, mode="offline", dir=str(tmp_path), host="test", **kwargs)
+    return soliton.simulate(name, mode="offline", dir=str(tmp_path), host="test", **kwargs)
 
 
 def test_a_simulation_describes_itself_and_logs_against_time(tmp_path):
@@ -70,7 +70,7 @@ def test_a_field_with_nan_diverges_and_can_stop_the_simulation(tmp_path):
     sim = simulation(tmp_path, stop_on_divergence=True)
     field = np.zeros((8, 8))
     field[3, 3] = np.nan
-    with pytest.raises(modelsapp.Diverged, match="step 0: u has NaN"):
+    with pytest.raises(soliton.Diverged, match="step 0: u has NaN"):
         sim.log_field("u", field)
     assert records(sim)[-1]["diverged"] is True
 

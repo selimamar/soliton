@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:models_app/features/compute/simulation_text.dart';
-import 'package:models_app/models/layer_info.dart';
-import 'package:models_app/models/metric_series.dart';
-import 'package:models_app/models/run.dart';
-import 'package:models_app/models/simulation_info.dart';
+import 'package:soliton/features/compute/simulation_text.dart';
+import 'package:soliton/models/layer_info.dart';
+import 'package:soliton/models/metric_series.dart';
+import 'package:soliton/models/run.dart';
+import 'package:soliton/models/simulation_info.dart';
 
 import 'test_app.dart';
 

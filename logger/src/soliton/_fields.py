@@ -384,7 +384,7 @@ def _select_layers(model, layers) -> List[Tuple[str, Any]]:
                 raise ValueError(f"no such layers in the model: {', '.join(missing)}")
             chosen = [(n, named[n]) for n in layers]
     if len(chosen) > MAX_LAYERS:
-        warnings.warn(f"modelsapp: capturing the first {MAX_LAYERS} of {len(chosen)} layers",
+        warnings.warn(f"soliton: capturing the first {MAX_LAYERS} of {len(chosen)} layers",
                       stacklevel=4)
         chosen = chosen[:MAX_LAYERS]
     return chosen

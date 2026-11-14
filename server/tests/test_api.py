@@ -333,7 +333,7 @@ def test_a_quiet_run_is_marked_crashed_and_comes_back(app, client, clock, notifi
 
 
 def test_late_upload_of_an_old_run_does_not_revive_it(app, client, clock):
-    """`modelsapp sync` may upload old data after the run was marked lost."""
+    """`soliton sync` may upload old data after the run was marked lost."""
     create_run(client)
     clock.advance(minutes=30)
     app.state.store.mark_stale(app.state.settings.stale_after)

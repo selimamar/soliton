@@ -59,8 +59,8 @@ class _DatasetsList extends ConsumerWidget {
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Text(
-            'No datasets yet. Register one with modelsapp.register_dataset(path), or every '
-            'data file in a folder with `modelsapp data scan FOLDER`. Only their description '
+            'No datasets yet. Register one with soliton.register_dataset(path), or every '
+            'data file in a folder with `soliton data scan FOLDER`. Only their description '
             'is uploaded, not the data.',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),

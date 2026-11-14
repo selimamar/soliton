@@ -1,4 +1,4 @@
-# Python side of ModelsApp: the training logger (logger/) and the server
+# Python side of Soliton: the training logger (logger/) and the server
 # (server/). Both are installed, editable, into .venv:
 #
 #   source env.sh && uv sync --all-packages
@@ -9,7 +9,7 @@ members = ["logger", "server"]
 dev = [
   "pytest>=8",
   "httpx2>=2.14.0",       # FastAPI's test client
-  "torch>=2.4",           # logger tests and `modelsapp demo`
+  "torch>=2.4",           # logger tests and `soliton demo`
   "numpy>=2.2.6",         # keeps torch from warning that it's missing
   "psycopg[binary]>=3.2", # Postgres driver for the server tests
   "pgserver>=0.1",        # a throwaway Postgres for the server tests

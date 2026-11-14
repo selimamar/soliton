@@ -15,7 +15,7 @@
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Models App</string>
+	<string>Soliton</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -31,11 +31,11 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Models App connects to the ModelsApp server you set up, which may be on your local network.</string>
+	<string>Soliton connects to the Soliton server you set up, which may be on your local network.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<!-- Plain http:// to servers on your own network (e.g. a laptop
-		     running modelsapp-server). Anywhere else, use https://. -->
+		     running soliton-server). Anywhere else, use https://. -->
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>

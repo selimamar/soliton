@@ -1,11 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:models_app/data/mock/mock_run_repository.dart';
-import 'package:models_app/data/mock/mock_runs.dart';
-import 'package:models_app/features/run_detail/system_usage.dart';
-import 'package:models_app/models/metric_series.dart';
-import 'package:models_app/models/run.dart';
-import 'package:models_app/models/system_info.dart';
+import 'package:soliton/data/mock/mock_run_repository.dart';
+import 'package:soliton/data/mock/mock_runs.dart';
+import 'package:soliton/features/run_detail/system_usage.dart';
+import 'package:soliton/models/metric_series.dart';
+import 'package:soliton/models/run.dart';
+import 'package:soliton/models/system_info.dart';
 
 import 'test_app.dart';
 

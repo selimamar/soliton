@@ -4,14 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:models_app/data/api_run_repository.dart';
-import 'package:models_app/data/providers.dart';
-import 'package:models_app/data/run_repository.dart';
-import 'package:models_app/data/services/api_client.dart';
-import 'package:models_app/data/services/live_updates.dart';
-import 'package:models_app/data/services/server_connection.dart';
-import 'package:models_app/data/services/settings_store.dart';
-import 'package:models_app/models/run.dart';
+import 'package:soliton/data/api_run_repository.dart';
+import 'package:soliton/data/providers.dart';
+import 'package:soliton/data/run_repository.dart';
+import 'package:soliton/data/services/api_client.dart';
+import 'package:soliton/data/services/live_updates.dart';
+import 'package:soliton/data/services/server_connection.dart';
+import 'package:soliton/data/services/settings_store.dart';
+import 'package:soliton/models/run.dart';
 
 import 'fake_server.dart';
 import 'test_app.dart';
@@ -31,7 +31,7 @@ void main() {
       expect(connection('runs.example.com').address, 'https://runs.example.com');
       expect(connection(' https://runs.example.com/ ').address, 'https://runs.example.com');
       expect(connection('http://192.168.1.5:8000').address, 'http://192.168.1.5:8000');
-      expect(connection('https://example.com/modelsapp/').address, 'https://example.com/modelsapp');
+      expect(connection('https://example.com/soliton/').address, 'https://example.com/soliton');
       expect(ServerConnection.parse('runs.example.com', ' token ')!.token, 'token');
     });
 
@@ -43,10 +43,10 @@ void main() {
     });
 
     test('builds API and live-update addresses', () {
-      final c = connection('https://example.com/modelsapp');
-      expect(c.api('/runs/a b').toString(), 'https://example.com/modelsapp/api/runs/a%20b');
+      final c = connection('https://example.com/soliton');
+      expect(c.api('/runs/a b').toString(), 'https://example.com/soliton/api/runs/a%20b');
       expect(c.api('/runs', {'maxPoints': '10'}).query, 'maxPoints=10');
-      expect(c.liveUri.toString(), 'wss://example.com/modelsapp/api/live');
+      expect(c.liveUri.toString(), 'wss://example.com/soliton/api/live');
       expect(
         connection('http://localhost:8000').liveUri.toString(),
         'ws://localhost:8000/api/live',
@@ -111,7 +111,7 @@ void main() {
     });
 
     test('reads the real server\'s JSON (sample from server/tests)', () async {
-      // Exactly what modelsapp-server returns for GET /api/runs/{id}.
+      // Exactly what soliton-server returns for GET /api/runs/{id}.
       const body = '''
 {"id":"tiny-1","name":"tiny","project":"tests","host":"Sherlock","status":"finished",
  "startedAt":"2026-11-12T09:00:00Z","endedAt":"2026-11-12T09:05:00.123456Z",

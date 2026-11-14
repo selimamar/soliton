@@ -1,27 +1,27 @@
-// Reads a real ModelsApp server through the app's own code, so the app and
+// Reads a real Soliton server through the app's own code, so the app and
 // the server can't drift apart. Skipped unless a server is given:
 //
-//   MODELSAPP_TEST_SERVER=http://127.0.0.1:8000 MODELSAPP_TEST_TOKEN=... \
+//   SOLITON_TEST_SERVER=http://127.0.0.1:8000 SOLITON_TEST_TOKEN=... \
 //     flutter test test/server_contract_test.dart
 //
-// The server needs at least one run (e.g. from `modelsapp demo`).
+// The server needs at least one run (e.g. from `soliton demo`).
 import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:models_app/data/api_run_repository.dart';
-import 'package:models_app/data/run_repository.dart';
-import 'package:models_app/data/services/api_client.dart';
-import 'package:models_app/data/services/live_updates.dart';
-import 'package:models_app/data/services/server_connection.dart';
-import 'package:models_app/data/services/settings_store.dart';
+import 'package:soliton/data/api_run_repository.dart';
+import 'package:soliton/data/run_repository.dart';
+import 'package:soliton/data/services/api_client.dart';
+import 'package:soliton/data/services/live_updates.dart';
+import 'package:soliton/data/services/server_connection.dart';
+import 'package:soliton/data/services/settings_store.dart';
 
 void main() {
-  final address = Platform.environment['MODELSAPP_TEST_SERVER'];
-  final token = Platform.environment['MODELSAPP_TEST_TOKEN'];
+  final address = Platform.environment['SOLITON_TEST_SERVER'];
+  final token = Platform.environment['SOLITON_TEST_TOKEN'];
   final skip = address == null || token == null
-      ? 'set MODELSAPP_TEST_SERVER and MODELSAPP_TEST_TOKEN to test against a real server'
+      ? 'set SOLITON_TEST_SERVER and SOLITON_TEST_TOKEN to test against a real server'
       : null;
   ServerConnection connection() => ServerConnection.parse(address!, token!)!;
 
@@ -32,7 +32,7 @@ void main() {
     final repository = ApiRunRepository(client);
 
     final runs = await repository.fetchRuns();
-    expect(runs, isNotEmpty, reason: 'log a run first, e.g. with `modelsapp demo`');
+    expect(runs, isNotEmpty, reason: 'log a run first, e.g. with `soliton demo`');
     for (final summary in runs) {
       final run = await repository.fetchRun(summary.id);
       expect(run.id, summary.id);

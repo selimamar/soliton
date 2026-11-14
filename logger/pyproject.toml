@@ -1,7 +1,7 @@
 [project]
-name = "modelsapp"
+name = "soliton"
 version = "0.1.0"
-description = "Send PyTorch training metrics and per-layer statistics to a ModelsApp server."
+description = "Send PyTorch training metrics and per-layer statistics to a Soliton server."
 readme = "README.md"
 # Old enough for HPC clusters. Uses only the standard library; PyTorch is
 # needed only for run.watch().
@@ -9,7 +9,7 @@ requires-python = ">=3.9"
 dependencies = []
 
 [project.scripts]
-modelsapp = "modelsapp.cli:main"
+soliton = "soliton.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.13.0,<0.14"]

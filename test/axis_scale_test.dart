@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:models_app/shared/axis_scale.dart';
+import 'package:soliton/shared/axis_scale.dart';
 
 void main() {
   test('niceInterval rounds up to 1, 2 or 5 times a power of ten', () {

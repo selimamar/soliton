@@ -38,29 +38,29 @@ class Settings:
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = os.environ) -> Settings:
-        data_dir = Path(env.get("MODELSAPP_DATA_DIR") or "modelsapp-data")
-        url = env.get("MODELSAPP_DATABASE_URL") or env.get("DATABASE_URL")
+        data_dir = Path(env.get("SOLITON_DATA_DIR") or "soliton-data")
+        url = env.get("SOLITON_DATABASE_URL") or env.get("DATABASE_URL")
         if url:
             url = normalize_database_url(url)
         else:
             data_dir.mkdir(parents=True, exist_ok=True)
-            url = f"sqlite:///{(data_dir / 'modelsapp.db').resolve()}"
-        token = env.get("MODELSAPP_TOKEN") or load_or_create_token(data_dir)
+            url = f"sqlite:///{(data_dir / 'soliton.db').resolve()}"
+        token = env.get("SOLITON_TOKEN") or load_or_create_token(data_dir)
         origins = tuple(
-            o.strip() for o in env.get("MODELSAPP_CORS_ORIGINS", "*").split(",") if o.strip()
+            o.strip() for o in env.get("SOLITON_CORS_ORIGINS", "*").split(",") if o.strip()
         )
         notify_on = frozenset(
             e.strip()
-            for e in env.get("MODELSAPP_NOTIFY_ON", "finished,crashed").split(",")
+            for e in env.get("SOLITON_NOTIFY_ON", "finished,crashed").split(",")
             if e.strip()
         )
         return cls(
             database_url=url,
             token=token,
-            stale_after=timedelta(minutes=float(env.get("MODELSAPP_STALE_MINUTES", "10"))),
+            stale_after=timedelta(minutes=float(env.get("SOLITON_STALE_MINUTES", "10"))),
             cors_origins=origins,
-            ntfy_url=env.get("MODELSAPP_NTFY_URL") or None,
-            ntfy_token=env.get("MODELSAPP_NTFY_TOKEN") or None,
+            ntfy_url=env.get("SOLITON_NTFY_URL") or None,
+            ntfy_token=env.get("SOLITON_NTFY_TOKEN") or None,
             notify_on=notify_on,
         )
 

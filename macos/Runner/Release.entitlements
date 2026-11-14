@@ -4,7 +4,7 @@
 <dict>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
-	<!-- Outgoing connections: the ModelsApp server (HTTP and live updates). -->
+	<!-- Outgoing connections: the Soliton server (HTTP and live updates). -->
 	<key>com.apple.security.network.client</key>
 	<true/>
 </dict>

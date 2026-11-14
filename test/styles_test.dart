@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:models_app/app/theme.dart';
-import 'package:models_app/features/settings/settings_providers.dart';
+import 'package:soliton/app/theme.dart';
+import 'package:soliton/features/settings/settings_providers.dart';
 
 import 'test_app.dart';
 

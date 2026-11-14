@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:models_app/shared/formatters.dart';
-import 'package:models_app/shared/widgets/line_chart_card.dart';
+import 'package:soliton/shared/formatters.dart';
+import 'package:soliton/shared/widgets/line_chart_card.dart';
 
 void main() {
   test('coordinates keep 3 significant digits, without trailing zeros', () {

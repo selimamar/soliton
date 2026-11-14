@@ -1,8 +1,8 @@
-"""ModelsApp training logger.
+"""Soliton training logger.
 
-    import modelsapp
+    import soliton
 
-    run = modelsapp.init("resnet50-cifar", project="image-classification",
+    run = soliton.init("resnet50-cifar", project="image-classification",
                          config=vars(args), train_samples=train_set,
                          val_samples=val_set, loss=criterion,
                          total_steps=50_000, total_epochs=100)
@@ -17,16 +17,16 @@
 Simulations (a PDE solve, any computation stepping through time) are
 monitored the same way:
 
-    sim = modelsapp.simulate("kelvin-helmholtz", t_end=10,
+    sim = soliton.simulate("kelvin-helmholtz", t_end=10,
                              setup={"equation": "Navier-Stokes 2D", "Re": 1e4})
     while t < 10:
         ...
         sim.log({"energy": E, "cfl": cfl}, t=t, dt=dt)
     sim.finish()
 
-The server and token come from MODELSAPP_SERVER and MODELSAPP_TOKEN. Without
+The server and token come from SOLITON_SERVER and SOLITON_TOKEN. Without
 a server, runs are saved locally (offline) and uploaded later with
-`modelsapp sync`. See logger/README.md.
+`soliton sync`. See logger/README.md.
 """
 
 from __future__ import annotations
@@ -86,14 +86,14 @@ def init(
     sample GPU, memory and CPU usage every system_interval seconds (the
     machine, GPUs and Slurm job are recorded either way). price_per_hour:
     what the machine costs in US dollars per hour, for the app's cost
-    estimate (default MODELSAPP_PRICE_PER_HOUR, else the app assumes a
+    estimate (default SOLITON_PRICE_PER_HOUR, else the app assumes a
     typical cloud price for the GPUs; 0 hides the estimate). total_steps,
     total_epochs: for the progress bar and time estimate. host: where it runs (default: detected,
     e.g. "Sherlock"). id: reuse an id to continue a run (default: new).
-    server, token: default MODELSAPP_SERVER, MODELSAPP_TOKEN. mode: "online"
+    server, token: default SOLITON_SERVER, SOLITON_TOKEN. mode: "online"
     (upload while training), "offline" (save only) or "disabled"; default
-    MODELSAPP_MODE, else online if a server is set. dir: where runs are saved
-    (default MODELSAPP_DIR, else ./modelsapp-runs).
+    SOLITON_MODE, else online if a server is set. dir: where runs are saved
+    (default SOLITON_DIR, else ./soliton-runs).
     """
     return Run(
         name,
@@ -152,7 +152,7 @@ def simulate(
     logged value drawn on its card in the list, e.g. "energy". cfl_limit:
     drawn on the chart of a value named "cfl". The first NaN or infinity
     logged (a value or a field) ends it as diverged; stop_on_divergence
-    also raises `modelsapp.Diverged` then, to stop the simulation itself.
+    also raises `soliton.Diverged` then, to stop the simulation itself.
     The other options are as for `init()`.
     """
     return Simulation(
@@ -211,13 +211,13 @@ def register_dataset(
     "vorticity", "unit": "1/s"}]) and previews (arrays, one per sample) add
     to or replace what is read. made_by: the id of the run or simulation that
     made it (or use `run.register_dataset`). Without a server (or if it's
-    unreachable), it is saved to dir/datasets for `modelsapp sync`.
+    unreachable), it is saved to dir/datasets for `soliton sync`.
     """
     dataset = _describe_dataset(
         path, name=name, version=version, description=description, source=source,
         samples=samples, splits=splits, sample_shape=sample_shape, variables=variables,
         previews=previews, made_by=made_by, host=host,
     )
-    _upload_dataset(dataset, server or os.environ.get("MODELSAPP_SERVER"),
-                    token or os.environ.get("MODELSAPP_TOKEN"), dir)
+    _upload_dataset(dataset, server or os.environ.get("SOLITON_SERVER"),
+                    token or os.environ.get("SOLITON_TOKEN"), dir)
     return dataset

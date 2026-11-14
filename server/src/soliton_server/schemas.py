@@ -318,7 +318,7 @@ class DatasetPreviewIn(_In):
 
 class DatasetIn(_In):
     """What a dataset is and where it lives (the data itself stays where
-    it is): sent by the logger's register_dataset or `modelsapp data`."""
+    it is): sent by the logger's register_dataset or `soliton data`."""
 
     name: Name
     version: Annotated[str, StringConstraints(max_length=60)] = ""

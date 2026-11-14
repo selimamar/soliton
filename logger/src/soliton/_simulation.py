@@ -28,7 +28,7 @@ class Diverged(RuntimeError):
 
 
 class Simulation(Run):
-    """A simulation being monitored. Start one with `modelsapp.simulate()`.
+    """A simulation being monitored. Start one with `soliton.simulate()`.
 
     Log values with `log({...}, t=t, dt=dt)`, fields with `log_field(...)`
     (or `log_rollout(...)` for several times at once), and call `finish()`

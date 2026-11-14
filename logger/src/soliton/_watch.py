@@ -216,7 +216,7 @@ def select_layers(model, layers: LayerFilter, max_layers: int) -> List[Tuple[str
         step = (len(selected) - 1) / (max_layers - 1)
         picked = sorted({round(i * step) for i in range(max_layers)})
         warnings.warn(
-            f"modelsapp: the model has {len(selected)} layers with parameters; watching "
+            f"soliton: the model has {len(selected)} layers with parameters; watching "
             f"{len(picked)} of them spread over the model (raise max_layers, or pass "
             "layers=[...], to choose)",
             stacklevel=3,

@@ -1,6 +1,6 @@
-# modelsapp (logger)
+# soliton (logger)
 
-Sends your training metrics and per-layer statistics to a ModelsApp server,
+Sends your training metrics and per-layer statistics to a Soliton server,
 so you can follow the run on your phone.
 
 - Standard library only (Python 3.9+). PyTorch is needed only for `run.watch()`.
@@ -22,9 +22,9 @@ works too.
 ## Use
 
 ```python
-import modelsapp
+import soliton
 
-run = modelsapp.init(
+run = soliton.init(
     "resnet50-cifar",                 # shown in the app
     project="image-classification",
     config={"Optimizer": "AdamW", "Learning rate": 3e-4, "Batch size": 256},
@@ -50,15 +50,15 @@ for epoch in range(100):
 run.finish()
 ```
 
-Or `with modelsapp.init(...) as run:`, which finishes (or marks the run as
+Or `with soliton.init(...) as run:`, which finishes (or marks the run as
 crashed) for you. If you forget both, the run is still finished when the
 script ends, or marked crashed with the exception when it dies.
 
 Set the server and token in the environment (keep the token out of your code):
 
 ```bash
-export MODELSAPP_SERVER=https://runs.example.com
-export MODELSAPP_TOKEN=...            # modelsapp-server --show-token
+export SOLITON_SERVER=https://runs.example.com
+export SOLITON_TOKEN=...            # soliton-server --show-token
 ```
 
 If a coding agent writes your training code, give it
@@ -255,7 +255,7 @@ parameter with 3 or more axes (FNO-style spectral weights, in × out ×
 modes...), |w| averaged over the channels, as a map over the modes. Weights
 still large at the highest kept mode suggest more modes would help.
 
-### Simulations: `modelsapp.simulate`
+### Simulations: `soliton.simulate`
 
 A simulation (a PDE solve, or any computation that steps through time or
 iterates to convergence) is monitored like a training run, with no model
@@ -264,9 +264,9 @@ runs: where it is in simulated time, its values against time, its fields,
 the machine and its cost.
 
 ```python
-import modelsapp
+import soliton
 
-sim = modelsapp.simulate(
+sim = soliton.simulate(
     "kelvin-helmholtz-2048", project="turbulence", t_end=10,
     setup={"equation": "Incompressible Navier-Stokes", "method": "Fourier spectral",
            "grid": "2048 x 2048", "Re": 1e4},
@@ -296,7 +296,7 @@ with sim:
 - **Divergence**: the first NaN or infinity (in a value or a field) ends the
   simulation as crashed, marked "Diverged at t = 0.83: energy is NaN", with
   the bad value recorded. Later calls do nothing. With
-  `stop_on_divergence=True`, it also raises `modelsapp.Diverged`, to stop the
+  `stop_on_divergence=True`, it also raises `soliton.Diverged`, to stop the
   solver instead of letting it run on.
 - `setup`: how it's set up, shown on its Overview (equation, method, grid,
   parameters, boundary and initial conditions; nested dicts are fine).
@@ -307,21 +307,21 @@ with sim:
 Solvers that aren't in Python can still report: write a small Python driver
 that reads the solver's output as it runs and calls `sim.log`.
 
-### Datasets: `modelsapp.register_dataset`, `modelsapp data`
+### Datasets: `soliton.register_dataset`, `soliton data`
 
 The app's **Data** section lists the datasets you have: how big they are,
 where they live, what's in them, what made them, and which runs trained on
 them. Only their description is uploaded, never the data.
 
 ```python
-import modelsapp
+import soliton
 
-ds = modelsapp.register_dataset(
+ds = soliton.register_dataset(
     "/scratch/users/me/ns2d/v3.h5", name="ns2d-vorticity", version="v3",
     source="Simulated", splits={"train": 8000, "val": 1000, "test": 1000},
     variables=[{"name": "u", "description": "vorticity"}])
 
-run = modelsapp.init("fno-ns", datasets=[ds])     # listed under the dataset
+run = soliton.init("fno-ns", datasets=[ds])     # listed under the dataset
 ```
 
 - From a path, the logger reads the size, the number of files, the format
@@ -343,13 +343,13 @@ run = modelsapp.init("fno-ns", datasets=[ds])     # listed under the dataset
   `run.register_dataset(path, ...)` (or `sim.register_dataset`): the app
   then shows what made it and on which machine.
 - Without a server (or if it's unreachable), datasets are saved to
-  `$MODELSAPP_DIR/datasets` and uploaded by `modelsapp sync`.
+  `$SOLITON_DIR/datasets` and uploaded by `soliton sync`.
 
 From a shell, without writing Python:
 
 ```bash
-modelsapp data add /scratch/users/me/ns2d/v3.h5 --version v3 --source Simulated
-modelsapp data scan $SCRATCH/data          # each data file or folder of them in there
+soliton data add /scratch/users/me/ns2d/v3.h5 --version v3 --source Simulated
+soliton data scan $SCRATCH/data          # each data file or folder of them in there
 ```
 
 ### All `init()` options
@@ -359,7 +359,7 @@ modelsapp data scan $SCRATCH/data          # each data file or folder of them in
 | `name` | required | Shown in the app |
 | `project` | `""` | Shown under the name; the app can group runs by it |
 | `system_metrics`, `system_interval` | `True`, `15` | Sample GPU, memory and CPU use every `system_interval` seconds (see above) |
-| `price_per_hour` | `MODELSAPP_PRICE_PER_HOUR`, else estimated | What the machine costs in US dollars per hour (all its GPUs), for the app's rounded cost estimate. Without it, the app assumes a typical on-demand cloud price for the GPUs (e.g. about $4/h per H100, $2.50 per A100, $0.80 per L4) or $0.05 per CPU core. `0` hides the estimate (e.g. a cluster you don't pay by the hour for) |
+| `price_per_hour` | `SOLITON_PRICE_PER_HOUR`, else estimated | What the machine costs in US dollars per hour (all its GPUs), for the app's rounded cost estimate. Without it, the app assumes a typical on-demand cloud price for the GPUs (e.g. about $4/h per H100, $2.50 per A100, $0.80 per L4) or $0.05 per CPU core. `0` hides the estimate (e.g. a cluster you don't pay by the hour for) |
 | `tags`, `notes` | none | To organise runs in the app, e.g. `tags=["baseline"]`, `notes="first try with AdamW"`. Only the starting values: they're then edited in the app, and the logger never overwrites them |
 | `config` | none | Hyperparameters: a dict (nested is fine) or argparse namespace |
 | `train_samples`, `val_samples` | none | How many samples are trained and validated on: a number, a dataset, or a DataLoader (its dataset is counted, not its batches) |
@@ -367,11 +367,11 @@ modelsapp data scan $SCRATCH/data          # each data file or folder of them in
 | `datasets` | none | What it trains on: datasets from `register_dataset()`, dataset ids, or paths (registered on the way). The app lists the run under each one |
 | `pde` | none | What is solved, listed right after the data and loss: `{"equation": "Navier-Stokes 2D", "viscosity": 1e-3, "domain": "[0, 1]² periodic", "resolution": "64 × 64"}` (nested is fine). The equation becomes the `PDE` hyperparameter, which the app can group runs by |
 | `total_steps`, `total_epochs` | 0 | Progress bar, time left, epochs on the x-axis |
-| `host` | detected | Where it runs: `MODELSAPP_HOST`, else the Slurm cluster (e.g. "Sherlock"), the platform (Modal, RunPod, Colab, Kaggle, SageMaker, AWS Batch), the cloud (AWS, GCP, Azure, DigitalOcean, Hetzner, Oracle Cloud, Vultr, Linode), Kubernetes, else the machine's name |
+| `host` | detected | Where it runs: `SOLITON_HOST`, else the Slurm cluster (e.g. "Sherlock"), the platform (Modal, RunPod, Colab, Kaggle, SageMaker, AWS Batch), the cloud (AWS, GCP, Azure, DigitalOcean, Hetzner, Oracle Cloud, Vultr, Linode), Kubernetes, else the machine's name |
 | `id` | new | Pass a previous run's id to continue it |
-| `server`, `token` | `MODELSAPP_SERVER`, `MODELSAPP_TOKEN` | |
-| `mode` | `MODELSAPP_MODE`, else `online` if a server is set | `online`, `offline` (save only) or `disabled` |
-| `dir` | `MODELSAPP_DIR`, else `./modelsapp-runs` | Where runs are saved |
+| `server`, `token` | `SOLITON_SERVER`, `SOLITON_TOKEN` | |
+| `mode` | `SOLITON_MODE`, else `online` if a server is set | `online`, `offline` (save only) or `disabled` |
+| `dir` | `SOLITON_DIR`, else `./soliton-runs` | Where runs are saved |
 
 ## Running elsewhere: Modal, cloud machines, containers
 
@@ -382,7 +382,7 @@ The host is detected (table above), and memory and CPU are measured against
 the container's own limits.
 
 On [Modal](https://modal.com/docs), keep the address and token in a secret
-(`modal secret create modelsapp MODELSAPP_SERVER=https://... MODELSAPP_TOKEN=...`)
+(`modal secret create soliton SOLITON_SERVER=https://... SOLITON_TOKEN=...`)
 and add the logger to the image, roughly (check Modal's docs for the current
 API):
 
@@ -390,40 +390,40 @@ API):
 image = (
     modal.Image.debian_slim()
     .pip_install("torch")
-    .add_local_dir("logger", "/opt/modelsapp-logger", copy=True)  # from this repository
-    .run_commands("pip install /opt/modelsapp-logger")
+    .add_local_dir("logger", "/opt/soliton-logger", copy=True)  # from this repository
+    .run_commands("pip install /opt/soliton-logger")
 )
 app = modal.App("train", image=image)
 
 
-@app.function(gpu="A100", secrets=[modal.Secret.from_name("modelsapp")], timeout=6 * 3600)
+@app.function(gpu="A100", secrets=[modal.Secret.from_name("soliton")], timeout=6 * 3600)
 def train():
-    import modelsapp
+    import soliton
 
-    with modelsapp.init("resnet50-modal", ...) as run:
+    with soliton.init("resnet50-modal", ...) as run:
         ...
 ```
 
 A container's disk disappears with it, and with it the logger's local copy
 of the run. That's fine while the server is reachable (everything is already
-uploaded); as a fallback for when it isn't, point `MODELSAPP_DIR` at a
-persistent volume (on Modal, a `modal.Volume`) and run `modelsapp sync` on it
+uploaded); as a fallback for when it isn't, point `SOLITON_DIR` at a
+persistent volume (on Modal, a `modal.Volume`) and run `soliton sync` on it
 later.
 
 ## Offline, and uploading later
 
-Every run is saved to `modelsapp-runs/<run id>/events.jsonl` first. In
+Every run is saved to `soliton-runs/<run id>/events.jsonl` first. In
 `online` mode a background thread uploads new records every 2 seconds and
 retries with backoff when the server can't be reached. If something is
 left when the run ends, it says so; upload it later with:
 
 ```bash
-modelsapp sync                      # every run in ./modelsapp-runs
-modelsapp sync path/to/run-folder   # one run
+soliton sync                      # every run in ./soliton-runs
+soliton sync path/to/run-folder   # one run
 ```
 
 `sync` only sends what the server doesn't have yet, and the server ignores
-duplicates, so running it twice is harmless. With `MODELSAPP_MODE=offline`,
+duplicates, so running it twice is harmless. With `SOLITON_MODE=offline`,
 nothing is uploaded during training. Use it where there's no internet, then
 `sync` from a machine that has it.
 
@@ -438,8 +438,8 @@ nothing is uploaded during training. Use it where there's no internet, then
 
 ## Try it
 
-`modelsapp demo` trains a small model on random data (needs PyTorch), so
-you can watch a real run in the app. `modelsapp demo --crash-at 500` makes
+`soliton demo` trains a small model on random data (needs PyTorch), so
+you can watch a real run in the app. `soliton demo --crash-at 500` makes
 the loss NaN at step 500 and crashes, to show what that looks like.
 
 ## Tests

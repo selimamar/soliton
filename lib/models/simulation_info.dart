@@ -1,7 +1,7 @@
 import 'model_helpers.dart';
 
 /// What makes a run a simulation (a PDE solve, or any computation stepping
-/// through time or iterating to convergence), as `modelsapp.simulate()`
+/// through time or iterating to convergence), as `soliton.simulate()`
 /// describes it. Its values are ordinary metrics, its simulated time the
 /// metric [time].
 class SimulationInfo {

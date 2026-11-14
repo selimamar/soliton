@@ -55,6 +55,6 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 # Runs the logger saved while offline (see logger/README.md)
-modelsapp-runs/
+soliton-runs/
 # Local launch config with machine-specific paths
 /.claude/launch.json

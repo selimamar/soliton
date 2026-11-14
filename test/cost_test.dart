@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:models_app/models/layer_info.dart';
-import 'package:models_app/models/run.dart';
-import 'package:models_app/models/run_cost.dart';
-import 'package:models_app/models/system_info.dart';
-import 'package:models_app/shared/formatters.dart';
+import 'package:soliton/models/layer_info.dart';
+import 'package:soliton/models/run.dart';
+import 'package:soliton/models/run_cost.dart';
+import 'package:soliton/models/system_info.dart';
+import 'package:soliton/shared/formatters.dart';
 
 import 'test_app.dart';
 

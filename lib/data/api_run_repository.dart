@@ -7,7 +7,7 @@ import '../models/run_insights.dart';
 import 'run_repository.dart';
 import 'services/api_client.dart';
 
-/// Runs from the ModelsApp server (see server/README.md for the API).
+/// Runs from the Soliton server (see server/README.md for the API).
 class ApiRunRepository implements RunRepository {
   ApiRunRepository(this._client);
 

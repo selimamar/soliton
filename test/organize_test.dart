@@ -1,13 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:models_app/data/mock/mock_runs.dart';
-import 'package:models_app/data/providers.dart';
-import 'package:models_app/data/services/live_updates.dart';
-import 'package:models_app/data/services/settings_store.dart';
-import 'package:models_app/data/tags.dart';
-import 'package:models_app/features/runs_list/run_groups.dart';
-import 'package:models_app/models/layer_info.dart';
-import 'package:models_app/models/run.dart';
+import 'package:soliton/data/mock/mock_runs.dart';
+import 'package:soliton/data/providers.dart';
+import 'package:soliton/data/services/live_updates.dart';
+import 'package:soliton/data/services/settings_store.dart';
+import 'package:soliton/data/tags.dart';
+import 'package:soliton/features/runs_list/run_groups.dart';
+import 'package:soliton/models/layer_info.dart';
+import 'package:soliton/models/run.dart';
 
 import 'fake_server.dart';
 import 'test_app.dart';

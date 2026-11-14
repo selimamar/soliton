@@ -1,33 +1,33 @@
 # Instructions for a coding agent that writes your training code
 
 If another agent writes or runs your training scripts, this tells it to report
-every run to ModelsApp. Copy everything below the line into the instructions
+every run to Soliton. Copy everything below the line into the instructions
 file at the root of your training project: `CLAUDE.md` for Claude Code,
 `AGENTS.md` for Codex and several other agents. You can also paste it into a
-prompt. Replace `/path/to/ModelsAPP` with where this repository is on the
+prompt. Replace `/path/to/soliton` with where this repository is on the
 machine that trains (on Sherlock, your copy there).
 
-Set `MODELSAPP_SERVER` and `MODELSAPP_TOKEN` yourself, in your shell or in
-`~/.modelsapp_env` on Sherlock (see [sherlock.md](sherlock.md)), so the token
+Set `SOLITON_SERVER` and `SOLITON_TOKEN` yourself, in your shell or in
+`~/.soliton_env` on Sherlock (see [sherlock.md](sherlock.md)), so the token
 never appears in the agent's code.
 
 ---
 
-## Experiment tracking: modelsapp
+## Experiment tracking: soliton
 
-Every training script in this project reports to ModelsApp through the `modelsapp`
+Every training script in this project reports to Soliton through the `soliton`
 Python package, so I can follow runs on my phone.
 
-**Install** once per Python environment: `pip install /path/to/ModelsAPP/logger`
-(no dependencies). Full docs: /path/to/ModelsAPP/logger/README.md
+**Install** once per Python environment: `pip install /path/to/soliton/logger`
+(no dependencies). Full docs: /path/to/soliton/logger/README.md
 
-**Server and token** come from the environment variables `MODELSAPP_SERVER` and
-`MODELSAPP_TOKEN`, which I set. Never write the token into code, configs or logs,
+**Server and token** come from the environment variables `SOLITON_SERVER` and
+`SOLITON_TOKEN`, which I set. Never write the token into code, configs or logs,
 and never print it. If they aren't set, the logger only saves runs locally; that's
 fine, don't work around it.
 
 **In every training script**
-- Before training: `run = modelsapp.init(name, project=..., config=hparams,
+- Before training: `run = soliton.init(name, project=..., config=hparams,
   train_samples=train_set, val_samples=val_set, loss=criterion,
   total_steps=..., total_epochs=...)`. `name` is short and descriptive
   (model-dataset-variant). `config` holds all other hyperparameters as a dict.
@@ -62,26 +62,26 @@ fine, don't work around it.
 - `step` is the global optimizer step: keep it increasing across epochs, never
   reset it. When resuming from a checkpoint, save `run.id` in the checkpoint and
   pass `id=` it to `init` so the same run continues.
-- Use `with modelsapp.init(...) as run:` or call `run.finish()` at the end. Don't
+- Use `with soliton.init(...) as run:` or call `run.finish()` at the end. Don't
   catch exceptions just to hide a crash: a crashed run should show as crashed.
 - If one step takes only a few milliseconds, log every 10-50 steps: logging a GPU
   tensor makes Python wait for the GPU.
 
 - For a simulation that isn't training a model (a PDE solver):
-  `sim = modelsapp.simulate(name, project=..., t_end=..., setup={...}, monitor="energy")`,
+  `sim = soliton.simulate(name, project=..., t_end=..., setup={...}, monitor="energy")`,
   then each step `sim.log({"energy": E, "cfl": cfl}, t=t, dt=dt)`, a field
   every few hundred steps with `sim.log_field("u", u)`, and `sim.finish()`
   (or `with sim:`). Don't replace NaN before logging it: the first NaN marks
   the simulation as diverged. See logger/README.md, "Simulations".
 
-- Register the training data once: `ds = modelsapp.register_dataset(path, name=...,
+- Register the training data once: `ds = soliton.register_dataset(path, name=...,
   version=..., source=..., splits={"train": ..., "val": ...})`, and pass
   `datasets=[ds]` to `init` (a path works too). A script that generates data
   registers what it wrote with `run.register_dataset(path)` (or the simulation's).
 
 **Check it works** with a short run (a few hundred steps), then:
-`curl -s -H "Authorization: Bearer $MODELSAPP_TOKEN" "$MODELSAPP_SERVER/api/runs"`
+`curl -s -H "Authorization: Bearer $SOLITON_TOKEN" "$SOLITON_SERVER/api/runs"`
 The new run should be in the list.
 
 **On Sherlock**, in Slurm job scripts, before `python train.py`:
-`source ~/.modelsapp_env` and `export MODELSAPP_DIR=$SCRATCH/modelsapp-runs`
+`source ~/.soliton_env` and `export SOLITON_DIR=$SCRATCH/soliton-runs`

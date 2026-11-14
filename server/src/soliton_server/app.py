@@ -73,7 +73,7 @@ def create_app(
             task.cancel()
         engine.dispose()
 
-    app = FastAPI(title="ModelsApp server", version=__version__, lifespan=lifespan)
+    app = FastAPI(title="Soliton server", version=__version__, lifespan=lifespan)
     app.state.store = store
     app.state.settings = settings
     app.add_middleware(

@@ -1,4 +1,4 @@
-package io.github.selimamar.models_app
+package io.github.selimamar.soliton
 
 import io.flutter.embedding.android.FlutterActivity
 

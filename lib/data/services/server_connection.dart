@@ -1,4 +1,4 @@
-/// Where the ModelsApp server is, and the token to use with it.
+/// Where the Soliton server is, and the token to use with it.
 class ServerConnection {
   const ServerConnection({required this.baseUri, required this.token});
 

@@ -1,18 +1,18 @@
-# Using ModelsApp with Sherlock
+# Using Soliton with Sherlock
 
 Train on Sherlock, watch on your phone. The logger runs inside your Slurm
 job; the server runs somewhere else, since Sherlock can't host it (see
 below).
 
 ```
-Sherlock job + modelsapp logger  ──►  your server (public, HTTPS)  ◄──  ModelsApp
+Sherlock job + soliton logger  ──►  your server (public, HTTPS)  ◄──  Soliton
 ```
 
 ## 1. Put the server somewhere public
 
 Sherlock's nodes "are not directly accessible from the outside"
 ([Concepts](https://www.sherlock.stanford.edu/docs/concepts/)), so they
-can't host a server your phone could reach. Run `modelsapp-server` on a
+can't host a server your phone could reach. Run `soliton-server` on a
 small cloud VM or hosting platform instead, with HTTPS: see
 [server/README.md](../server/README.md#putting-it-on-the-internet).
 
@@ -34,17 +34,17 @@ It has no dependencies of its own and needs Python 3.9 or newer.
 Keep the server address and token in a private file, not in your scripts:
 
 ```bash
-cat > ~/.modelsapp_env <<'EOF'
-export MODELSAPP_SERVER=https://runs.example.com
-export MODELSAPP_TOKEN=paste-the-token-here
+cat > ~/.soliton_env <<'EOF'
+export SOLITON_SERVER=https://runs.example.com
+export SOLITON_TOKEN=paste-the-token-here
 EOF
-chmod 600 ~/.modelsapp_env
+chmod 600 ~/.soliton_env
 ```
 
 The app estimates what each run costs from typical cloud prices for its
 GPUs: what the run would cost on a cloud, since Sherlock doesn't bill by
 the hour. To hide the estimate for Sherlock runs, add
-`export MODELSAPP_PRICE_PER_HOUR=0` to that file.
+`export SOLITON_PRICE_PER_HOUR=0` to that file.
 
 ## 3. Jobs can reach the internet
 
@@ -56,8 +56,8 @@ from a compute node:
 
 ```bash
 sh_dev                                    # an interactive session on a compute node
-source ~/.modelsapp_env
-curl -sS "$MODELSAPP_SERVER/api/health"   # {"status":"ok",...} means it works
+source ~/.soliton_env
+curl -sS "$SOLITON_SERVER/api/health"   # {"status":"ok",...} means it works
 ```
 
 Serve the API on the standard HTTPS port (443): only ports 443 and 80 were
@@ -73,10 +73,10 @@ tested. If a node ever can't connect, use offline mode (step 5).
 #SBATCH --time=12:00:00
 #SBATCH --output=%x-%j.out
 
-source ~/.modelsapp_env                        # server and token
-export MODELSAPP_DIR=$SCRATCH/modelsapp-runs   # where runs are saved first
+source ~/.soliton_env                        # server and token
+export SOLITON_DIR=$SCRATCH/soliton-runs   # where runs are saved first
 
-python train.py                                # calls modelsapp.init(...), run.log(...)
+python train.py                                # calls soliton.init(...), run.log(...)
 ```
 
 Runs show "Sherlock" as their host (from Slurm's cluster name). The local
@@ -109,13 +109,13 @@ Run offline, then upload from a login node:
 
 ```bash
 # in the job script
-export MODELSAPP_MODE=offline
+export SOLITON_MODE=offline
 ```
 
 ```bash
 # on a login node, by hand, during or after the job
-source ~/.modelsapp_env
-modelsapp sync $SCRATCH/modelsapp-runs
+source ~/.soliton_env
+soliton sync $SCRATCH/soliton-runs
 ```
 
 `sync` sends only what's new, so running it again is harmless. Run it by hand:
@@ -127,7 +127,7 @@ server shows the run as "lost contact"; the next sync brings it back to live.
 
 Sherlock's public `service` partition is for lightweight servers
 ([Service jobs](https://www.sherlock.stanford.edu/docs/advanced-topics/service-jobs/)),
-so `modelsapp-server` can run there as a job: training jobs send it data
+so `soliton-server` can run there as a job: training jobs send it data
 live, and the app on your computer connects through an SSH tunnel while you
 use it. Your phone can't reach it, and it stops at the job's time limit
 (1 day in the script; the partition allows 2). Tested on 2026-11-12.
@@ -135,25 +135,25 @@ use it. Your phone can't reach it, and it stops at the job's time limit
 1. Copy the server over (from this repository, on your computer):
 
    ```bash
-   rsync -a server/src server/deploy/requirements.txt server/deploy/sherlock-server.sbatch sherlock:modelsapp-server/
+   rsync -a server/src server/deploy/requirements.txt server/deploy/sherlock-server.sbatch sherlock:soliton-server/
    ```
 
 2. Start it (on a login node). The first job creates its Python environment
-   in `$HOME/modelsapp-server/venv`, which takes a minute:
+   in `$HOME/soliton-server/venv`, which takes a minute:
 
    ```bash
-   mkdir -p $SCRATCH/modelsapp-server && cd $SCRATCH/modelsapp-server
-   sbatch $HOME/modelsapp-server/sherlock-server.sbatch
+   mkdir -p $SCRATCH/soliton-server && cd $SCRATCH/soliton-server
+   sbatch $HOME/soliton-server/sherlock-server.sbatch
    ```
 
-   While it runs, `$HOME/modelsapp-server/env.sh` holds its address and token
-   (readable by you only). The token itself is in `$HOME/modelsapp-server/token`
+   While it runs, `$HOME/soliton-server/env.sh` holds its address and token
+   (readable by you only). The token itself is in `$HOME/soliton-server/token`
    and stays the same for every job.
 
-3. In training job scripts, use it instead of `~/.modelsapp_env`:
+3. In training job scripts, use it instead of `~/.soliton_env`:
 
    ```bash
-   source $HOME/modelsapp-server/env.sh   # MODELSAPP_SERVER and MODELSAPP_TOKEN
+   source $HOME/soliton-server/env.sh   # SOLITON_SERVER and SOLITON_TOKEN
    ```
 
 4. Open a tunnel from your computer while you use the app, with the address
@@ -165,11 +165,11 @@ use it. Your phone can't reach it, and it stops at the job's time limit
    ```
 
 5. In the app, Settings → Server: address `http://localhost:8100`, and the
-   token (`ssh sherlock cat modelsapp-server/token`).
+   token (`ssh sherlock cat soliton-server/token`).
 
 The database lives on the node's local disk while the server runs (SQLite
 doesn't belong on a network filesystem) and is copied to
-`$SCRATCH/modelsapp-server` when the job ends, for the next job to pick up.
+`$SCRATCH/soliton-server` when the job ends, for the next job to pick up.
 A node failure loses what changed since that job started. Stop the server
 with `scancel <job id>` (it saves the database first). Inside Sherlock the
 token travels over plain HTTP on the cluster's network.

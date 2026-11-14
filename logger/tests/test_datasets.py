@@ -6,9 +6,9 @@ import json
 
 import pytest
 
-import modelsapp
-from modelsapp._datasets import describe
-from modelsapp.cli import main as cli_main
+import soliton
+from soliton._datasets import describe
+from soliton.cli import main as cli_main
 from test_logger import records
 
 np = pytest.importorskip("numpy")
@@ -75,24 +75,24 @@ def test_what_is_given_wins_and_bad_input(tmp_path):
 
 
 def test_offline_datasets_are_saved_and_runs_name_theirs(tmp_path, monkeypatch):
-    monkeypatch.delenv("MODELSAPP_SERVER", raising=False)
+    monkeypatch.delenv("SOLITON_SERVER", raising=False)
     path, _ = vorticity(tmp_path)
     runs = tmp_path / "runs"
-    dataset = modelsapp.register_dataset(path, version="v1", dir=str(runs))
+    dataset = soliton.register_dataset(path, version="v1", dir=str(runs))
     saved = json.loads((runs / "datasets" / "ns2d-v1.json").read_text())
     assert saved["samples"] == 10
-    run = modelsapp.init("fno", mode="offline", dir=str(runs), host="t", system_metrics=False,
+    run = soliton.init("fno", mode="offline", dir=str(runs), host="t", system_metrics=False,
                          datasets=[dataset, "benchmark-darcy", path])
     run.finish()
     assert records(run)[0]["datasets"] == ["ns2d-v1", "benchmark-darcy", "ns2d"]
     assert (runs / "datasets" / "ns2d.json").exists(), "a path is registered on the way"
     with pytest.raises(ValueError, match="neither"):
-        modelsapp.init("x", mode="offline", dir=str(runs), datasets=["not an id/"])
+        soliton.init("x", mode="offline", dir=str(runs), datasets=["not an id/"])
 
 
 def test_a_simulation_registers_what_it_wrote(tmp_path):
     path, _ = vorticity(tmp_path)
-    sim = modelsapp.simulate("gen", mode="offline", dir=str(tmp_path / "runs"), host="t",
+    sim = soliton.simulate("gen", mode="offline", dir=str(tmp_path / "runs"), host="t",
                              system_metrics=False)
     dataset = sim.register_dataset(path, name="snapshots", source="Simulated")
     sim.finish()
@@ -101,8 +101,8 @@ def test_a_simulation_registers_what_it_wrote(tmp_path):
 
 
 def test_the_scan_command_saves_each_data_file(tmp_path, monkeypatch, capsys):
-    monkeypatch.delenv("MODELSAPP_SERVER", raising=False)
-    monkeypatch.setenv("MODELSAPP_DIR", str(tmp_path / "runs"))
+    monkeypatch.delenv("SOLITON_SERVER", raising=False)
+    monkeypatch.setenv("SOLITON_DIR", str(tmp_path / "runs"))
     data = tmp_path / "data"
     data.mkdir()
     vorticity(data, "a.npy")

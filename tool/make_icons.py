@@ -1,4 +1,4 @@
-"""Draw the ModelsApp "neural wave" logo and write every platform's app icon.
+"""Draw the Soliton "neural wave" logo and write every platform's app icon.
 
 A wave threaded through the nodes of a small neural network: a network
 learning a physical signal. Colours come from the light theme (slate

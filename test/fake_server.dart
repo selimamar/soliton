@@ -3,14 +3,14 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:models_app/data/mock/mock_run_repository.dart';
-import 'package:models_app/data/run_repository.dart';
-import 'package:models_app/data/services/api_client.dart';
-import 'package:models_app/data/services/live_updates.dart';
-import 'package:models_app/data/services/server_connection.dart';
-import 'package:models_app/models/run.dart';
+import 'package:soliton/data/mock/mock_run_repository.dart';
+import 'package:soliton/data/run_repository.dart';
+import 'package:soliton/data/services/api_client.dart';
+import 'package:soliton/data/services/live_updates.dart';
+import 'package:soliton/data/services/server_connection.dart';
+import 'package:soliton/models/run.dart';
 
-/// A stand-in for the ModelsApp server, answering like the real one (see
+/// A stand-in for the Soliton server, answering like the real one (see
 /// server/README.md) with demo data. Serves [runIds] only, so tests can
 /// tell its runs from the app's own demo data.
 class FakeServer {

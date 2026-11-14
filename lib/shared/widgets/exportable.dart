@@ -54,7 +54,7 @@ class _ExportableState extends State<Exportable> {
 
   static String _safe(String name) {
     final cleaned = name.replaceAll(RegExp(r'[^A-Za-z0-9._ -]+'), '-').trim();
-    return cleaned.isEmpty ? 'modelsapp' : cleaned;
+    return cleaned.isEmpty ? 'soliton' : cleaned;
   }
 
   @override

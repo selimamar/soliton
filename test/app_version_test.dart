@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:models_app/app/constants.dart';
+import 'package:soliton/app/constants.dart';
 
 void main() {
   test('appVersion matches the version in pubspec.yaml', () {

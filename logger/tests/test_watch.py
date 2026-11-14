@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from modelsapp._util import to_float
+from soliton._util import to_float
 from test_logger import offline, records
 
 torch = pytest.importorskip("torch")
@@ -225,7 +225,7 @@ def test_a_single_layer_model_is_one_layer(tmp_path):
 
 
 def test_pytorch_losses_show_the_settings_that_differ():
-    from modelsapp._util import describe_loss
+    from soliton._util import describe_loss
 
     assert describe_loss(nn.CrossEntropyLoss()) == "CrossEntropyLoss"
     assert describe_loss(nn.CrossEntropyLoss(label_smoothing=0.1)) == (

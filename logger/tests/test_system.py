@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-from modelsapp._system import (
+from soliton._system import (
     Cgroup,
     SystemMonitor,
     _cudnn,
@@ -251,14 +251,14 @@ def test_usage_monitoring_can_be_turned_off(tmp_path):
 
 
 def test_a_run_can_say_what_its_machine_costs(tmp_path, monkeypatch):
-    monkeypatch.delenv("MODELSAPP_PRICE_PER_HOUR", raising=False)
+    monkeypatch.delenv("SOLITON_PRICE_PER_HOUR", raising=False)
     run = offline(tmp_path, name="a", system_metrics=False)
     assert "pricePerHour" not in records(run)[0]["system"], "the app estimates one"
     run = offline(tmp_path, name="b", system_metrics=False, price_per_hour=3.2)
     assert records(run)[0]["system"]["pricePerHour"] == 3.2
     assert records(run)[0]["system"]["python"], "the machine is still described"
 
-    monkeypatch.setenv("MODELSAPP_PRICE_PER_HOUR", "$1.5")
+    monkeypatch.setenv("SOLITON_PRICE_PER_HOUR", "$1.5")
     run = offline(tmp_path, name="c", system_metrics=False)
     assert records(run)[0]["system"]["pricePerHour"] == 1.5
     run = offline(tmp_path, name="d", system_metrics=False, price_per_hour=0)
@@ -267,6 +267,6 @@ def test_a_run_can_say_what_its_machine_costs(tmp_path, monkeypatch):
     for bad in (-1, float("nan"), "4", True):
         with pytest.raises(ValueError, match="price_per_hour"):
             offline(tmp_path, name="e", price_per_hour=bad)
-    monkeypatch.setenv("MODELSAPP_PRICE_PER_HOUR", "four")
-    with pytest.raises(ValueError, match="MODELSAPP_PRICE_PER_HOUR"):
+    monkeypatch.setenv("SOLITON_PRICE_PER_HOUR", "four")
+    with pytest.raises(ValueError, match="SOLITON_PRICE_PER_HOUR"):
         offline(tmp_path, name="f")

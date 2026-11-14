@@ -1,4 +1,4 @@
-# ModelsApp
+# Soliton
 
 Watch your deep learning training runs from your phone: loss curves,
 hyperparameters, architecture, gradient norms and per-layer activation
@@ -8,7 +8,7 @@ It has three parts:
 
 ```
 your training script                 your server                    your phone
-  + modelsapp logger   --HTTPS-->   modelsapp-server   <--HTTPS--   ModelsApp (Flutter)
+  + soliton logger   --HTTPS-->   soliton-server   <--HTTPS--   Soliton (Flutter)
   (logger/, Python)                 (server/, FastAPI)   WebSocket  (lib/, iOS/Android/web)
 ```
 
@@ -39,7 +39,7 @@ flutter pub get               # Dart packages, into .cache/pub
 
 `env.sh` points uv, pip, pub and temporary files at `.cache/` and puts `.venv`
 and Flutter on the `PATH`. If your Flutter SDK isn't at
-`~/Development/flutter`, set `MODELSAPP_FLUTTER` first. To remove everything,
+`~/Development/flutter`, set `SOLITON_FLUTTER` first. To remove everything,
 delete `.venv`, `.cache` and `.data`.
 
 ## Trying it all on one computer
@@ -47,13 +47,13 @@ delete `.venv`, `.cache` and `.data`.
 Three terminals, each after `source env.sh`:
 
 ```bash
-modelsapp-server                          # 1. the server, at http://127.0.0.1:8000
+soliton-server                          # 1. the server, at http://127.0.0.1:8000
 ```
 
 ```bash
-export MODELSAPP_SERVER=http://127.0.0.1:8000
-export MODELSAPP_TOKEN=$(modelsapp-server --show-token)
-modelsapp demo                            # 2. a small real training run (PyTorch)
+export SOLITON_SERVER=http://127.0.0.1:8000
+export SOLITON_TOKEN=$(soliton-server --show-token)
+soliton demo                            # 2. a small real training run (PyTorch)
 ```
 
 ```bash
@@ -62,7 +62,7 @@ tool/run_web.sh                           # 3. the app, at http://localhost:8787
 
 In the app: **Settings → Data source** (or **Connect** on the demo banner), enter
 `http://127.0.0.1:8000` and the token. The demo run appears and updates live.
-`modelsapp demo --crash-at 500` shows what a crash looks like.
+`soliton demo --crash-at 500` shows what a crash looks like.
 
 ## The app
 
@@ -92,7 +92,7 @@ What it does:
   how busy it kept them: GPU use and memory per GPU, CPU, memory, GPU
   temperature and power, sampled by the logger every 15 seconds.
 - **Compute**: simulations (a PDE solve, or any computation stepping
-  through time), monitored like runs from `modelsapp.simulate()`, in their
+  through time), monitored like runs from `soliton.simulate()`, in their
   own section (the bar at the bottom, or the side on a wide screen):
   progress in simulated time and the time left, an alert and a marked
   chart when one diverges (NaN or infinity), every logged value against
@@ -102,7 +102,7 @@ What it does:
   setup, the machine and its cost. Steady solves go by iteration instead
   of simulated time.
 - **Data**: the datasets you have, registered with
-  `modelsapp.register_dataset(path)` or `modelsapp data scan FOLDER`: size,
+  `soliton.register_dataset(path)` or `soliton data scan FOLDER`: size,
   samples and splits, where they're stored, the arrays in them with their
   ranges, a few sample previews, what made them (a simulation, on which
   machine) and which runs trained on them. Only the description reaches
@@ -180,8 +180,8 @@ lib/
     clock.dart                  clockProvider: keeps elapsed times moving
     widgets/                    cards, charts, chart options, sparkline, histogram
 test/                           unit, widget, accessibility and server tests
-logger/                         the Python logger (package `modelsapp`)
-server/                         the server (package `modelsapp-server`)
+logger/                         the Python logger (package `soliton`)
+server/                         the server (package `soliton-server`)
 docs/sherlock.md                using the logger on Sherlock
 docs/for-agents.md              instructions to give a coding agent
 env.sh, pyproject.toml, uv.lock the project environment
@@ -207,8 +207,8 @@ Retry button. An unknown run or a rejected token is never retried.
 `test/server_contract_test.dart` checks the app against a real server:
 
 ```bash
-MODELSAPP_TEST_SERVER=http://127.0.0.1:8000 \
-MODELSAPP_TEST_TOKEN=$(modelsapp-server --show-token) \
+SOLITON_TEST_SERVER=http://127.0.0.1:8000 \
+SOLITON_TEST_TOKEN=$(soliton-server --show-token) \
 flutter test test/server_contract_test.dart
 ```
 

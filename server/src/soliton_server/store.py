@@ -1,7 +1,7 @@
 """Reading and writing runs. Every response matches the app's `fromJson`.
 
 All writes are idempotent: the logger may resend a batch (after a timeout,
-or when `modelsapp sync` uploads a saved run), and points are keyed by
+or when `soliton sync` uploads a saved run), and points are keyed by
 (run, metric, step), so a resent point replaces itself.
 """
 

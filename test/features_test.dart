@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:models_app/data/services/live_updates.dart';
-import 'package:models_app/data/services/settings_store.dart';
-import 'package:models_app/models/run.dart';
-import 'package:models_app/shared/widgets/line_chart_card.dart';
+import 'package:soliton/data/services/live_updates.dart';
+import 'package:soliton/data/services/settings_store.dart';
+import 'package:soliton/models/run.dart';
+import 'package:soliton/shared/widgets/line_chart_card.dart';
 
 import 'test_app.dart';
 

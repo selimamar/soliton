@@ -90,7 +90,7 @@ String? datasetOf(Run run) {
   return null;
 }
 
-/// The `PDE` hyperparameter (as `modelsapp.init(pde=...)` sets it, any
+/// The `PDE` hyperparameter (as `soliton.init(pde=...)` sets it, any
 /// case, possibly nested), if the run logged one.
 String? pdeOf(Run run) {
   for (final MapEntry(:key, :value) in run.hyperparameters.entries) {

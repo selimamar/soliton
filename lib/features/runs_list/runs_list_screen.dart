@@ -224,7 +224,7 @@ class _RunsList extends ConsumerWidget {
             _TableHeader(value: logged == null ? 'Loss' : order.shortLabel),
           if (runs.isEmpty)
             const _EmptyState(
-              'No runs yet. Start one with the modelsapp Python logger: it appears here '
+              'No runs yet. Start one with the soliton Python logger: it appears here '
               'as soon as it logs.',
             )
           else if (visibleRuns.isEmpty)

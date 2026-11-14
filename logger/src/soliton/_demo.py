@@ -1,4 +1,4 @@
-"""`modelsapp demo`: a small real training run, to try the app.
+"""`soliton demo`: a small real training run, to try the app.
 
 An MLP learns to imitate a random "teacher" network, so the loss really
 falls and the layer statistics are real.
@@ -10,7 +10,7 @@ import math
 import time
 from typing import Optional
 
-import modelsapp
+import soliton
 
 
 def train(steps: int = 3000, delay: float = 0.02, crash_at: Optional[int] = None,
@@ -21,7 +21,7 @@ def train(steps: int = 3000, delay: float = 0.02, crash_at: Optional[int] = None
         import torch
         from torch import nn
     except ImportError:
-        raise SystemExit("modelsapp demo needs PyTorch: pip install torch") from None
+        raise SystemExit("soliton demo needs PyTorch: pip install torch") from None
 
     torch.manual_seed(0)
     features, classes, batch, steps_per_epoch = 32, 10, 128, 100
@@ -44,7 +44,7 @@ def train(steps: int = 3000, delay: float = 0.02, crash_at: Optional[int] = None
         return x, y
 
     val_x, val_y = data(2048)
-    with modelsapp.init(name, project="demos", config=config,
+    with soliton.init(name, project="demos", config=config,
                         train_samples=steps * batch,  # Fresh random samples every step.
                         val_samples=val_x, loss=loss_fn, total_steps=steps,
                         total_epochs=math.ceil(steps / steps_per_epoch)) as run:

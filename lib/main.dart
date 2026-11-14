@@ -27,7 +27,7 @@ Future<void> main() async {
   runApp(
     ProviderScope(
       overrides: [settingsStoreProvider.overrideWithValue(store)],
-      child: const ModelsApp(),
+      child: const SolitonApp(),
     ),
   );
 }

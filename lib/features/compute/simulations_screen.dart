@@ -25,7 +25,7 @@ class SimulationFilter extends Notifier<RunStatus?> {
   void select(RunStatus? status) => state = status;
 }
 
-/// The Compute section: every simulation (`modelsapp.simulate()`), newest
+/// The Compute section: every simulation (`soliton.simulate()`), newest
 /// first, with where it is and its monitored value.
 class SimulationsScreen extends ConsumerWidget {
   const SimulationsScreen({super.key});
@@ -75,7 +75,7 @@ class _SimulationsList extends ConsumerWidget {
           padding: const EdgeInsets.all(32),
           child: Text(
             'No simulations yet. Monitor one from Python with '
-            'modelsapp.simulate(name, t_end=...), then sim.log({...}, t=t).',
+            'soliton.simulate(name, t_end=...), then sim.log({...}, t=t).',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),

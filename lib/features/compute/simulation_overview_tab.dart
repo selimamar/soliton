@@ -38,7 +38,7 @@ class SimulationOverviewTab extends StatelessWidget {
           title: 'Setup',
           child: run.hyperparameters.isEmpty
               ? Text(
-                  'Pass setup={...} to modelsapp.simulate() to show the equation, method, '
+                  'Pass setup={...} to soliton.simulate() to show the equation, method, '
                   'grid and parameters here.',
                   style: Theme.of(context).textTheme.bodySmall,
                 )

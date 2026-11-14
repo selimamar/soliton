@@ -12,7 +12,7 @@ import 'curve_generator.dart';
 import 'mock_fields.dart';
 import 'mock_runs.dart';
 
-/// The demo simulations, as `modelsapp.simulate()` would log them: two
+/// The demo simulations, as `soliton.simulate()` would log them: two
 /// running (a 2D shear layer, 3D convection), one that diverged, a steady
 /// solve, and a finished cylinder wake.
 List<MockRun> buildMockSimulations(DateTime now) => [

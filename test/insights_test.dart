@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:models_app/data/mock/mock_run_repository.dart';
-import 'package:models_app/features/runs_list/run_groups.dart';
-import 'package:models_app/models/field_snapshot.dart';
-import 'package:models_app/shared/widgets/xy_chart_card.dart';
+import 'package:soliton/data/mock/mock_run_repository.dart';
+import 'package:soliton/features/runs_list/run_groups.dart';
+import 'package:soliton/models/field_snapshot.dart';
+import 'package:soliton/shared/widgets/xy_chart_card.dart';
 
 import 'test_app.dart';
 

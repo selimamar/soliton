@@ -7,8 +7,8 @@ import 'router.dart';
 import 'run_alert_listener.dart';
 import 'theme.dart';
 
-class ModelsApp extends ConsumerWidget {
-  const ModelsApp({super.key});
+class SolitonApp extends ConsumerWidget {
+  const SolitonApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

@@ -2,7 +2,7 @@
 
 Every record is first appended to the run's events.jsonl, then uploaded from
 there. So nothing is lost when the network is down (or a cluster's compute
-nodes have no internet): `modelsapp sync` uploads the rest later. The server
+nodes have no internet): `soliton sync` uploads the rest later. The server
 ignores duplicates, so uploading a record twice is harmless.
 """
 
@@ -56,7 +56,7 @@ class ApiClient:
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self._token}",
-                "User-Agent": "modelsapp-logger",
+                "User-Agent": "soliton-logger",
             },
         )
         try:
@@ -206,7 +206,7 @@ class Uploader(threading.Thread):
         warn: Callable[[str], None],
         interval: float = 2.0,
     ) -> None:
-        super().__init__(name="modelsapp-uploader", daemon=True)
+        super().__init__(name="soliton-uploader", daemon=True)
         self._files = files
         self._client = client
         self._warn = warn
@@ -243,7 +243,7 @@ class Uploader(threading.Thread):
             except UploadError as error:
                 self._failed = str(error)
                 self._warn(f"upload stopped: {error}. The run is saved locally; upload it "
-                           "later with `modelsapp sync`.")
+                           "later with `soliton sync`.")
                 return
             finally:
                 with self._idle:

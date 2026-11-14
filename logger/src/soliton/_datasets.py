@@ -3,10 +3,10 @@ lives and what is in it. Only the description travels to the server: sizes,
 shapes, variable ranges, a few small sample previews. The data stays where
 it is.
 
-    ds = modelsapp.register_dataset("/scratch/me/ns2d/v3.h5", name="ns2d-vorticity",
+    ds = soliton.register_dataset("/scratch/me/ns2d/v3.h5", name="ns2d-vorticity",
                                     version="v3", source="Simulated",
                                     splits={"train": 8000, "val": 1000, "test": 1000})
-    run = modelsapp.init("fno", datasets=[ds])     # the run trains on it
+    run = soliton.init("fno", datasets=[ds])     # the run trains on it
 
 Files are read for their headers only (HDF5, NetCDF and MAT v7.3 need h5py;
 Zarr needs zarr; .npy and .npz need NumPy). The ranges and previews come
@@ -136,7 +136,7 @@ def inspect(path: Path) -> dict:
         try:
             info.update(_read(target))
         except Exception as error:  # A file we can't read is still a dataset.
-            print(f"modelsapp: {target.name}: contents not read ({error})", file=sys.stderr)
+            print(f"soliton: {target.name}: contents not read ({error})", file=sys.stderr)
     return info
 
 
@@ -324,7 +324,7 @@ def _fingerprint(path: Path, files: Iterable[Path]) -> str:
 def upload(dataset: Dataset, server: Optional[str], token: Optional[str],
            directory: Optional[os.PathLike] = None) -> bool:
     """Sends [dataset] to the server; without one (or if it's unreachable),
-    saves it to [directory]/datasets for `modelsapp sync`. True if sent."""
+    saves it to [directory]/datasets for `soliton sync`. True if sent."""
     from ._upload import ApiClient, RetryLater
 
     if server and token:
@@ -332,12 +332,12 @@ def upload(dataset: Dataset, server: Optional[str], token: Optional[str],
             ApiClient(server, token).put_dataset(dataset.id, dataset.description)
             return True
         except RetryLater as error:
-            print(f"modelsapp: server unreachable ({error}); saving dataset {dataset.id}",
+            print(f"soliton: server unreachable ({error}); saving dataset {dataset.id}",
                   file=sys.stderr)
-    folder = Path(directory or os.environ.get("MODELSAPP_DIR") or "modelsapp-runs") / "datasets"
+    folder = Path(directory or os.environ.get("SOLITON_DIR") or "soliton-runs") / "datasets"
     folder.mkdir(parents=True, exist_ok=True)
     (folder / f"{dataset.id}.json").write_text(dumps(dataset.description))
-    print(f"modelsapp: saved dataset {dataset.id} to {folder}; upload it with `modelsapp sync`",
+    print(f"soliton: saved dataset {dataset.id} to {folder}; upload it with `soliton sync`",
           file=sys.stderr)
     return False
 

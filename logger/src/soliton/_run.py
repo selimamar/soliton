@@ -1,4 +1,4 @@
-"""A training run: what `modelsapp.init()` returns."""
+"""A training run: what `soliton.init()` returns."""
 
 from __future__ import annotations
 
@@ -46,11 +46,11 @@ MODES = ("online", "offline", "disabled")
 
 
 def _say(message: str) -> None:
-    print(f"modelsapp: {message}", file=sys.stderr, flush=True)
+    print(f"soliton: {message}", file=sys.stderr, flush=True)
 
 
 class Run:
-    """One training run. Create it with `modelsapp.init()`.
+    """One training run. Create it with `soliton.init()`.
 
     Use it as a context manager, or call `finish()` at the end. If the script
     dies with an exception, the run is marked as crashed with that error; if
@@ -83,15 +83,15 @@ class Run:
         dir: Optional[str] = None,
         _simulation: Optional[dict] = None,
     ) -> None:
-        server = server or os.environ.get("MODELSAPP_SERVER")
-        token = token or os.environ.get("MODELSAPP_TOKEN")
-        mode = mode or os.environ.get("MODELSAPP_MODE") or ("online" if server else "offline")
+        server = server or os.environ.get("SOLITON_SERVER")
+        token = token or os.environ.get("SOLITON_TOKEN")
+        mode = mode or os.environ.get("SOLITON_MODE") or ("online" if server else "offline")
         if mode not in MODES:
             raise ValueError(f"mode must be one of {', '.join(MODES)}, not {mode!r}")
         if mode == "online" and not (server and token):
             raise ValueError(
                 "online mode needs a server and a token: pass server=... and token=..., or set "
-                "MODELSAPP_SERVER and MODELSAPP_TOKEN (or use mode='offline')"
+                "SOLITON_SERVER and SOLITON_TOKEN (or use mode='offline')"
             )
         price = _price_per_hour(price_per_hour)
         run_id = id or new_run_id(name)
@@ -101,7 +101,7 @@ class Run:
         self.id = run_id
         self.name = name
         self.mode = mode
-        self.directory = Path(dir or os.environ.get("MODELSAPP_DIR") or "modelsapp-runs") / run_id
+        self.directory = Path(dir or os.environ.get("SOLITON_DIR") or "soliton-runs") / run_id
         self._description = {
             "type": "run",
             "id": run_id,
@@ -147,7 +147,7 @@ class Run:
             self._uploader.start()
         else:
             _say(f"saving run {run_id} to {self.directory} (offline); upload it with "
-                 "`modelsapp sync`")
+                 "`soliton sync`")
         if system_metrics:
             self._monitor = SystemMonitor(self._log_system, interval=system_interval)
             self._monitor.start()
@@ -173,7 +173,7 @@ class Run:
 
     def register_dataset(self, path: Any = None, **options: Any) -> Dataset:
         """Registers a dataset this run (or simulation) made, e.g. the
-        snapshots a solver wrote: as `modelsapp.register_dataset`, with this
+        snapshots a solver wrote: as `soliton.register_dataset`, with this
         run as its maker and this machine as where it was made."""
         dataset = describe_dataset(path, made_by=self.id,
                                    system=self._description.get("system") or None, **options)
@@ -490,7 +490,7 @@ class Run:
             uploader.stop()
             if not done:
                 _say(f"could not upload everything (server unreachable?); the run is saved in "
-                     f"{self.directory}. Upload it later with: modelsapp sync {self.directory}")
+                     f"{self.directory}. Upload it later with: soliton sync {self.directory}")
         self._files.close()
 
     def __enter__(self) -> "Run":
@@ -505,7 +505,7 @@ class Run:
     def _warn_once(self, key: str, message: str) -> None:
         if key not in self._warned:
             self._warned.add(key)
-            warnings.warn(f"modelsapp: {message}", stacklevel=3)
+            warnings.warn(f"soliton: {message}", stacklevel=3)
 
 
 def _field_name(name: Any) -> str:
@@ -529,14 +529,14 @@ def _system_info(price_per_hour: Optional[float] = None) -> dict:
 
 def _price_per_hour(value: Optional[float]) -> Optional[float]:
     """The machine's price in dollars per hour: `value`, else
-    MODELSAPP_PRICE_PER_HOUR, else None (the app estimates one from the
+    SOLITON_PRICE_PER_HOUR, else None (the app estimates one from the
     GPUs)."""
     source = "price_per_hour"
     if value is None:
-        text = os.environ.get("MODELSAPP_PRICE_PER_HOUR", "").strip()
+        text = os.environ.get("SOLITON_PRICE_PER_HOUR", "").strip()
         if not text:
             return None
-        source = "MODELSAPP_PRICE_PER_HOUR"
+        source = "SOLITON_PRICE_PER_HOUR"
         try:
             value = float(text.lstrip("$"))
         except ValueError:
@@ -593,7 +593,7 @@ def _hyperparameters(config, train_samples, val_samples, loss, pde=None) -> dict
         try:
             first[label] = f"{count_samples(value):,}"
         except TypeError as error:
-            warnings.warn(f"modelsapp: {label.lower()}: {error}", stacklevel=4)
+            warnings.warn(f"soliton: {label.lower()}: {error}", stacklevel=4)
     if loss is not None:
         first["Loss"] = describe_loss(loss)
     first.update(_pde_entries(pde))

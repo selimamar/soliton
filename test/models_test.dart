@@ -1,11 +1,11 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:models_app/data/mock/mock_runs.dart';
-import 'package:models_app/models/layer_info.dart';
-import 'package:models_app/models/layer_stats.dart';
-import 'package:models_app/models/metric_series.dart';
-import 'package:models_app/models/run.dart';
+import 'package:soliton/data/mock/mock_runs.dart';
+import 'package:soliton/models/layer_info.dart';
+import 'package:soliton/models/layer_stats.dart';
+import 'package:soliton/models/metric_series.dart';
+import 'package:soliton/models/run.dart';
 
 /// Round-trips [json] through an actual JSON string, like a network response.
 Map<String, Object?> throughJson(Map<String, Object?> json) =>

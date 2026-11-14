@@ -2,7 +2,7 @@
 
 ntfy delivers real push notifications to its iOS and Android apps without
 an Apple or Google developer account: subscribe to your topic in the ntfy
-app, and set MODELSAPP_NTFY_URL to the same topic on the server. Anyone who
+app, and set SOLITON_NTFY_URL to the same topic on the server. Anyone who
 knows a topic on the public ntfy.sh server can read it, so pick a long
 random name, or run your own ntfy server with an access token.
 """
@@ -25,7 +25,7 @@ class NtfyNotifier:
         parts = urlsplit(topic_url.rstrip("/"))
         base_path, _, topic = parts.path.rpartition("/")
         if not topic:
-            raise ValueError(f"MODELSAPP_NTFY_URL needs a topic, e.g. https://ntfy.sh/my-topic: {topic_url}")
+            raise ValueError(f"SOLITON_NTFY_URL needs a topic, e.g. https://ntfy.sh/my-topic: {topic_url}")
         # JSON is posted to the server root, so titles may contain any text.
         self._endpoint = urlunsplit((parts.scheme, parts.netloc, base_path or "/", "", ""))
         self._topic = topic

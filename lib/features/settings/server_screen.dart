@@ -10,7 +10,7 @@ import '../../data/services/server_connection.dart';
 import '../../shared/widgets/section_card.dart';
 import '../../shared/widgets/spaced_list_view.dart';
 
-/// Connect to a ModelsApp server (the app's "login"), or go back to demo
+/// Connect to a Soliton server (the app's "login"), or go back to demo
 /// data. The address and token are checked before they are saved.
 class ServerScreen extends ConsumerStatefulWidget {
   const ServerScreen({super.key});
@@ -54,7 +54,7 @@ class _ServerScreenState extends ConsumerState<ServerScreen> {
       error =
           "Can't reach ${connection.address}. Check the address, and that the server is running.";
     } on ApiException {
-      error = "That address answered, but it doesn't look like a ModelsApp server.";
+      error = "That address answered, but it doesn't look like a Soliton server.";
     } finally {
       client.close();
     }
@@ -96,8 +96,8 @@ class _ServerScreenState extends ConsumerState<ServerScreen> {
               const SizedBox(height: 24),
             ],
             Text(
-              'Run the ModelsApp server, then enter its address and token. On the server, '
-              'print the token with: modelsapp-server --show-token',
+              'Run the Soliton server, then enter its address and token. On the server, '
+              'print the token with: soliton-server --show-token',
               style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 16),

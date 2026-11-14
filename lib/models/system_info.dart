@@ -73,7 +73,7 @@ class SystemInfo {
   final Map<String, String> slurm;
 
   /// What the job's machine costs per hour in US dollars, if the run said
-  /// (`modelsapp.init(price_per_hour=...)`); see `HourlyPrice` for the
+  /// (`soliton.init(price_per_hour=...)`); see `HourlyPrice` for the
   /// estimate otherwise.
   final double? pricePerHour;
 

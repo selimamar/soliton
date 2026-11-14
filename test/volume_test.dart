@@ -2,8 +2,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:models_app/features/run_detail/volume/volume_renderer.dart';
-import 'package:models_app/shared/colormaps.dart';
+import 'package:soliton/features/run_detail/volume/volume_renderer.dart';
+import 'package:soliton/shared/colormaps.dart';
 
 const background = 0xFF101010;
 

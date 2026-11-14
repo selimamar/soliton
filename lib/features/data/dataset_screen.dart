@@ -342,7 +342,7 @@ class _UsedBy extends StatelessWidget {
       title: users.isEmpty ? 'Used by' : 'Used by · ${users.length}',
       child: users.isEmpty
           ? Text(
-              'No run trains on it yet. Pass it to modelsapp.init(datasets=[...]) to list the '
+              'No run trains on it yet. Pass it to soliton.init(datasets=[...]) to list the '
               'runs that do here.',
               style: muted,
             )

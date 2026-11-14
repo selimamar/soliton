@@ -1,7 +1,7 @@
-# modelsapp-server
+# soliton-server
 
-Stores the training runs that the `modelsapp` logger sends, and serves them
-to the ModelsApp app, with live updates over a WebSocket.
+Stores the training runs that the `soliton` logger sends, and serves them
+to the Soliton app, with live updates over a WebSocket.
 
 FastAPI, SQLAlchemy, and SQLite or PostgreSQL. One process; no other services.
 
@@ -11,20 +11,20 @@ From the project root (see the main README for `env.sh`):
 
 ```bash
 source env.sh
-modelsapp-server                  # http://127.0.0.1:8000, this computer only
-modelsapp-server --show-token     # the token for the logger and the app
+soliton-server                  # http://127.0.0.1:8000, this computer only
+soliton-server --show-token     # the token for the logger and the app
 ```
 
-Without `MODELSAPP_TOKEN`, the server makes a random token on first start and
-keeps it in `$MODELSAPP_DATA_DIR/token` (readable by you only). The database
-is `$MODELSAPP_DATA_DIR/modelsapp.db` (SQLite). With `env.sh`, that folder is
+Without `SOLITON_TOKEN`, the server makes a random token on first start and
+keeps it in `$SOLITON_DATA_DIR/token` (readable by you only). The database
+is `$SOLITON_DATA_DIR/soliton.db` (SQLite). With `env.sh`, that folder is
 `.data/` in the project.
 
 To use the app on a phone on the same network, listen on all addresses and
 use your computer's local IP in the app, e.g. `http://192.168.1.20:8000`:
 
 ```bash
-modelsapp-server --host 0.0.0.0
+soliton-server --host 0.0.0.0
 ```
 
 ## Settings
@@ -33,15 +33,15 @@ All from environment variables:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `MODELSAPP_TOKEN` | generated, in `token` | The API token (send as `Authorization: Bearer ...`) |
-| `DATABASE_URL` or `MODELSAPP_DATABASE_URL` | SQLite in the data folder | e.g. `postgresql://user:pass@host/db` |
-| `MODELSAPP_DATA_DIR` | `./modelsapp-data` | Where the SQLite database and token live |
-| `MODELSAPP_LISTEN_HOST`, `PORT` | `127.0.0.1`, `8000` | Address and port (also `--host`, `--port`) |
-| `MODELSAPP_STALE_MINUTES` | `10` | A live run silent this long is marked crashed ("lost contact") |
-| `MODELSAPP_CORS_ORIGINS` | `*` | Web origins allowed to call the API (comma-separated) |
-| `MODELSAPP_NTFY_URL` | off | Push notifications, e.g. `https://ntfy.sh/<long-random-topic>` |
-| `MODELSAPP_NTFY_TOKEN` | none | Access token for a protected ntfy topic |
-| `MODELSAPP_NOTIFY_ON` | `finished,crashed` | Which events send a push notification |
+| `SOLITON_TOKEN` | generated, in `token` | The API token (send as `Authorization: Bearer ...`) |
+| `DATABASE_URL` or `SOLITON_DATABASE_URL` | SQLite in the data folder | e.g. `postgresql://user:pass@host/db` |
+| `SOLITON_DATA_DIR` | `./soliton-data` | Where the SQLite database and token live |
+| `SOLITON_LISTEN_HOST`, `PORT` | `127.0.0.1`, `8000` | Address and port (also `--host`, `--port`) |
+| `SOLITON_STALE_MINUTES` | `10` | A live run silent this long is marked crashed ("lost contact") |
+| `SOLITON_CORS_ORIGINS` | `*` | Web origins allowed to call the API (comma-separated) |
+| `SOLITON_NTFY_URL` | off | Push notifications, e.g. `https://ntfy.sh/<long-random-topic>` |
+| `SOLITON_NTFY_TOKEN` | none | Access token for a protected ntfy topic |
+| `SOLITON_NOTIFY_ON` | `finished,crashed` | Which events send a push notification |
 
 ## Push notifications (ntfy)
 
@@ -50,11 +50,11 @@ Android apps, without an Apple or Google developer account:
 
 1. Install the ntfy app on your phone and subscribe to a topic with a long,
    random name (anyone who knows a topic on the public server can read it).
-2. Start the server with `MODELSAPP_NTFY_URL=https://ntfy.sh/<that-topic>`.
+2. Start the server with `SOLITON_NTFY_URL=https://ntfy.sh/<that-topic>`.
 
 You get "resnet50 finished" or "resnet50 crashed: CUDA out of memory" with
 the app closed. For privacy, run your own ntfy server and set
-`MODELSAPP_NTFY_TOKEN`.
+`SOLITON_NTFY_TOKEN`.
 
 ## Putting it on the internet
 
@@ -62,15 +62,15 @@ The logger on a cluster and the app on your phone both need to reach the
 server, so it has to run somewhere public, with HTTPS. Two common ways:
 
 - **A small cloud VM** (any provider): install uv, copy this repository,
-  `uv sync --package modelsapp-server --extra postgres` (or keep SQLite), set
-  `MODELSAPP_TOKEN` to a long random string, run
-  `modelsapp-server --host 127.0.0.1`, and put [Caddy](https://caddyserver.com)
+  `uv sync --package soliton-server --extra postgres` (or keep SQLite), set
+  `SOLITON_TOKEN` to a long random string, run
+  `soliton-server --host 127.0.0.1`, and put [Caddy](https://caddyserver.com)
   in front for automatic HTTPS (`reverse_proxy 127.0.0.1:8000`; it forwards
   WebSockets as is).
 - **A hosting platform** that runs Python apps: start command
-  `modelsapp-server --host 0.0.0.0` (it reads `PORT`), and a managed
+  `soliton-server --host 0.0.0.0` (it reads `PORT`), and a managed
   PostgreSQL in `DATABASE_URL` (`postgres://` URLs are accepted). Set
-  `MODELSAPP_TOKEN`; don't rely on the generated one, as the disk may not
+  `SOLITON_TOKEN`; don't rely on the generated one, as the disk may not
   persist.
 
 Run a single process: live updates are pushed from memory, so several
@@ -132,7 +132,7 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
  "message": "Diverged at t = 0.83: energy is NaN"}
 ```
 
-**Simulations** (`modelsapp.simulate`) are runs whose description has a
+**Simulations** (`soliton.simulate`) are runs whose description has a
 `simulation` entry: `{"tEnd": 10, "cflLimit": 1, "monitor": "energy"}`
 (all optional). Their values are ordinary metrics, the simulated time the
 metric `sim/t`. A run reads back with `simulation` set to that entry plus
@@ -224,5 +224,5 @@ source env.sh && pytest server/tests
 Each API test runs on SQLite and on PostgreSQL. PostgreSQL comes from the
 `pgserver` package in `.venv`; if it can't start (on macOS this happens when
 other apps hold all System V shared memory segments), those runs are skipped.
-To use another PostgreSQL, set `MODELSAPP_TEST_POSTGRES_URL` (its tables are
+To use another PostgreSQL, set `SOLITON_TEST_POSTGRES_URL` (its tables are
 dropped).

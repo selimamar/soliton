@@ -322,7 +322,7 @@ class SystemMonitor(threading.Thread):
 
     def __init__(self, emit: Callable[[Dict[str, float]], None], interval: float = 15,
                  env: Mapping[str, str] = os.environ) -> None:
-        super().__init__(name="modelsapp-system", daemon=True)
+        super().__init__(name="soliton-system", daemon=True)
         self._emit = emit
         self._interval = interval
         self._env = env

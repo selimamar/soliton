@@ -1,12 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:models_app/app/theme.dart';
-import 'package:models_app/features/run_detail/widgets/layer_grad_norm_chart.dart';
-import 'package:models_app/models/layer_stats.dart';
-import 'package:models_app/models/metric_series.dart';
-import 'package:models_app/shared/widgets/histogram_view.dart';
-import 'package:models_app/shared/widgets/line_chart_card.dart';
-import 'package:models_app/shared/widgets/sparkline.dart';
+import 'package:soliton/app/theme.dart';
+import 'package:soliton/features/run_detail/widgets/layer_grad_norm_chart.dart';
+import 'package:soliton/models/layer_stats.dart';
+import 'package:soliton/models/metric_series.dart';
+import 'package:soliton/shared/widgets/histogram_view.dart';
+import 'package:soliton/shared/widgets/line_chart_card.dart';
+import 'package:soliton/shared/widgets/sparkline.dart';
 
 Future<void> pumpInApp(WidgetTester tester, Widget child) async {
   await tester.pumpWidget(

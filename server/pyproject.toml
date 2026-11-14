@@ -1,7 +1,7 @@
 [project]
-name = "modelsapp-server"
+name = "soliton-server"
 version = "0.1.0"
-description = "ModelsApp server: stores training runs and serves them to the app."
+description = "Soliton server: stores training runs and serves them to the app."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -14,7 +14,7 @@ dependencies = [
 postgres = ["psycopg[binary]>=3.2"]
 
 [project.scripts]
-modelsapp-server = "modelsapp_server.cli:main"
+soliton-server = "soliton_server.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.13.0,<0.14"]

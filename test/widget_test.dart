@@ -1,11 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:models_app/app/theme.dart';
-import 'package:models_app/data/mock/mock_run_repository.dart';
-import 'package:models_app/features/runs_list/widgets/run_card.dart';
-import 'package:models_app/models/run.dart';
-import 'package:models_app/shared/clock.dart';
-import 'package:models_app/shared/widgets/line_chart_card.dart';
+import 'package:soliton/app/theme.dart';
+import 'package:soliton/data/mock/mock_run_repository.dart';
+import 'package:soliton/features/runs_list/widgets/run_card.dart';
+import 'package:soliton/models/run.dart';
+import 'package:soliton/shared/clock.dart';
+import 'package:soliton/shared/widgets/line_chart_card.dart';
 
 import 'test_app.dart';
 

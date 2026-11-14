@@ -2,7 +2,7 @@ import 'run.dart';
 import 'system_info.dart';
 
 /// What a run's machine costs per hour, roughly: the price the run logged
-/// (`modelsapp.init(price_per_hour=...)`), else a typical on-demand cloud
+/// (`soliton.init(price_per_hour=...)`), else a typical on-demand cloud
 /// price for its GPUs (or CPU cores). An estimate, to be shown rounded.
 class HourlyPrice {
   const HourlyPrice({required this.dollars, required this.basis, this.logged = false});

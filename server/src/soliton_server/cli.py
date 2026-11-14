@@ -1,4 +1,4 @@
-"""`modelsapp-server`: starts the server."""
+"""`soliton-server`: starts the server."""
 
 from __future__ import annotations
 
@@ -12,13 +12,13 @@ from .config import Settings
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        prog="modelsapp-server",
-        description="Stores training runs sent by the modelsapp logger and serves them to the app.",
+        prog="soliton-server",
+        description="Stores training runs sent by the soliton logger and serves them to the app.",
         epilog="Settings come from environment variables; see server/README.md.",
     )
     parser.add_argument(
         "--host",
-        default=os.environ.get("MODELSAPP_LISTEN_HOST", "127.0.0.1"),
+        default=os.environ.get("SOLITON_LISTEN_HOST", "127.0.0.1"),
         help="Address to listen on (default: 127.0.0.1, this computer only; "
         "0.0.0.0 to accept connections from other devices).",
     )
@@ -40,13 +40,13 @@ def main(argv: list[str] | None = None) -> None:
     from .app import create_app
 
     database = settings.database_url.split("@")[-1]  # Hide any password.
-    print(f"ModelsApp server {__version__}", file=sys.stderr)
+    print(f"Soliton server {__version__}", file=sys.stderr)
     print(f"  Address:  http://{args.host}:{args.port}", file=sys.stderr)
     print(f"  Database: {database}", file=sys.stderr)
-    if os.environ.get("MODELSAPP_TOKEN"):
-        print("  Token:    from MODELSAPP_TOKEN", file=sys.stderr)
+    if os.environ.get("SOLITON_TOKEN"):
+        print("  Token:    from SOLITON_TOKEN", file=sys.stderr)
     else:
-        print("  Token:    modelsapp-server --show-token", file=sys.stderr)
+        print("  Token:    soliton-server --show-token", file=sys.stderr)
     if settings.ntfy_url:
         print("  Push notifications: on (ntfy)", file=sys.stderr)
     uvicorn.run(create_app(settings), host=args.host, port=args.port, log_level="info")

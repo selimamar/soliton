@@ -3,16 +3,16 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:models_app/data/api_run_repository.dart';
-import 'package:models_app/data/mock/mock_run_repository.dart';
-import 'package:models_app/data/run_repository.dart';
-import 'package:models_app/data/services/server_connection.dart';
-import 'package:models_app/features/run_detail/volume/volume_renderer.dart';
-import 'package:models_app/features/run_detail/volume/volume_view.dart';
-import 'package:models_app/features/run_detail/widgets/field_heatmap.dart';
-import 'package:models_app/models/field_snapshot.dart';
-import 'package:models_app/shared/formatters.dart';
-import 'package:models_app/shared/colormaps.dart';
+import 'package:soliton/data/api_run_repository.dart';
+import 'package:soliton/data/mock/mock_run_repository.dart';
+import 'package:soliton/data/run_repository.dart';
+import 'package:soliton/data/services/server_connection.dart';
+import 'package:soliton/features/run_detail/volume/volume_renderer.dart';
+import 'package:soliton/features/run_detail/volume/volume_view.dart';
+import 'package:soliton/features/run_detail/widgets/field_heatmap.dart';
+import 'package:soliton/models/field_snapshot.dart';
+import 'package:soliton/shared/formatters.dart';
+import 'package:soliton/shared/colormaps.dart';
 
 import 'fake_server.dart';
 import 'test_app.dart';

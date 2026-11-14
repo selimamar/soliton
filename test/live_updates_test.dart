@@ -2,11 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:models_app/data/mock/mock_run_repository.dart';
-import 'package:models_app/data/providers.dart';
-import 'package:models_app/data/services/live_updates.dart';
-import 'package:models_app/data/services/settings_store.dart';
-import 'package:models_app/models/run.dart';
+import 'package:soliton/data/mock/mock_run_repository.dart';
+import 'package:soliton/data/providers.dart';
+import 'package:soliton/data/services/live_updates.dart';
+import 'package:soliton/data/services/settings_store.dart';
+import 'package:soliton/models/run.dart';
 
 import 'fake_server.dart';
 

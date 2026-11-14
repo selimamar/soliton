@@ -1,4 +1,4 @@
-"""`modelsapp` command: upload saved runs, register datasets, or run a demo training."""
+"""`soliton` command: upload saved runs, register datasets, or run a demo training."""
 
 from __future__ import annotations
 
@@ -24,21 +24,21 @@ def _run_folders(paths: List[str]) -> List[Path]:
         elif path.is_dir():
             folders.extend(sorted(p.parent for p in path.glob(f"*/{EVENTS_FILE}")))
         else:
-            print(f"modelsapp: {path}: not found", file=sys.stderr)
+            print(f"soliton: {path}: not found", file=sys.stderr)
     return folders
 
 
 def _client(args) -> ApiClient:
-    server = args.server or os.environ.get("MODELSAPP_SERVER")
-    token = args.token or os.environ.get("MODELSAPP_TOKEN")
+    server = args.server or os.environ.get("SOLITON_SERVER")
+    token = args.token or os.environ.get("SOLITON_TOKEN")
     if not server or not token:
-        sys.exit("modelsapp: set MODELSAPP_SERVER and MODELSAPP_TOKEN (or pass --server and --token)")
+        sys.exit("soliton: set SOLITON_SERVER and SOLITON_TOKEN (or pass --server and --token)")
     return ApiClient(server, token)
 
 
 def sync(args) -> int:
     client = _client(args)
-    roots = args.paths or [os.environ.get("MODELSAPP_DIR") or "modelsapp-runs"]
+    roots = args.paths or [os.environ.get("SOLITON_DIR") or "soliton-runs"]
     failures = 0
     # Datasets first: runs name them.
     for root in roots:
@@ -53,7 +53,7 @@ def sync(args) -> int:
             print(f"dataset {dataset_id}: uploaded")
     folders = _run_folders(roots)
     if not folders:
-        print("modelsapp: no saved runs found")
+        print("soliton: no saved runs found")
         return 1 if failures else 0
     for folder in folders:
         files = RunFiles(folder)
@@ -70,18 +70,18 @@ def sync(args) -> int:
 def data(args) -> int:
     """Registers datasets: one path (`add`), or every data file and folder
     of data files in a folder (`scan`)."""
-    server = args.server or os.environ.get("MODELSAPP_SERVER")
-    token = args.token or os.environ.get("MODELSAPP_TOKEN")
+    server = args.server or os.environ.get("SOLITON_SERVER")
+    token = args.token or os.environ.get("SOLITON_TOKEN")
     if args.action == "add":
         targets = [Path(args.path)]
     else:
         root = Path(args.path)
         if not root.is_dir():
-            sys.exit(f"modelsapp: {root}: not a folder")
+            sys.exit(f"soliton: {root}: not a folder")
         targets = sorted(p for p in root.iterdir()
                          if p.suffix.lower() in FORMATS or (p.is_dir() and _has_data(p)))
         if not targets:
-            print(f"modelsapp: no data files in {root}")
+            print(f"soliton: no data files in {root}")
             return 0
     failures = 0
     for target in targets:
@@ -121,7 +121,7 @@ def demo(args) -> int:
 
 
 def main(argv: Optional[List[str]] = None) -> None:
-    parser = argparse.ArgumentParser(prog="modelsapp", description="ModelsApp training logger.")
+    parser = argparse.ArgumentParser(prog="soliton", description="Soliton training logger.")
     commands = parser.add_subparsers(dest="command", required=True)
 
     sync_parser = commands.add_parser(
@@ -130,10 +130,10 @@ def main(argv: Optional[List[str]] = None) -> None:
     )
     sync_parser.add_argument(
         "paths", nargs="*",
-        help="run folders, or folders containing them (default: $MODELSAPP_DIR or ./modelsapp-runs)",
+        help="run folders, or folders containing them (default: $SOLITON_DIR or ./soliton-runs)",
     )
-    sync_parser.add_argument("--server", help="default: $MODELSAPP_SERVER")
-    sync_parser.add_argument("--token", help="default: $MODELSAPP_TOKEN")
+    sync_parser.add_argument("--server", help="default: $SOLITON_SERVER")
+    sync_parser.add_argument("--token", help="default: $SOLITON_TOKEN")
     sync_parser.set_defaults(handler=sync)
 
     data_parser = commands.add_parser(
@@ -146,8 +146,8 @@ def main(argv: Optional[List[str]] = None) -> None:
     data_parser.add_argument("--version")
     data_parser.add_argument("--source", help='how it was obtained, e.g. "Simulated", "Experiment"')
     data_parser.add_argument("--description")
-    data_parser.add_argument("--server", help="default: $MODELSAPP_SERVER")
-    data_parser.add_argument("--token", help="default: $MODELSAPP_TOKEN")
+    data_parser.add_argument("--server", help="default: $SOLITON_SERVER")
+    data_parser.add_argument("--token", help="default: $SOLITON_TOKEN")
     data_parser.set_defaults(handler=data)
 
     demo_parser = commands.add_parser(

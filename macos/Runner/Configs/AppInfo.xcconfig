@@ -5,10 +5,10 @@
 // 'flutter create' template.
 
 // The application's name. By default this is also the title of the Flutter window.
-PRODUCT_NAME = ModelsApp
+PRODUCT_NAME = Soliton
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = io.github.selimamar.modelsApp
+PRODUCT_BUNDLE_IDENTIFIER = io.github.selimamar.soliton
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 the ModelsApp authors.
+PRODUCT_COPYRIGHT = Copyright © 2026 the Soliton authors.

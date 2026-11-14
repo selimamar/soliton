@@ -10,10 +10,10 @@ import httpx2 as httpx
 import pytest
 import uvicorn
 
-import modelsapp
-from modelsapp.cli import main as cli_main
-from modelsapp_server.app import create_app
-from modelsapp_server.config import Settings
+import soliton
+from soliton.cli import main as cli_main
+from soliton_server.app import create_app
+from soliton_server.config import Settings
 
 TOKEN = "logger-test-token"
 
@@ -77,7 +77,7 @@ def test_a_run_uploads_while_training(tmp_path, database_url):
     torch = pytest.importorskip("torch")
     with LiveServer(database_url) as server:
         model = torch.nn.Sequential(torch.nn.Linear(4, 8), torch.nn.ReLU(), torch.nn.Linear(8, 1))
-        run = modelsapp.init("live", project="tests", server=server.url, token=TOKEN,
+        run = soliton.init("live", project="tests", server=server.url, token=TOKEN,
                              dir=str(tmp_path / "runs"), total_steps=20, host="test",
                              tags=["smoke-test"], notes="From the logger")
         run.watch(model, every=5)
@@ -108,16 +108,16 @@ def test_a_run_survives_the_server_being_down_and_syncs_later(tmp_path, database
                                                               monkeypatch):
     port = free_port()
     url = f"http://127.0.0.1:{port}"  # Nothing is listening yet.
-    run = modelsapp.init("offline-first", server=url, token=TOKEN, dir=str(tmp_path / "runs"),
+    run = soliton.init("offline-first", server=url, token=TOKEN, dir=str(tmp_path / "runs"),
                          host="test", system_metrics=False)  # Exact record counts below.
     for step in range(50):
         run.log({"train/loss": 1.0 / (step + 1)}, step=step)
     run.finish(timeout=1)
-    assert "modelsapp sync" in capsys.readouterr().err
+    assert "soliton sync" in capsys.readouterr().err
 
     with LiveServer(database_url, port=port) as server:
-        monkeypatch.setenv("MODELSAPP_SERVER", url)
-        monkeypatch.setenv("MODELSAPP_TOKEN", TOKEN)
+        monkeypatch.setenv("SOLITON_SERVER", url)
+        monkeypatch.setenv("SOLITON_TOKEN", TOKEN)
         with pytest.raises(SystemExit) as exit_code:
             cli_main(["sync", str(tmp_path / "runs")])
         assert exit_code.value.code == 0
@@ -134,7 +134,7 @@ def test_a_run_survives_the_server_being_down_and_syncs_later(tmp_path, database
 
 def test_a_wrong_token_stops_uploading_but_keeps_the_run(tmp_path, database_url, capsys):
     with LiveServer(database_url) as server:
-        run = modelsapp.init("wrong-token", server=server.url, token="nope",
+        run = soliton.init("wrong-token", server=server.url, token="nope",
                              dir=str(tmp_path / "runs"), host="test")
         run.log({"train/loss": 1.0}, step=0)
         run.finish(timeout=5)
@@ -146,9 +146,9 @@ def test_a_wrong_token_stops_uploading_but_keeps_the_run(tmp_path, database_url,
 def test_the_demo_runs_end_to_end(tmp_path, database_url, monkeypatch):
     pytest.importorskip("torch")
     with LiveServer(database_url) as server:
-        monkeypatch.setenv("MODELSAPP_SERVER", server.url)
-        monkeypatch.setenv("MODELSAPP_TOKEN", TOKEN)
-        monkeypatch.setenv("MODELSAPP_DIR", str(tmp_path / "runs"))
+        monkeypatch.setenv("SOLITON_SERVER", server.url)
+        monkeypatch.setenv("SOLITON_TOKEN", TOKEN)
+        monkeypatch.setenv("SOLITON_DIR", str(tmp_path / "runs"))
         with pytest.raises(SystemExit):
             cli_main(["demo", "--steps", "120", "--delay", "0", "--name", "demo"])
         [stored] = server.get("/api/runs")
@@ -168,9 +168,9 @@ def test_the_demo_runs_end_to_end(tmp_path, database_url, monkeypatch):
 def test_a_crashing_demo_is_reported_as_crashed(tmp_path, database_url, monkeypatch):
     pytest.importorskip("torch")
     with LiveServer(database_url) as server:
-        monkeypatch.setenv("MODELSAPP_SERVER", server.url)
-        monkeypatch.setenv("MODELSAPP_TOKEN", TOKEN)
-        monkeypatch.setenv("MODELSAPP_DIR", str(tmp_path / "runs"))
+        monkeypatch.setenv("SOLITON_SERVER", server.url)
+        monkeypatch.setenv("SOLITON_TOKEN", TOKEN)
+        monkeypatch.setenv("SOLITON_DIR", str(tmp_path / "runs"))
         with pytest.raises(FloatingPointError):
             cli_main(["demo", "--steps", "200", "--delay", "0", "--crash-at", "50"])
         [stored] = server.get("/api/runs")
@@ -183,7 +183,7 @@ def test_field_snapshots_reach_the_server(tmp_path, database_url):
     x, y = np.meshgrid(np.linspace(0, 1, 256), np.linspace(0, 1, 256))
     target = np.sin(2 * np.pi * x) * np.cos(2 * np.pi * y)
     with LiveServer(database_url) as server:
-        run = modelsapp.init("fno", server=server.url, token=TOKEN, dir=str(tmp_path),
+        run = soliton.init("fno", server=server.url, token=TOKEN, dir=str(tmp_path),
                              system_metrics=False)
         for step in (0, 100):
             run.log({"train/loss": 1.0 / (step + 1)}, step=step)
@@ -204,7 +204,7 @@ def test_rollouts_3d_fields_and_layers_reach_the_server(tmp_path, database_url):
     torch = pytest.importorskip("torch")
     net = torch.nn.Sequential(torch.nn.Conv2d(1, 4, 3, padding=1), torch.nn.Conv2d(4, 1, 1))
     with LiveServer(database_url) as server:
-        run = modelsapp.init("fno3", server=server.url, token=TOKEN, dir=str(tmp_path),
+        run = soliton.init("fno3", server=server.url, token=TOKEN, dir=str(tmp_path),
                              system_metrics=False)
         run.log_rollout("u", np.random.rand(8, 32, 32), np.random.rand(8, 32, 32), step=1)
         run.log_field("p", np.random.rand(40, 40, 40), np.random.rand(40, 40, 40), step=1)
@@ -226,7 +226,7 @@ def test_validation_sets_curves_and_spectra_reach_the_server(tmp_path, database_
     predictions = targets * 1.05
     predictions[3] = np.nan
     with LiveServer(database_url) as server:
-        run = modelsapp.init("eval", server=server.url, token=TOKEN, dir=str(tmp_path),
+        run = soliton.init("eval", server=server.url, token=TOKEN, dir=str(tmp_path),
                              system_metrics=False, pde={"equation": "Darcy 2D"})
         run.log_field("u", predictions[0], targets[0], step=1, extent=[(0, 1), (0, 1)],
                       axes=["y", "x"])
@@ -246,7 +246,7 @@ def test_validation_sets_curves_and_spectra_reach_the_server(tmp_path, database_
 def test_a_simulation_reaches_the_server_and_diverges_there(tmp_path, database_url):
     np = pytest.importorskip("numpy")
     with LiveServer(database_url) as server:
-        sim = modelsapp.simulate("burgers", t_end=1, monitor="energy", cfl_limit=1,
+        sim = soliton.simulate("burgers", t_end=1, monitor="energy", cfl_limit=1,
                                  setup={"equation": "Burgers 1D"}, server=server.url,
                                  token=TOKEN, dir=str(tmp_path), system_metrics=False)
         for i in range(4):
@@ -271,11 +271,11 @@ def test_datasets_reach_the_server_with_who_made_and_used_them(tmp_path, databas
     path = tmp_path / "snapshots.npy"
     np.save(path, np.random.default_rng(1).standard_normal((6, 16, 16)))
     with LiveServer(database_url) as server:
-        sim = modelsapp.simulate("gen", server=server.url, token=TOKEN, dir=str(tmp_path),
+        sim = soliton.simulate("gen", server=server.url, token=TOKEN, dir=str(tmp_path),
                                  system_metrics=False)
         dataset = sim.register_dataset(path, version="v1", source="Simulated")
         sim.finish()
-        run = modelsapp.init("fno", server=server.url, token=TOKEN, dir=str(tmp_path),
+        run = soliton.init("fno", server=server.url, token=TOKEN, dir=str(tmp_path),
                              system_metrics=False, datasets=[dataset])
         run.finish()
         stored = server.get(f"/api/datasets/{dataset.id}")
@@ -284,11 +284,11 @@ def test_datasets_reach_the_server_with_who_made_and_used_them(tmp_path, databas
         assert [r["id"] for r in stored["usedBy"]] == [run.id]
         assert len(stored["previews"]) == 4
 
-        # Saved while offline, uploaded by `modelsapp sync`.
-        monkeypatch.delenv("MODELSAPP_SERVER", raising=False)
-        modelsapp.register_dataset(path, name="later", dir=str(tmp_path / "offline"))
-        monkeypatch.setenv("MODELSAPP_SERVER", server.url)
-        monkeypatch.setenv("MODELSAPP_TOKEN", TOKEN)
+        # Saved while offline, uploaded by `soliton sync`.
+        monkeypatch.delenv("SOLITON_SERVER", raising=False)
+        soliton.register_dataset(path, name="later", dir=str(tmp_path / "offline"))
+        monkeypatch.setenv("SOLITON_SERVER", server.url)
+        monkeypatch.setenv("SOLITON_TOKEN", TOKEN)
         with pytest.raises(SystemExit):
             cli_main(["sync", str(tmp_path / "offline")])
         assert server.get("/api/datasets/later")["samples"] == 6

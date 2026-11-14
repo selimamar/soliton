@@ -3,12 +3,12 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:models_app/app/app.dart';
-import 'package:models_app/app/router.dart';
-import 'package:models_app/data/mock/mock_run_repository.dart';
-import 'package:models_app/data/providers.dart';
-import 'package:models_app/data/run_repository.dart';
-import 'package:models_app/data/services/settings_store.dart';
+import 'package:soliton/app/app.dart';
+import 'package:soliton/app/router.dart';
+import 'package:soliton/data/mock/mock_run_repository.dart';
+import 'package:soliton/data/providers.dart';
+import 'package:soliton/data/run_repository.dart';
+import 'package:soliton/data/services/settings_store.dart';
 
 /// The whole app on demo data without network delay (or on [repository]).
 ///
@@ -26,12 +26,12 @@ Widget buildApp({RunRepository? repository, SettingsStore? store, List<Override>
         else
           ...overrides,
       ],
-      child: const ModelsApp(),
+      child: const SolitonApp(),
     );
 
 /// The Riverpod container of the app pumped with [buildApp].
 ProviderContainer containerOf(WidgetTester tester) =>
-    ProviderScope.containerOf(tester.element(find.byType(ModelsApp)));
+    ProviderScope.containerOf(tester.element(find.byType(SolitonApp)));
 
 GoRouter routerOf(WidgetTester tester) => containerOf(tester).read(routerProvider);
 

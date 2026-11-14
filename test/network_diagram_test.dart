@@ -1,15 +1,15 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:models_app/data/mock/mock_run_repository.dart';
-import 'package:models_app/data/providers.dart';
+import 'package:soliton/data/mock/mock_run_repository.dart';
+import 'package:soliton/data/providers.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:models_app/data/mock/mock_architectures.dart';
-import 'package:models_app/data/mock/mock_flows.dart';
-import 'package:models_app/data/mock/mock_runs.dart';
-import 'package:models_app/features/run_detail/network_layout.dart';
-import 'package:models_app/features/run_detail/tabs/overview_tab.dart';
-import 'package:models_app/models/model_flow.dart';
-import 'package:models_app/models/run.dart';
+import 'package:soliton/data/mock/mock_architectures.dart';
+import 'package:soliton/data/mock/mock_flows.dart';
+import 'package:soliton/data/mock/mock_runs.dart';
+import 'package:soliton/features/run_detail/network_layout.dart';
+import 'package:soliton/features/run_detail/tabs/overview_tab.dart';
+import 'package:soliton/models/model_flow.dart';
+import 'package:soliton/models/run.dart';
 
 import 'test_app.dart';
 
@@ -24,7 +24,7 @@ FlowLayer layer(String name, String type, FlowKind kind, int width, {int paramet
     );
 
 /// nn.Sequential(Linear(32, 128), ReLU(), Linear(128, 128), ReLU(), ...):
-/// what `modelsapp demo` trains.
+/// what `soliton demo` trains.
 const mlp = ModelFlow(
   input: FlowInput(shape: [32], width: 32),
   layers: [

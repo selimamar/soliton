@@ -181,9 +181,9 @@ CLOUD_VENDORS = (
 def detect_host(env: Mapping[str, str] = os.environ, root: Path = Path("/")) -> str:
     """Where the job runs: "Sherlock" for a Slurm job there, "Modal" in a Modal
     container, "AWS" on an EC2 machine, ..., else the machine's name.
-    MODELSAPP_HOST overrides it."""
-    if env.get("MODELSAPP_HOST"):
-        return env["MODELSAPP_HOST"]
+    SOLITON_HOST overrides it."""
+    if env.get("SOLITON_HOST"):
+        return env["SOLITON_HOST"]
     cluster = env.get("SLURM_CLUSTER_NAME")
     if cluster:
         return cluster.capitalize()
