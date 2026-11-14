@@ -241,3 +241,25 @@ def test_validation_sets_curves_and_spectra_reach_the_server(tmp_path, database_
         names = [f["name"] for f in server.get(f"/api/runs/{run.id}/fields")]
         assert names == ["u", "worst/u/1", "worst/u/2"]
         assert server.get(f"/api/runs/{run.id}")["hyperparameters"]["PDE"] == "Darcy 2D"
+
+
+def test_a_simulation_reaches_the_server_and_diverges_there(tmp_path, database_url):
+    np = pytest.importorskip("numpy")
+    with LiveServer(database_url) as server:
+        sim = modelsapp.simulate("burgers", t_end=1, monitor="energy", cfl_limit=1,
+                                 setup={"equation": "Burgers 1D"}, server=server.url,
+                                 token=TOKEN, dir=str(tmp_path), system_metrics=False)
+        for i in range(4):
+            sim.log({"energy": 0.25 + 0.01 * i, "cfl": 0.5}, t=0.1 * i, dt=0.1)
+        sim.log_field("u", np.sin(np.linspace(0, 6.28, 64)))
+        sim.log({"energy": float("nan")}, t=0.4)
+        sim.finish()
+        stored = server.get(f"/api/runs/{sim.id}")
+        assert stored["status"] == "crashed"
+        assert stored["statusMessage"] == "Diverged at t = 0.4: energy is NaN"
+        assert stored["simulation"] == {
+            "tEnd": 1.0, "cflLimit": 1.0, "monitor": "energy", "diverged": True,
+            "time": 0.4, "preview": [0.25, 0.26, 0.27, 0.28, "NaN"],
+        }
+        assert stored["hyperparameters"] == {"equation": "Burgers 1D"}
+        assert [f["name"] for f in server.get(f"/api/runs/{sim.id}/fields")] == ["u"]

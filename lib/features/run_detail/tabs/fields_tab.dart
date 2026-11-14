@@ -11,6 +11,7 @@ import '../../../models/field_snapshot.dart';
 import '../../../models/metric_series.dart';
 import '../../../shared/colormaps.dart';
 import '../../../shared/formatters.dart';
+import '../fields_wording.dart';
 import '../../../shared/widgets/async_value_view.dart';
 import '../../../shared/widgets/exportable.dart';
 import '../../../shared/widgets/line_chart_card.dart';
@@ -184,7 +185,8 @@ class _FieldsTabState extends ConsumerState<FieldsTab> {
                   if (f.kind == FieldKind.worst && f.worstOf == field.name) f,
               ],
             ),
-            _CurvesCards(runId: widget.runId),
+            // A simulation shows its curves on its Diagnostics tab instead.
+            if (FieldsWording.of(context).compares) CurvesCards(runId: widget.runId),
             if (outputs.isNotEmpty && layers.isNotEmpty)
               _LayersCard(
                 runId: widget.runId,
@@ -332,8 +334,8 @@ class _FieldsTabState extends ConsumerState<FieldsTab> {
     return best;
   }
 
-  static List<Widget> _lineCharts(FieldSnapshot snapshot, {required int frame}) =>
-      _fieldLineCharts(snapshot, frame: frame);
+  List<Widget> _lineCharts(FieldSnapshot snapshot, {required int frame}) =>
+      _fieldLineCharts(snapshot, frame: frame, prediction: FieldsWording.of(context).prediction);
 }
 
 /// The rows and columns of a 3D field's slice across [axis].
@@ -381,7 +383,11 @@ String? _axesNote(FieldSnapshot s, {int? rowAxis, required int columnAxis, Strin
 
 /// A 1D field (one frame of a rollout) as lines: prediction and truth, and
 /// their difference.
-List<Widget> _fieldLineCharts(FieldSnapshot snapshot, {required int frame}) {
+List<Widget> _fieldLineCharts(
+  FieldSnapshot snapshot, {
+  required int frame,
+  String prediction = 'Prediction',
+}) {
   {
     MetricSeries series(String name, Float32List data) {
       final values = snapshot.plane(data, frame: frame).values;
@@ -401,7 +407,7 @@ List<Widget> _fieldLineCharts(FieldSnapshot snapshot, {required int frame}) {
     );
     return [
       LineChartCard(
-        title: '${snapshot.hasTarget ? 'Prediction and ground truth' : 'Prediction'}$when',
+        title: '${snapshot.hasTarget ? 'Prediction and ground truth' : prediction}$when',
         xAxis: xAxis,
         showLatest: false,
         maxPoints: 512,
@@ -409,7 +415,7 @@ List<Widget> _fieldLineCharts(FieldSnapshot snapshot, {required int frame}) {
         yRange: (min: snapshot.valueRange.min, max: snapshot.valueRange.max),
         lines: [
           ChartLine(
-            label: 'Prediction',
+            label: prediction,
             color: ChartColors.train,
             series: series('prediction', snapshot.prediction),
           ),
@@ -463,11 +469,20 @@ class _NoFields extends StatelessWidget {
           children: [
             Icon(Icons.grid_on, size: 40, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(height: 12),
-            Text('This run logs no fields', style: theme.textTheme.titleMedium),
+            Text(
+              FieldsWording.of(context).compares
+                  ? 'This run logs no fields'
+                  : 'This simulation logs no fields',
+              style: theme.textTheme.titleMedium,
+            ),
             const SizedBox(height: 8),
             Text(
-              'To see a predicted field next to the true one, log snapshots with '
-              'run.log_field("u", prediction, target), or a rollout with run.log_rollout.',
+              FieldsWording.of(context).compares
+                  ? 'To see a predicted field next to the true one, log snapshots with '
+                        'run.log_field("u", prediction, target), or a rollout with '
+                        'run.log_rollout.'
+                  : 'To see its fields, log snapshots with sim.log_field("u", u), or several '
+                        'times at once with sim.log_rollout.',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
@@ -538,7 +553,7 @@ class _StepCard extends StatelessWidget {
     };
 
     return SectionCard(
-      title: 'Step ${formatInt(step.step)}',
+      title: FieldsWording.of(context).step(step.step),
       trailing: Text(
         index == last ? 'Latest of ${steps.length}' : '${index + 1} of ${steps.length}',
         style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
@@ -552,7 +567,7 @@ class _StepCard extends StatelessWidget {
               count: steps.length,
               previous: 'Previous snapshot',
               next: 'Next snapshot',
-              label: (i) => 'Step ${formatInt(steps[i].step)}',
+              label: (i) => FieldsWording.of(context).step(steps[i].step),
               onChanged: onChanged,
             ),
           const SizedBox(height: 8),
@@ -578,7 +593,8 @@ class _StepCard extends StatelessWidget {
                 ),
               ],
             )
-          else
+          // A simulation has nothing to compare its fields with: no note.
+          else if (FieldsWording.of(context).compares)
             Text(
               field.kind == FieldKind.layer
                   ? 'A layer inside the model: there is no ground truth to compare with.'
@@ -842,7 +858,7 @@ class _MapsCard extends StatelessWidget {
         );
 
     final maps = [
-      map('Prediction', prediction, Colormap.viridis, range.min, range.max),
+      map(FieldsWording.of(context).prediction, prediction, Colormap.viridis, range.min, range.max),
       if (target != null) map('Ground truth', target, Colormap.viridis, range.min, range.max),
       if (error != null) map('Error', error, Colormap.diverging, -errorScale, errorScale),
     ];
@@ -1348,7 +1364,7 @@ class _SpectrumCard extends StatelessWidget {
   Widget build(BuildContext context) => XYChartCard(
     title: 'Energy spectrum',
     subtitle: [
-      'step ${formatInt(snapshot.step)}',
+      FieldsWording.of(context).step(snapshot.step, lower: true),
       if (snapshot.isRollout) 'last frame, t = ${_formatTime(snapshot.times.last)}',
       'on the full grid',
     ].join(' · '),
@@ -1357,7 +1373,7 @@ class _SpectrumCard extends StatelessWidget {
     logY: true,
     series: [
       XYSeries(
-        label: 'Prediction',
+        label: FieldsWording.of(context).prediction,
         color: ChartColors.train,
         points: [for (final (i, k) in spectrum.k.indexed) (k, spectrum.prediction[i])],
       ),
@@ -1418,7 +1434,11 @@ class _PhysicsCardState extends State<_PhysicsCard> {
         onSelectionChanged: (s) => setState(() => _quantity = s.single),
       ),
       series: [
-        XYSeries(label: '$label, prediction', color: ChartColors.train, points: along(stats[key]!)),
+        XYSeries(
+          label: '$label, ${FieldsWording.of(context).prediction.toLowerCase()}',
+          color: ChartColors.train,
+          points: along(stats[key]!),
+        ),
         if (stats[targetKey] case final target?)
           XYSeries(label: '$label, truth', color: ChartColors.validation, points: along(target)),
       ],
@@ -1719,7 +1739,7 @@ class _WorstSheetState extends State<_WorstSheet> {
         '${formatRelativeError(widget.worst.relL2)}';
     final List<Widget> views;
     if (s.dimensions == 1) {
-      views = _fieldLineCharts(s, frame: 0);
+      views = _fieldLineCharts(s, frame: 0, prediction: FieldsWording.of(context).prediction);
     } else if (s.dimensions == 3) {
       views = [VolumeCard(snapshot: s, frame: 0, playing: false, loading: false)];
     } else {
@@ -1759,10 +1779,14 @@ class _WorstSheetState extends State<_WorstSheet> {
 /// Every curve the run logs (`run.log_curve`), at its latest step: e.g. the
 /// error against resolution, or against a PDE parameter, with the range
 /// seen in training shaded.
-class _CurvesCards extends ConsumerWidget {
-  const _CurvesCards({required this.runId});
+class CurvesCards extends ConsumerWidget {
+  const CurvesCards({super.key, required this.runId, this.stepLabel});
 
   final String runId;
+
+  /// When each curve was logged, e.g. "t = 6.4"; default as the
+  /// [FieldsWording] above says ("step 1,200").
+  final String Function(int step)? stepLabel;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1777,13 +1801,16 @@ class _CurvesCards extends ConsumerWidget {
       children: [
         for (final (i, curve) in shown.indexed) ...[
           if (i > 0) const SizedBox(height: 12),
-          _curveCard(curve),
+          _curveCard(
+            curve,
+            stepLabel ?? (step) => FieldsWording.of(context).step(step, lower: true),
+          ),
         ],
       ],
     );
   }
 
-  static Widget _curveCard(LoggedSeries<CurveStep> curve) {
+  static Widget _curveCard(LoggedSeries<CurveStep> curve, String Function(int) stepLabel) {
     final latest = curve.steps.last;
     bool spansDecades(List<double> v) {
       final positive = [
@@ -1799,7 +1826,7 @@ class _CurvesCards extends ConsumerWidget {
     final train = latest.trainRange;
     return XYChartCard(
       title: '${curve.name[0].toUpperCase()}${curve.name.substring(1)}',
-      subtitle: 'step ${formatInt(latest.step)}',
+      subtitle: stepLabel(latest.step),
       xLabel: latest.xLabel,
       logX: spansDecades(latest.x),
       logY: spansDecades(latest.y),

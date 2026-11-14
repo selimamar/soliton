@@ -1,7 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:material_ui/material_ui.dart' show GlobalKey, NavigatorState;
 
 import '../features/compare/compare_screen.dart';
+import '../features/compute/simulation_screen.dart';
+import '../features/compute/simulations_screen.dart';
 import '../features/farm/farm_screen.dart';
 import '../features/not_found/not_found_screen.dart';
 import '../features/run_detail/run_detail_screen.dart';
@@ -9,6 +12,7 @@ import '../features/runs_list/runs_list_screen.dart';
 import '../features/settings/server_screen.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/sweep/sweep_screen.dart';
+import 'sections_shell.dart';
 
 /// All routes of the app (build locations with `AppRoutes`):
 ///
@@ -20,42 +24,88 @@ import '../features/sweep/sweep_screen.dart';
 ///   /farm                 runs as ducks (finished) and eggs (live)
 ///   /settings             settings
 ///   /settings/server      connect to a server
+///   /compute              simulations
+///   /compute/:id          a simulation; ?tab=diagnostics (or fields,
+///                         system) opens on that tab
 ///
+/// The runs list and the simulations share a shell that switches between
+/// them; every other screen covers it.
 /// Any other path shows [NotFoundScreen].
 final routerProvider = Provider<GoRouter>((ref) {
   // Don't `ref.watch` other providers in here: a rebuild would create a new
   // GoRouter and reset the navigation stack. For rules such as "log in
   // first", use `redirect` with `refreshListenable` and read state with
   // `ref.read` instead.
+  final root = GlobalKey<NavigatorState>();
   final router = GoRouter(
+    navigatorKey: root,
     routes: [
-      GoRoute(
-        path: '/',
-        builder: (context, state) => const RunsListScreen(),
+      ShellRoute(
+        builder: (context, state, child) => SectionsShell(location: state.uri.path, child: child),
         routes: [
           GoRoute(
-            path: 'runs/:runId',
-            builder: (context, state) => RunDetailScreen(
-              runId: state.pathParameters['runId']!,
-              initialTab:
-                  RunTab.values.asNameMap()[state.uri.queryParameters['tab']] ?? RunTab.overview,
-            ),
+            path: '/',
+            builder: (context, state) => const RunsListScreen(),
+            routes: [
+              GoRoute(
+                parentNavigatorKey: root,
+                path: 'runs/:runId',
+                builder: (context, state) => RunDetailScreen(
+                  runId: state.pathParameters['runId']!,
+                  initialTab:
+                      RunTab.values.asNameMap()[state.uri.queryParameters['tab']] ??
+                      RunTab.overview,
+                ),
+              ),
+              GoRoute(
+                parentNavigatorKey: root,
+                path: 'compare',
+                builder: (context, state) => CompareScreen(
+                  runIds: [
+                    for (final id in (state.uri.queryParameters['runs'] ?? '').split(','))
+                      if (id.isNotEmpty) id,
+                  ],
+                ),
+              ),
+              GoRoute(
+                parentNavigatorKey: root,
+                path: 'sweep',
+                builder: (context, state) => const SweepScreen(),
+              ),
+              GoRoute(
+                parentNavigatorKey: root,
+                path: 'farm',
+                builder: (context, state) => const FarmScreen(),
+              ),
+              GoRoute(
+                parentNavigatorKey: root,
+                path: 'settings',
+                builder: (context, state) => const SettingsScreen(),
+                routes: [
+                  GoRoute(
+                    parentNavigatorKey: root,
+                    path: 'server',
+                    builder: (context, state) => const ServerScreen(),
+                  ),
+                ],
+              ),
+            ],
           ),
           GoRoute(
-            path: 'compare',
-            builder: (context, state) => CompareScreen(
-              runIds: [
-                for (final id in (state.uri.queryParameters['runs'] ?? '').split(','))
-                  if (id.isNotEmpty) id,
-              ],
-            ),
-          ),
-          GoRoute(path: 'sweep', builder: (context, state) => const SweepScreen()),
-          GoRoute(path: 'farm', builder: (context, state) => const FarmScreen()),
-          GoRoute(
-            path: 'settings',
-            builder: (context, state) => const SettingsScreen(),
-            routes: [GoRoute(path: 'server', builder: (context, state) => const ServerScreen())],
+            path: '/compute',
+            builder: (context, state) => const SimulationsScreen(),
+            routes: [
+              GoRoute(
+                parentNavigatorKey: root,
+                path: ':simulationId',
+                builder: (context, state) => SimulationScreen(
+                  simulationId: state.pathParameters['simulationId']!,
+                  initialTab:
+                      SimulationTab.values.asNameMap()[state.uri.queryParameters['tab']] ??
+                      SimulationTab.overview,
+                ),
+              ),
+            ],
           ),
         ],
       ),

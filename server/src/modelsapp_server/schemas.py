@@ -66,6 +66,17 @@ class _In(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
+class SimulationIn(_In):
+    """What makes a run a simulation (see the logger's _simulation.py)."""
+
+    # The simulated time it runs to (progress, time left).
+    tEnd: Optional[Annotated[float, Field(gt=0, allow_inf_nan=False)]] = None
+    # Drawn on the chart of a value named "cfl".
+    cflLimit: Optional[Annotated[float, Field(gt=0, allow_inf_nan=False)]] = None
+    # The value drawn on its card in the list.
+    monitor: Optional[Name] = None
+
+
 class RunIn(_In):
     """A run's description, sent by the logger when the run starts."""
 
@@ -82,6 +93,8 @@ class RunIn(_In):
     notes: Notes = ""
     # The machine, GPUs, software and Slurm job (see the logger's _system.py).
     system: SystemInfo = None
+    # Set for a simulation (e.g. a PDE solve) rather than a training run.
+    simulation: Optional[SimulationIn] = None
 
 
 class RunNotesIn(_In):
@@ -262,6 +275,8 @@ class StatusEvent(_In):
     status: Literal["finished", "crashed"]
     message: Optional[str] = Field(default=None, max_length=2000)
     time: Time = None
+    # A simulation that crashed because a value turned NaN or infinite.
+    diverged: bool = False
 
 
 Event = Annotated[

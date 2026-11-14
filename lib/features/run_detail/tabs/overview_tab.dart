@@ -31,13 +31,13 @@ class OverviewTab extends StatelessWidget {
     return SpacedListView(
       children: [
         if (run.statusMessage case final message?)
-          _StatusBanner(message: message, isError: run.status == RunStatus.crashed),
+          StatusBanner(message: message, isError: run.status == RunStatus.crashed),
         if (run.latestLoss != null) _LossHero(run: run),
         // Ink says the progress in the loss sentence instead.
         if (AppTheme.styleOf(context) != AppStyle.ink || run.latestLoss == null)
           _ProgressStrip(run: run),
         _SpeedStrip(runId: run.id),
-        if (HourlyPrice.of(run.system) case final price?) _CostStrip(run: run, price: price),
+        if (HourlyPrice.of(run.system) case final price?) CostStrip(run: run, price: price),
         RunNotesCard(run: run),
         SectionCard(
           title: 'Hyperparameters',
@@ -88,8 +88,8 @@ class _SpeedStrip extends ConsumerWidget {
 /// Roughly what the run has cost, and will cost if it is still going, from
 /// its machine's price per hour (see [HourlyPrice]). Rounded: it's an
 /// estimate. Kept current by [clockProvider].
-class _CostStrip extends ConsumerWidget {
-  const _CostStrip({required this.run, required this.price});
+class CostStrip extends ConsumerWidget {
+  const CostStrip({super.key, required this.run, required this.price});
 
   final Run run;
   final HourlyPrice price;
@@ -375,8 +375,8 @@ String _clock(Duration d) {
   return '${two(d.inHours)}:${two(d.inMinutes % 60)}:${two(d.inSeconds % 60)}';
 }
 
-class _StatusBanner extends StatelessWidget {
-  const _StatusBanner({required this.message, required this.isError});
+class StatusBanner extends StatelessWidget {
+  const StatusBanner({super.key, required this.message, required this.isError});
 
   final String message;
   final bool isError;

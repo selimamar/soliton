@@ -1,6 +1,7 @@
 import 'layer_info.dart';
 import 'model_flow.dart';
 import 'model_helpers.dart';
+import 'simulation_info.dart';
 import 'system_info.dart';
 
 enum RunStatus { live, finished, crashed }
@@ -31,6 +32,7 @@ class Run {
     this.tags = const [],
     this.notes = '',
     this.system,
+    this.simulation,
   });
 
   factory Run.fromJson(Map<String, Object?> json) => Run(
@@ -60,6 +62,10 @@ class Run {
     notes: json['notes'] as String? ?? '',
     system: switch (json['system']) {
       final Map<String, Object?> system => SystemInfo.fromJson(system),
+      _ => null,
+    },
+    simulation: switch (json['simulation']) {
+      final Map<String, Object?> simulation => SimulationInfo.fromJson(simulation),
       _ => null,
     },
   );
@@ -106,6 +112,11 @@ class Run {
   /// logger didn't say (an older logger).
   final SystemInfo? system;
 
+  /// Set for a simulation (shown under Compute) rather than a training run.
+  final SimulationInfo? simulation;
+
+  bool get isSimulation => simulation != null;
+
   int get parameterCount => architecture.totalParameters;
 
   double? get latestLoss => lossPreview.isEmpty ? null : lossPreview.last;
@@ -122,8 +133,11 @@ class Run {
     return change;
   }
 
+  /// How far along it is (0–1): steps of [totalSteps], or a simulation's
+  /// simulated time of its end time.
   double get progress =>
-      totalSteps == 0 ? 0 : (currentStep / totalSteps).clamp(0.0, 1.0).toDouble();
+      simulation?.timeProgress ??
+      (totalSteps == 0 ? 0 : (currentStep / totalSteps).clamp(0.0, 1.0).toDouble());
 
   /// Time the run has been going, as of [now] (or until it ended).
   ///
@@ -131,9 +145,17 @@ class Run {
   /// on screen, and so tests can use a fixed time.
   Duration elapsedAt(DateTime now) => (endedAt ?? now).difference(startedAt);
 
-  /// Naive estimate assuming a constant time per step. Null if not live.
+  /// Naive estimate assuming a constant time per step (for a simulation
+  /// with an end time, a constant pace of simulated time). Null if not live.
   Duration? estimatedRemainingAt(DateTime now) {
-    if (status != RunStatus.live || currentStep == 0) return null;
+    if (status != RunStatus.live) return null;
+    if (simulation case SimulationInfo(:final tEnd?, :final time?) when tEnd > 0) {
+      if (!time.isFinite || time <= 0) return null;
+      if (time >= tEnd) return Duration.zero;
+      return Duration(milliseconds: (elapsedAt(now).inMilliseconds * (tEnd - time) / time).round());
+    }
+    // A steady solve without a maximum number of iterations: unknown.
+    if (currentStep == 0 || (isSimulation && totalSteps == 0)) return null;
     if (currentStep >= totalSteps) return Duration.zero;
     final msPerStep = elapsedAt(now).inMilliseconds / currentStep;
     return Duration(milliseconds: (msPerStep * (totalSteps - currentStep)).round());
@@ -158,6 +180,7 @@ class Run {
     'tags': tags,
     'notes': notes,
     'system': system?.toJson(),
+    'simulation': simulation?.toJson(),
   };
 
   @override
@@ -181,7 +204,8 @@ class Run {
       other.statusMessage == statusMessage &&
       deepListEquals(other.tags, tags) &&
       other.notes == notes &&
-      other.system == system;
+      other.system == system &&
+      other.simulation == simulation;
 
   @override
   int get hashCode => Object.hash(
@@ -205,5 +229,6 @@ class Run {
     Object.hashAll(tags),
     notes,
     system,
+    simulation,
   );
 }

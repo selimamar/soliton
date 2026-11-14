@@ -335,6 +335,53 @@ abstract final class AppTheme {
           letterSpacing: bar ? 1 : 0,
         ),
       ),
+      // The sections (Runs, Compute): flat, the open one in the accent.
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: bar ? _barColor : scheme.surfaceContainerLow,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        height: 64,
+        indicatorColor: barAccent.withValues(alpha: bar ? 0.22 : 0.12),
+        indicatorShape: corners,
+        iconTheme: WidgetStateProperty.resolveWith(
+          (states) => IconThemeData(
+            color: states.contains(WidgetState.selected)
+                ? barAccent
+                : (bar ? const Color(0xFF9CA3AF) : scheme.onSurfaceVariant),
+          ),
+        ),
+        labelTextStyle: WidgetStateProperty.resolveWith(
+          (states) => TextStyle(
+            fontFamily: style.bodyFont,
+            fontSize: 12,
+            fontWeight: states.contains(WidgetState.selected) ? FontWeight.w600 : FontWeight.w500,
+            color: states.contains(WidgetState.selected)
+                ? barAccent
+                : (bar ? const Color(0xFF9CA3AF) : scheme.onSurfaceVariant),
+          ),
+        ),
+      ),
+      navigationRailTheme: NavigationRailThemeData(
+        backgroundColor: bar ? _barColor : scheme.surfaceContainerLow,
+        indicatorColor: barAccent.withValues(alpha: bar ? 0.22 : 0.12),
+        indicatorShape: corners,
+        selectedIconTheme: IconThemeData(color: barAccent),
+        unselectedIconTheme: IconThemeData(
+          color: bar ? const Color(0xFF9CA3AF) : scheme.onSurfaceVariant,
+        ),
+        selectedLabelTextStyle: TextStyle(
+          fontFamily: style.bodyFont,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: barAccent,
+        ),
+        unselectedLabelTextStyle: TextStyle(
+          fontFamily: style.bodyFont,
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: bar ? const Color(0xFF9CA3AF) : scheme.onSurfaceVariant,
+        ),
+      ),
       cardTheme: CardThemeData(
         color: scheme.surfaceContainerLow,
         elevation: 0,

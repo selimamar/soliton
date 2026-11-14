@@ -67,6 +67,13 @@ fine, don't work around it.
 - If one step takes only a few milliseconds, log every 10-50 steps: logging a GPU
   tensor makes Python wait for the GPU.
 
+- For a simulation that isn't training a model (a PDE solver):
+  `sim = modelsapp.simulate(name, project=..., t_end=..., setup={...}, monitor="energy")`,
+  then each step `sim.log({"energy": E, "cfl": cfl}, t=t, dt=dt)`, a field
+  every few hundred steps with `sim.log_field("u", u)`, and `sim.finish()`
+  (or `with sim:`). Don't replace NaN before logging it: the first NaN marks
+  the simulation as diverged. See logger/README.md, "Simulations".
+
 **Check it works** with a short run (a few hundred steps), then:
 `curl -s -H "Authorization: Bearer $MODELSAPP_TOKEN" "$MODELSAPP_SERVER/api/runs"`
 The new run should be in the list.

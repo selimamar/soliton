@@ -29,6 +29,19 @@ void main() {
         handle.dispose();
       });
 
+      for (final location in ['/compute', '/compute/burgers-shock-fd']) {
+        testWidgets('$location meets accessibility guidelines ($name)', (tester) async {
+          final handle = tester.ensureSemantics();
+          await openApp(tester, location);
+          containerOf(tester).read(appStyleProvider.notifier).set(style);
+          containerOf(tester).read(themeModeProvider.notifier).set(mode);
+          await tester.pumpAndSettle();
+
+          await expectGuidelines(tester);
+          handle.dispose();
+        });
+      }
+
       testWidgets('run overview meets accessibility guidelines ($name)', (tester) async {
         final handle = tester.ensureSemantics();
         await openApp(tester, '/runs/unet-seg');

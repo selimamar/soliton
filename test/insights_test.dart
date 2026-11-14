@@ -178,7 +178,10 @@ void main() {
   });
 
   test('runs can be grouped by the PDE they solve', () async {
-    final runs = await MockRunRepository(latency: Duration.zero).fetchRuns();
+    final runs = [
+      for (final run in await MockRunRepository(latency: Duration.zero).fetchRuns())
+        if (!run.isSimulation) run,
+    ];
     final groups = {for (final g in groupRuns(runs, RunGrouping.pde)) g.label: g.runs.length};
     expect(groups['Navier–Stokes 2D, vorticity form'], 5);
     expect(groups['Navier–Stokes 3D, periodic box'], 1);

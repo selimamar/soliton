@@ -199,7 +199,7 @@ class LiveUpdates extends Notifier<LiveStatus> {
 
   void _refresh() {
     _refreshTimer = null;
-    if (_refreshList) ref.invalidate(runsProvider);
+    if (_refreshList) ref.invalidate(allRunsProvider);
     if (_changedRuns.isNotEmpty) ref.invalidate(latestMetricsProvider);
     for (final runId in _changedRuns) {
       ref.invalidate(runProvider(runId));

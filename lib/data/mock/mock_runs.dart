@@ -422,7 +422,7 @@ MockRun _buildRun({
       rate: 40,
       noise: 300,
     ),
-    if (system != null) ..._systemMetrics(curves, system),
+    if (system != null) ...mockSystemMetrics(curves, system),
   };
 
   final statLayers = _layersForStats(architecture);
@@ -507,7 +507,7 @@ List<MockRun> _sweepRuns(DateTime now) => [
 
 /// What the logger's system monitor would have sampled on [system]: GPUs
 /// kept busy, memory filling up early, then steady.
-Map<String, MetricSeries> _systemMetrics(CurveGenerator curves, SystemInfo system) {
+Map<String, MetricSeries> mockSystemMetrics(CurveGenerator curves, SystemInfo system) {
   final series = <String, MetricSeries>{};
   void add(String name, MetricSeries values, {double low = 0, double high = double.infinity}) {
     series[name] = MetricSeries(

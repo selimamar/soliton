@@ -14,6 +14,16 @@
         optimizer.step(); optimizer.zero_grad()
     run.finish()
 
+Simulations (a PDE solve, any computation stepping through time) are
+monitored the same way:
+
+    sim = modelsapp.simulate("kelvin-helmholtz", t_end=10,
+                             setup={"equation": "Navier-Stokes 2D", "Re": 1e4})
+    while t < 10:
+        ...
+        sim.log({"energy": E, "cfl": cfl}, t=t, dt=dt)
+    sim.finish()
+
 The server and token come from MODELSAPP_SERVER and MODELSAPP_TOKEN. Without
 a server, runs are saved locally (offline) and uploaded later with
 `modelsapp sync`. See logger/README.md.
@@ -24,8 +34,9 @@ from __future__ import annotations
 from typing import Any, Iterable, Mapping, Optional
 
 from ._run import Run
+from ._simulation import Diverged, Simulation
 
-__all__ = ["Run", "init"]
+__all__ = ["Diverged", "Run", "Simulation", "init", "simulate"]
 __version__ = "0.1.0"
 
 
@@ -91,6 +102,64 @@ def init(
         price_per_hour=price_per_hour,
         total_steps=total_steps,
         total_epochs=total_epochs,
+        host=host,
+        id=id,
+        server=server,
+        token=token,
+        mode=mode,
+        dir=dir,
+    )
+
+
+def simulate(
+    name: str,
+    *,
+    project: str = "",
+    setup: Optional[Mapping[str, Any]] = None,
+    t_end: Optional[float] = None,
+    max_iterations: int = 0,
+    monitor: Optional[str] = None,
+    cfl_limit: Optional[float] = None,
+    stop_on_divergence: bool = False,
+    tags: Optional[Iterable[str]] = None,
+    notes: str = "",
+    system_metrics: bool = True,
+    system_interval: float = 15,
+    price_per_hour: Optional[float] = None,
+    host: Optional[str] = None,
+    id: Optional[str] = None,
+    server: Optional[str] = None,
+    token: Optional[str] = None,
+    mode: Optional[str] = None,
+    dir: Optional[str] = None,
+) -> Simulation:
+    """Starts monitoring a simulation, e.g. a PDE solve. It shows in the
+    app's Compute section.
+
+    setup: how it is set up, shown like hyperparameters: equation, method,
+    grid, parameters, boundary and initial conditions (a dict, nested is
+    fine). t_end: the simulated time it runs to, for the progress bar and
+    the time left; for a steady solve, max_iterations instead. monitor: the
+    logged value drawn on its card in the list, e.g. "energy". cfl_limit:
+    drawn on the chart of a value named "cfl". The first NaN or infinity
+    logged (a value or a field) ends it as diverged; stop_on_divergence
+    also raises `modelsapp.Diverged` then, to stop the simulation itself.
+    The other options are as for `init()`.
+    """
+    return Simulation(
+        name,
+        project=project,
+        setup=setup,
+        t_end=t_end,
+        max_iterations=max_iterations,
+        monitor=monitor,
+        cfl_limit=cfl_limit,
+        stop_on_divergence=stop_on_divergence,
+        tags=tags,
+        notes=notes,
+        system_metrics=system_metrics,
+        system_interval=system_interval,
+        price_per_hour=price_per_hour,
         host=host,
         id=id,
         server=server,

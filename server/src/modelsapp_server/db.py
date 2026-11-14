@@ -116,6 +116,20 @@ class RunSystemRow(Base):
     info: Mapped[dict] = mapped_column(JSON)
 
 
+class RunSimulationRow(Base):
+    """What makes a run a simulation: tEnd, cflLimit, monitor (as the
+    logger sends them) and whether it diverged. A table of its own, so older
+    databases get it without a migration; runs without a row are training
+    runs."""
+
+    __tablename__ = "run_simulation"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    info: Mapped[dict] = mapped_column(JSON)
+
+
 class LayerRow(Base):
     """A watched layer, with its latest statistics."""
 

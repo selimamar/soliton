@@ -8,6 +8,7 @@ import '../../../shared/formatters.dart';
 import '../../../shared/widgets/exportable.dart';
 import '../../../shared/widgets/section_card.dart';
 import '../widgets/field_heatmap.dart';
+import '../fields_wording.dart';
 import 'volume_renderer.dart';
 import 'volume_view.dart';
 
@@ -105,7 +106,7 @@ class _VolumeCardState extends State<VolumeCard> {
         switch (snapshot.kind) {
           FieldKind.layer => 'Output',
           FieldKind.weights => '|w| by mode',
-          _ => 'Prediction',
+          _ => FieldsWording.of(context).prediction,
         },
         snapshot.prediction,
         Colormap.viridis,

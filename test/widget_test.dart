@@ -42,7 +42,7 @@ void main() {
   testWidgets('runs list shows the demo runs', (tester) async {
     await openApp(tester);
 
-    expect(find.text('Runs'), findsOneWidget);
+    expect(find.descendant(of: find.byType(AppBar), matching: find.text('Runs')), findsOneWidget);
     expect(find.text('resnet50-cifar'), findsOneWidget);
     expectAllRuns(tester);
   });

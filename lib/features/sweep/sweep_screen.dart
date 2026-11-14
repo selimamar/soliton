@@ -63,7 +63,7 @@ class _SweepScreenState extends ConsumerState<SweepScreen> {
       appBar: AppBar(title: const Text('Sweep')),
       body: AsyncValueView(
         value: ref.watch(runsProvider),
-        onRetry: () => ref.invalidate(runsProvider),
+        onRetry: () => ref.invalidate(allRunsProvider),
         data: (runs) {
           final projects = _projects(runs);
           if (projects.isEmpty) {

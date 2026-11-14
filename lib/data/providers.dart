@@ -78,10 +78,33 @@ Duration? retryDataRequest(int retryCount, Object error) {
   return ProviderContainer.defaultRetry(retryCount, error, maxRetries: 3);
 }
 
-final runsProvider = FutureProvider<List<Run>>(
+/// Everything the server has: training runs and simulations, newest first.
+/// Screens read [runsProvider] or [simulationsProvider]; refresh this one.
+final allRunsProvider = FutureProvider<List<Run>>(
   (ref) => ref.watch(runRepositoryProvider).fetchRuns(),
   retry: retryDataRequest,
 );
+
+/// The training runs (the runs list, compare, sweep, farm).
+final runsProvider = FutureProvider<List<Run>>(
+  (ref) async => [
+    for (final run in await ref.watch(allRunsProvider.future))
+      if (!run.isSimulation) run,
+  ],
+  // allRunsProvider has retried already.
+  retry: _noRetry,
+);
+
+/// The simulations (the Compute section).
+final simulationsProvider = FutureProvider<List<Run>>(
+  (ref) async => [
+    for (final run in await ref.watch(allRunsProvider.future))
+      if (run.isSimulation) run,
+  ],
+  retry: _noRetry,
+);
+
+Duration? _noRetry(int retryCount, Object error) => null;
 
 // Per-run providers are auto-disposed: a run's data (possibly large time
 // series) is dropped as soon as no screen shows that run any more.
@@ -151,7 +174,7 @@ class RunNotesEditor {
   Future<Run> save(String runId, {List<String>? tags, String? notes}) async {
     final run = await _ref.read(runRepositoryProvider).updateNotes(runId, tags: tags, notes: notes);
     _ref
-      ..invalidate(runsProvider)
+      ..invalidate(allRunsProvider)
       ..invalidate(runProvider(runId));
     return run;
   }

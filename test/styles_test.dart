@@ -39,12 +39,18 @@ void main() {
         '/settings/server',
         '/sweep',
         '/compare?runs=resnet50-cifar,unet-seg',
+        '/compute',
       ]) {
         await visit(location);
       }
       for (final id in ['resnet50-cifar', 'unet-seg', 'fno-navier-stokes', 'fno3d-turbulence']) {
         for (final tab in ['overview', 'metrics', 'layers', 'fields', 'system']) {
           await visit('/runs/$id?tab=$tab');
+        }
+      }
+      for (final id in ['kelvin-helmholtz-2048', 'burgers-shock-fd', 'darcy-heterogeneous']) {
+        for (final tab in ['overview', 'diagnostics', 'fields', 'system']) {
+          await visit('/compute/$id?tab=$tab');
         }
       }
     });

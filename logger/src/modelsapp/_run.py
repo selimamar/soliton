@@ -77,6 +77,7 @@ class Run:
         token: Optional[str] = None,
         mode: Optional[str] = None,
         dir: Optional[str] = None,
+        _simulation: Optional[dict] = None,
     ) -> None:
         server = server or os.environ.get("MODELSAPP_SERVER")
         token = token or os.environ.get("MODELSAPP_TOKEN")
@@ -112,6 +113,11 @@ class Run:
             "notes": str(notes or "")[:10_000],
             "system": _system_info(price) if mode != "disabled" else None,
         }
+        if _simulation is not None:
+            # What makes it a simulation (see _simulation.py).
+            self._description["simulation"] = _simulation
+        # Added to the final status record, e.g. that a simulation diverged.
+        self._status_extra: dict = {}
         self._files = RunFiles(self.directory)
         self._lock = threading.RLock()
         self._last_step = -1
@@ -432,7 +438,8 @@ class Run:
             self._finished = True
             if self._monitor is not None:
                 self._monitor.stop()
-            event = {"type": "status", "status": status, "time": utc_now_iso()}
+            event = {"type": "status", "status": status, "time": utc_now_iso(),
+                     **self._status_extra}
             if message:
                 event["message"] = message[:2000]
             self._files.append(event)

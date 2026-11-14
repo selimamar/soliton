@@ -6,12 +6,18 @@ import '../../models/run_insights.dart';
 import '../run_repository.dart';
 import '../tags.dart';
 import 'mock_runs.dart';
+import 'mock_simulations.dart';
 
 /// A [RunRepository] serving generated demo data, with a fake network delay.
 /// Edited tags and notes are kept in memory, until the app restarts.
 class MockRunRepository implements RunRepository {
   MockRunRepository({this.latency = const Duration(milliseconds: 350)})
-    : _runs = buildMockRuns(DateTime.now());
+    : _runs = _build(DateTime.now());
+
+  static List<MockRun> _build(DateTime now) => [
+    ...buildMockRuns(now),
+    ...buildMockSimulations(now),
+  ];
 
   final Duration latency;
   final List<MockRun> _runs;

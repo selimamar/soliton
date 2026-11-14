@@ -11,7 +11,7 @@ from conftest import AUTH, TOKEN
 RUN_KEYS = {
     "id", "name", "project", "host", "status", "startedAt", "endedAt", "currentStep",
     "totalSteps", "currentEpoch", "totalEpochs", "hyperparameters", "architecture",
-    "lossPreview", "statusMessage", "tags", "notes", "system",
+    "lossPreview", "statusMessage", "tags", "notes", "system", "simulation",
 }
 LAYER_KEYS = {
     "layerName", "activationMean", "activationStd", "gradNorm", "activationHistogram",
@@ -598,3 +598,43 @@ def test_deleting_a_run_deletes_its_evals_and_curves(client):
     client.delete("/api/runs/tiny-1")
     create_run(client)
     assert client.get("/api/runs/tiny-1/curves").json() == []
+
+
+def test_a_simulation_is_a_run_with_its_simulated_time(client):
+    assert create_run(client)["simulation"] is None, "a training run"
+    sim = {"tEnd": 10, "cflLimit": 1.0, "monitor": "energy"}
+    created = create_run(client, "kh-1", hyperparameters={"Re": "10000"}, totalSteps=0,
+                         simulation=sim)
+    assert created["simulation"] == {**sim, "time": None, "preview": []}
+    send(client, [metrics(i, sim__t=0.5 * i, energy=1.0 - 0.01 * i, cfl=0.4) for i in range(5)],
+         run_id="kh-1")
+    run = client.get("/api/runs/kh-1").json()
+    assert run["simulation"]["time"] == 2.0, "the latest simulated time"
+    assert run["simulation"]["preview"] == [1.0, 0.99, 0.98, 0.97, 0.96]
+    assert run["lossPreview"] == []
+    names = {s["name"] for s in client.get("/api/runs/kh-1/metrics").json()}
+    assert {"sim/t", "energy", "cfl"} <= names, "values are ordinary metrics"
+
+
+def test_a_diverged_simulation_stays_diverged(client):
+    create_run(client, "burgers", simulation={"tEnd": 1})
+    send(client, [metrics(0, sim__t=0.8, energy="NaN"),
+                  {"type": "status", "status": "crashed", "diverged": True,
+                   "message": "Diverged at t = 0.8: energy is NaN"}], run_id="burgers")
+    run = client.get("/api/runs/burgers").json()
+    assert run["status"] == "crashed" and run["simulation"]["diverged"] is True
+    assert run["statusMessage"].startswith("Diverged")
+    # The logger resending the description doesn't forget it.
+    assert create_run(client, "burgers", simulation={"tEnd": 1})["simulation"]["diverged"] is True
+    # A training run's crash is never a divergence.
+    create_run(client)
+    send(client, [{"type": "status", "status": "crashed", "diverged": True}])
+    assert client.get("/api/runs/tiny-1").json()["simulation"] is None
+    client.delete("/api/runs/burgers")
+    assert client.get("/api/runs/burgers").status_code == 404
+
+
+def test_bad_simulation_settings_are_rejected(client):
+    for bad in ({"tEnd": 0}, {"tEnd": "NaN"}, {"cflLimit": -1}, {"monitor": ""}):
+        response = client.put("/api/runs/s", json={"name": "s", "simulation": bad})
+        assert response.status_code == 422, bad

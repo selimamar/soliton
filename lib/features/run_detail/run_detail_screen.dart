@@ -91,11 +91,11 @@ class RunDetailScreen extends ConsumerWidget {
             // before the chart's own recognizer (36 px) gets a chance.
             physics: const NeverScrollableScrollPhysics(),
             children: [
-              _KeepAlive(child: OverviewTab(run: run)),
-              _KeepAlive(child: MetricsTab(runId: run.id)),
-              _KeepAlive(child: LayersTab(runId: run.id)),
-              _KeepAlive(child: FieldsTab(runId: run.id)),
-              _KeepAlive(child: SystemTab(run: run)),
+              KeepAliveTab(child: OverviewTab(run: run)),
+              KeepAliveTab(child: MetricsTab(runId: run.id)),
+              KeepAliveTab(child: LayersTab(runId: run.id)),
+              KeepAliveTab(child: FieldsTab(runId: run.id)),
+              KeepAliveTab(child: SystemTab(run: run)),
             ],
           ),
         ),
@@ -106,16 +106,16 @@ class RunDetailScreen extends ConsumerWidget {
 
 /// Keeps a tab alive while it is off screen, so switching tabs keeps its
 /// scroll position and doesn't refetch its (auto-disposed) data.
-class _KeepAlive extends StatefulWidget {
-  const _KeepAlive({required this.child});
+class KeepAliveTab extends StatefulWidget {
+  const KeepAliveTab({super.key, required this.child});
 
   final Widget child;
 
   @override
-  State<_KeepAlive> createState() => _KeepAliveState();
+  State<KeepAliveTab> createState() => _KeepAliveTabState();
 }
 
-class _KeepAliveState extends State<_KeepAlive> with AutomaticKeepAliveClientMixin {
+class _KeepAliveTabState extends State<KeepAliveTab> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 

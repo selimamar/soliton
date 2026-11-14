@@ -124,7 +124,17 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
  "layer": "blocks.0", "position": 1, "reduction": "mean of 32 channels",
  "layerShape": [32, 64, 64], "shape": [64, 64], "target": null, ...}
 {"type": "status", "status": "crashed", "message": "RuntimeError: CUDA out of memory"}
+{"type": "status", "status": "crashed", "diverged": true,
+ "message": "Diverged at t = 0.83: energy is NaN"}
 ```
+
+**Simulations** (`modelsapp.simulate`) are runs whose description has a
+`simulation` entry: `{"tEnd": 10, "cflLimit": 1, "monitor": "energy"}`
+(all optional). Their values are ordinary metrics, the simulated time the
+metric `sim/t`. A run reads back with `simulation` set to that entry plus
+`time` (the latest `sim/t`), `preview` (the monitored value, downsampled)
+and `diverged`; training runs have `"simulation": null`. They're kept in
+their own table, so older databases get them without a migration.
 
 **Field snapshots** (`run.log_field`, `run.log_rollout` and
 `run.capture_layers` in the logger): each frame a 1D, 2D or 3D array of at

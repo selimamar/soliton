@@ -138,7 +138,9 @@ void main() {
       final best = find.textContaining(expected[0]), second = find.textContaining(expected[1]);
       await tester.scrollUntilVisible(best, 200, scrollable: visibleList());
       await tester.pumpAndSettle();
-      await tester.drag(visibleList(), Offset(0, -tester.getTopLeft(best).dy + 120));
+      // A drag shorter than a touch slop would be a tap, opening the run.
+      final offset = -tester.getTopLeft(best).dy + 120;
+      if (offset.abs() > 40) await tester.drag(visibleList(), Offset(0, offset));
       await tester.pumpAndSettle();
       expect(second, findsOneWidget);
       expect(tester.getTopLeft(best).dy, lessThan(tester.getTopLeft(second).dy));

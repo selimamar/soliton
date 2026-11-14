@@ -40,7 +40,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Stop comparing'));
       await tester.pumpAndSettle();
-      expect(find.text('Runs'), findsOneWidget);
+      expect(find.descendant(of: find.byType(AppBar), matching: find.text('Runs')), findsOneWidget);
       await tester.tap(find.text('resnet50-cifar'));
       await tester.pumpAndSettle();
       expect(locationOf(tester), '/runs/resnet50-cifar');

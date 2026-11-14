@@ -77,7 +77,7 @@ class RunsListScreen extends ConsumerWidget {
       appBar: picked == null ? _appBar(context, ref) : _pickingAppBar(context, ref, picked),
       body: AsyncValueView(
         value: ref.watch(runsProvider),
-        onRetry: () => ref.invalidate(runsProvider),
+        onRetry: () => ref.invalidate(allRunsProvider),
         data: (runs) => _RunsList(runs: runs),
       ),
     );
@@ -207,14 +207,18 @@ class _RunsList extends ConsumerWidget {
     }
 
     return RefreshIndicator(
-      onRefresh: () => ref.refresh(runsProvider.future),
+      onRefresh: () => ref.refresh(allRunsProvider.future),
       child: SpacedListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         spacing: journal ? 0 : 8,
         children: [
           if (journal && picked == null && runs.isNotEmpty) _Abstract(runs: runs),
-          _FilterBar(runs: runs),
+          StatusFilterBar(
+            runs: runs,
+            selected: ref.watch(runFilterProvider),
+            onSelected: ref.read(runFilterProvider.notifier).select,
+          ),
           if (demo && picked == null) const _DemoBanner(),
           if (journal && visibleRuns.isNotEmpty)
             _TableHeader(value: logged == null ? 'Loss' : order.shortLabel),
@@ -405,17 +409,25 @@ class _LiveStatusButton extends ConsumerWidget {
 
 /// Status filters, each showing how many runs it matches: underlined
 /// labels in Paper, bracketed buttons in Lab, text links in Ink.
-class _FilterBar extends ConsumerWidget {
-  const _FilterBar({required this.runs});
+class StatusFilterBar extends StatelessWidget {
+  const StatusFilterBar({
+    super.key,
+    required this.runs,
+    required this.selected,
+    required this.onSelected,
+  });
 
   final List<Run> runs;
 
+  /// The status shown; null for all.
+  final RunStatus? selected;
+  final ValueChanged<RunStatus?> onSelected;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final style = AppTheme.styleOf(context);
-    final selected = ref.watch(runFilterProvider);
     final options = <RunStatus?>[null, ...RunStatus.values];
 
     int countOf(RunStatus? status) =>
@@ -474,10 +486,7 @@ class _FilterBar extends ConsumerWidget {
       return Semantics(
         button: true,
         selected: isSelected,
-        child: InkWell(
-          onTap: () => ref.read(runFilterProvider.notifier).select(status),
-          child: label,
-        ),
+        child: InkWell(onTap: () => onSelected(status), child: label),
       );
     }
 

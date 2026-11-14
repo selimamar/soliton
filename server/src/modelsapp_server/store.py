@@ -15,7 +15,17 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from .db import FieldRow, LayerPointRow, RunItemRow, LayerRow, MetricPointRow, RunNotesRow, RunRow, RunSystemRow
+from .db import (
+    FieldRow,
+    LayerPointRow,
+    LayerRow,
+    MetricPointRow,
+    RunItemRow,
+    RunNotesRow,
+    RunRow,
+    RunSimulationRow,
+    RunSystemRow,
+)
 from .floats import decode_float, downsample, encode_float, from_columns, to_columns
 from .schemas import (
     CurveEvent,
@@ -29,6 +39,7 @@ from .schemas import (
 )
 
 TRAIN_LOSS = "train/loss"
+SIM_TIME = "sim/t"  # A simulation's simulated time, logged as a metric.
 LOSS_PREVIEW_POINTS = 60
 _CHUNK = 500  # Rows per INSERT statement.
 
@@ -216,6 +227,14 @@ class Store:
                     session.add(RunSystemRow(run_id=run_id, info=body.system))
                 else:
                     system.info = body.system
+            if body.simulation is not None:
+                info = body.simulation.model_dump(exclude_none=True)
+                simulation = session.get(RunSimulationRow, run_id)
+                if simulation is None:
+                    session.add(RunSimulationRow(run_id=run_id, info=info))
+                else:  # Resent: keep whether it diverged.
+                    simulation.info = {**info, **{k: v for k, v in simulation.info.items()
+                                                  if k == "diverged"}}
             if (body.tags or body.notes) and session.get(RunNotesRow, run_id) is None:
                 session.add(RunNotesRow(run_id=run_id, tags=list(body.tags), notes=body.notes,
                                         updated_at=now))
@@ -252,7 +271,7 @@ class Store:
             row = self._find(session, run_id)
             change = _change(row, "deleted")
             for table in (MetricPointRow, LayerPointRow, LayerRow, FieldRow, RunItemRow,
-                          RunNotesRow, RunSystemRow):
+                          RunNotesRow, RunSystemRow, RunSimulationRow):
                 session.execute(delete(table).where(table.run_id == run_id))
             session.delete(row)
             return change
@@ -282,6 +301,10 @@ class Store:
                         row.ended_at = time
                         row.lost_contact = False
                         changes.append(_change(row, event.status))
+                    if event.diverged and event.status == "crashed":
+                        simulation = session.get(RunSimulationRow, run_id)
+                        if simulation is not None and not simulation.info.get("diverged"):
+                            simulation.info = {**simulation.info, "diverged": True}
                     continue
 
                 if row.lost_contact and time > (row.ended_at or row.started_at):
@@ -549,15 +572,42 @@ class Store:
         return row
 
     @staticmethod
-    def _run_json(session: Session, row: RunRow) -> dict:
-        losses = [
+    def _values(session: Session, run_id: str, name: str) -> list[float]:
+        """A metric's values, in step order."""
+        return [
             from_columns(value, code)
             for value, code in session.execute(
                 select(MetricPointRow.value, MetricPointRow.code)
-                .where(MetricPointRow.run_id == row.id, MetricPointRow.name == TRAIN_LOSS)
+                .where(MetricPointRow.run_id == run_id, MetricPointRow.name == name)
                 .order_by(MetricPointRow.step)
             )
         ]
+
+    @classmethod
+    def _simulation_json(cls, session: Session, run_id: str) -> dict | None:
+        """A simulation's settings, with its latest simulated time and a
+        preview of its monitored value; None for a training run."""
+        row = session.get(RunSimulationRow, run_id)
+        if row is None:
+            return None
+        latest = session.execute(
+            select(MetricPointRow.value, MetricPointRow.code)
+            .where(MetricPointRow.run_id == run_id, MetricPointRow.name == SIM_TIME)
+            .order_by(MetricPointRow.step.desc())
+            .limit(1)
+        ).first()
+        monitor = row.info.get("monitor")
+        preview = (downsample(cls._values(session, run_id, monitor), LOSS_PREVIEW_POINTS,
+                              lambda v: v) if monitor else [])
+        return {
+            **row.info,
+            "time": None if latest is None else encode_float(from_columns(*latest)),
+            "preview": [encode_float(v) for v in preview],
+        }
+
+    @classmethod
+    def _run_json(cls, session: Session, row: RunRow) -> dict:
+        losses = cls._values(session, row.id, TRAIN_LOSS)
         preview = downsample(losses, LOSS_PREVIEW_POINTS, lambda v: v)
         notes = session.get(RunNotesRow, row.id)
         system = session.get(RunSystemRow, row.id)
@@ -580,4 +630,5 @@ class Store:
             "tags": list(notes.tags) if notes else [],
             "notes": notes.notes if notes else "",
             "system": system.info if system else None,
+            "simulation": cls._simulation_json(session, row.id),
         }

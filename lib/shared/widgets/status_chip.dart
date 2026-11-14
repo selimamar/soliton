@@ -6,9 +6,13 @@ import '../../models/run.dart';
 /// A run's status as a coloured mark and small capitals: "● LIVE" in Paper,
 /// a square light in Lab, plain small capitals in Ink.
 class StatusChip extends StatelessWidget {
-  const StatusChip({super.key, required this.status, this.inHeader = false});
+  const StatusChip({super.key, required this.status, this.inHeader = false, this.label});
 
   final RunStatus status;
+
+  /// Instead of the status's own name, e.g. "Diverged" for a crashed
+  /// simulation.
+  final String? label;
 
   /// Whether it sits in the app bar, which is dark in Lab whatever the theme.
   final bool inHeader;
@@ -21,9 +25,10 @@ class StatusChip extends StatelessWidget {
       scheme = AppTheme.of(style, Brightness.dark).colorScheme;
     }
     final color = status.color(scheme);
+    final name = this.label ?? status.label;
     final label = Text(
-      AppText.eyebrowCase(status.label),
-      semanticsLabel: status.label,
+      AppText.eyebrowCase(name),
+      semanticsLabel: name,
       style: AppText.eyebrow(scheme, color: color).copyWith(
         letterSpacing: style == AppStyle.ink ? 0.8 : null,
         fontWeight: style == AppStyle.ink ? FontWeight.w500 : null,

@@ -91,6 +91,16 @@ What it does:
 - **System**: each run's machine (GPUs, CPU, memory, software, Slurm job) and
   how busy it kept them: GPU use and memory per GPU, CPU, memory, GPU
   temperature and power, sampled by the logger every 15 seconds.
+- **Compute**: simulations (a PDE solve, or any computation stepping
+  through time), monitored like runs from `modelsapp.simulate()`, in their
+  own section (the bar at the bottom, or the side on a wide screen):
+  progress in simulated time and the time left, an alert and a marked
+  chart when one diverges (NaN or infinity), every logged value against
+  simulated time (conservation drift, residuals on a log scale, the CFL
+  number with its limit, the time step), results against a parameter
+  (`sim.log_curve`), the same field views as runs (2D, 3D, rollouts), the
+  setup, the machine and its cost. Steady solves go by iteration instead
+  of simulated time.
 - **Cost**: roughly what a run has cost and, while it runs, will cost in
   all: run time × the machine's price per hour, rounded (e.g. "≈ $38").
   The price is the run's own (`price_per_hour=`) or a typical cloud price
@@ -153,6 +163,7 @@ lib/
     runs_list/                  home screen, run card, picking runs to compare
     run_detail/                 Overview, Metrics and Layers tabs + their widgets
     compare/                    runs side by side
+    compute/                    simulations: list, Overview, Diagnostics
     settings/                   settings screen, server login screen
     not_found/                  shown for unknown URLs
   shared/

@@ -255,6 +255,58 @@ parameter with 3 or more axes (FNO-style spectral weights, in × out ×
 modes...), |w| averaged over the channels, as a map over the modes. Weights
 still large at the highest kept mode suggest more modes would help.
 
+### Simulations: `modelsapp.simulate`
+
+A simulation (a PDE solve, or any computation that steps through time or
+iterates to convergence) is monitored like a training run, with no model
+involved. It shows in the app's **Compute** section, apart from the training
+runs: where it is in simulated time, its values against time, its fields,
+the machine and its cost.
+
+```python
+import modelsapp
+
+sim = modelsapp.simulate(
+    "kelvin-helmholtz-2048", project="turbulence", t_end=10,
+    setup={"equation": "Incompressible Navier-Stokes", "method": "Fourier spectral",
+           "grid": "2048 x 2048", "Re": 1e4},
+    monitor="enstrophy", cfl_limit=1.0)
+with sim:
+    while t < 10:
+        ...                                       # advance the solver
+        sim.log({"energy": E, "enstrophy": Z, "cfl": cfl}, t=t, dt=dt)
+        if step % 500 == 0:
+            sim.log_field("vorticity", w, extent=[(0, 1), (0, 1)], axes=["y", "x"])
+```
+
+- `sim.log(values, t=..., dt=...)`: values at simulated time `t` (stored as
+  the metrics `sim/t` and `sim/dt`). The app charts each value against `t`,
+  with how far it drifted since the start (for conserved quantities), names
+  containing "residual" or "error" on a log scale, and `cfl` with
+  `cfl_limit`. The step counts up by itself; pass `step=` to set it.
+- A steady solve logs no `t`: pass `max_iterations=` instead of `t_end`,
+  and log once per iteration, e.g. `sim.log({"residual": r})`. Its charts
+  and snapshots go by iteration.
+- `sim.log_curve(name, x, y, x_label=..., y_label=...)`: a result against a
+  parameter, e.g. drag against Reynolds number over a parameter study,
+  charted on the Diagnostics tab.
+- `sim.log_field(name, field)`: a 1D, 2D or 3D snapshot at the latest step,
+  shown at its simulated time; `sim.log_rollout(...)` logs several times at
+  once. Same sizes, `extent` and `axes` as `run.log_field`.
+- **Divergence**: the first NaN or infinity (in a value or a field) ends the
+  simulation as crashed, marked "Diverged at t = 0.83: energy is NaN", with
+  the bad value recorded. Later calls do nothing. With
+  `stop_on_divergence=True`, it also raises `modelsapp.Diverged`, to stop the
+  solver instead of letting it run on.
+- `setup`: how it's set up, shown on its Overview (equation, method, grid,
+  parameters, boundary and initial conditions; nested dicts are fine).
+  `monitor`: the value drawn on its card in the list. The other options
+  (`project`, `tags`, `notes`, `system_metrics`, `price_per_hour`, `host`,
+  `id`, `server`, `token`, `mode`, `dir`) are as for `init()`.
+
+Solvers that aren't in Python can still report: write a small Python driver
+that reads the solver's output as it runs and calls `sim.log`.
+
 ### All `init()` options
 
 | Option | Default | |

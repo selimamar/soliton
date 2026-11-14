@@ -34,14 +34,15 @@ class SystemTab extends ConsumerWidget {
         final usage = SystemUsage.from(metrics);
         final info = run.system;
         if (info == null && usage.isEmpty) {
-          return const _Note(
-            'No system information for this run. The modelsapp logger records the '
-            'machine, its GPUs and their use; update it to see them here.',
+          return _Note(
+            'No system information for this ${run.isSimulation ? 'simulation' : 'run'}. '
+            'The modelsapp logger records the machine, its GPUs and their use; update it '
+            'to see them here.',
           );
         }
         return SpacedListView(
           children: [
-            if (info != null) _TrainedOn(info: info),
+            if (info != null) _Machine(info: info, simulation: run.isSimulation),
             if (usage.isEmpty)
               const _Note("GPU, memory and CPU use weren't sampled (system_metrics=False).")
             else ...[
@@ -55,15 +56,17 @@ class SystemTab extends ConsumerWidget {
   }
 }
 
-class _TrainedOn extends StatelessWidget {
-  const _TrainedOn({required this.info});
+/// The machine: "Trained on" for a run, "Runs on" for a simulation.
+class _Machine extends StatelessWidget {
+  const _Machine({required this.info, required this.simulation});
 
   final SystemInfo info;
+  final bool simulation;
 
   @override
   Widget build(BuildContext context) {
     return SectionCard(
-      title: 'Trained on',
+      title: simulation ? 'Runs on' : 'Trained on',
       child: Column(
         children: [
           for (final (label, value) in describeSystem(info))
@@ -247,8 +250,11 @@ class _UsageCharts extends ConsumerWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Text(
-            'Sampled every 15 seconds (by default) while the run trains, at the step '
-            'training was at.',
+            run.isSimulation
+                ? 'Sampled every 15 seconds (by default) while the simulation runs, at the '
+                      'step it was at.'
+                : 'Sampled every 15 seconds (by default) while the run trains, at the step '
+                      'training was at.',
             style: Theme.of(context).textTheme.bodySmall
                 ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),

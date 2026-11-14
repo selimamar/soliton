@@ -1069,3 +1069,24 @@ Map<String, MetricSeries> _timings(
     interval: 500,
   ),
 };
+
+/// A simulated field, as `Simulation.log_field` logs it: one snapshot per
+/// step, with nothing to compare it to (no target, no errors).
+MockField simulatedField(
+  String name, {
+  required List<int> shape,
+  required List<int> steps,
+  required Float32List Function(int step) values,
+  FieldDomain domain = const FieldDomain(),
+}) => MockField._(
+  name: name,
+  shape: shape,
+  steps: steps,
+  make: (step) => FieldSnapshot(
+    name: name,
+    step: step,
+    shape: List.unmodifiable(shape),
+    prediction: values(step),
+    domain: domain,
+  ),
+);
