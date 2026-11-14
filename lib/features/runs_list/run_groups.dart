@@ -1,7 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/services/settings_store.dart';
+import '../../models/metric_series.dart';
 import '../../models/run.dart';
+import '../../models/run_insights.dart';
+import '../../shared/formatters.dart';
 
 /// What the runs list is grouped by, saved on the device.
 enum RunGrouping {
@@ -106,3 +109,96 @@ String _restLabel(RunGrouping by) => switch (by) {
   RunGrouping.host => 'Unknown host',
   RunGrouping.none => '',
 };
+
+/// What the runs list is ordered by, saved on the device: newest first, or
+/// a metric, best first. With a grouping, runs are ranked within each group,
+/// which makes each group a small leaderboard.
+enum RunOrder {
+  newest('Newest first', 'Newest', null),
+  valLoss('Validation loss', 'Val. loss', MetricKeys.valLoss),
+  relL2('Relative L2 error', 'Rel. L2', MetricKeys.relL2),
+  valAccuracy('Validation accuracy', 'Accuracy', MetricKeys.valAccuracy, lowerIsBetter: false),
+  trainLoss('Train loss', 'Train loss', MetricKeys.trainLoss);
+
+  const RunOrder(this.label, this.shortLabel, this.metric, {this.lowerIsBetter = true});
+
+  final String label;
+
+  /// For a column header, e.g. "Val. loss".
+  final String shortLabel;
+
+  /// The logged metric, e.g. `val/loss`; null for [newest].
+  final String? metric;
+
+  /// Then a run's best (lowest) value counts; else its latest, as on the
+  /// Sweep screen.
+  final bool lowerIsBetter;
+
+  /// [value] as it reads in a card: accuracy as a percentage.
+  String format(double value) => this == valAccuracy ? formatPercent(value) : formatMetric(value);
+}
+
+final runOrderProvider = NotifierProvider<Setting<RunOrder>, RunOrder>(
+  () => Setting.choice('runsOrderBy', RunOrder.newest, RunOrder.values),
+);
+
+/// A run's place in a list ordered by [order], for its card.
+typedef RunRanking = ({RunOrder order, RunScore score});
+
+/// Where a run stands when the list is ordered by a metric.
+class RunScore {
+  const RunScore({required this.rank, required this.value});
+
+  /// 1 for the best run; null when it isn't ranked (it crashed, or never
+  /// logged the metric).
+  final int? rank;
+
+  /// Its value of the metric, if it logged one.
+  final double? value;
+
+  bool get best => rank == 1;
+}
+
+/// [runs] best first by [order]'s metric, with each one's [RunScore]. Runs
+/// that crashed or have no finite value aren't ranked: they come last, in
+/// the order given. Ties keep the order given. [logged] is the latest
+/// metrics by run (`latestMetricsProvider`).
+List<(Run, RunScore)> rankRuns(
+  List<Run> runs,
+  RunOrder order,
+  Map<String, Map<String, LatestMetric>> logged,
+) {
+  final metric = order.metric;
+  if (metric == null) {
+    return [for (final run in runs) (run, const RunScore(rank: null, value: null))];
+  }
+  double? valueOf(Run run) {
+    final m = logged[run.id]?[metric];
+    final v = m == null ? null : (order.lowerIsBetter ? (m.min ?? m.latest) : m.latest);
+    return v != null && v.isFinite ? v : null;
+  }
+
+  final ranked = <(Run, double)>[];
+  final rest = <(Run, RunScore)>[];
+  for (final run in runs) {
+    final value = valueOf(run);
+    if (value == null || run.status == RunStatus.crashed) {
+      rest.add((run, RunScore(rank: null, value: value)));
+    } else {
+      ranked.add((run, value));
+    }
+  }
+  // A stable sort: `List.sort` isn't, so sort indices and break ties by them.
+  final order0 = [for (var i = 0; i < ranked.length; i++) i]
+    ..sort((a, b) {
+      final c = order.lowerIsBetter
+          ? ranked[a].$2.compareTo(ranked[b].$2)
+          : ranked[b].$2.compareTo(ranked[a].$2);
+      return c != 0 ? c : a.compareTo(b);
+    });
+  return [
+    for (final (place, i) in order0.indexed)
+      (ranked[i].$1, RunScore(rank: place + 1, value: ranked[i].$2)),
+    ...rest,
+  ];
+}

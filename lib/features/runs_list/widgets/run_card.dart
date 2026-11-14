@@ -9,6 +9,7 @@ import '../../../shared/widgets/loss_change.dart';
 import '../../../shared/widgets/section_card.dart';
 import '../../../shared/widgets/sparkline.dart';
 import '../../../shared/widgets/tag_label.dart';
+import '../run_groups.dart';
 import 'run_card_styles.dart';
 
 /// One run in the runs list, in the current style: in Lab an instrument
@@ -16,7 +17,7 @@ import 'run_card_styles.dart';
 /// latest loss, where it runs and how the loss moved, its tags and the start
 /// of its note, a loss sparkline and its progress.
 class RunCard extends StatelessWidget {
-  const RunCard({super.key, required this.run, this.onTap, this.selected});
+  const RunCard({super.key, required this.run, this.onTap, this.selected, this.ranking});
 
   final Run run;
   final VoidCallback? onTap;
@@ -24,13 +25,17 @@ class RunCard extends StatelessWidget {
   /// Non-null while picking runs to compare: whether this one is picked.
   final bool? selected;
 
+  /// When the list is ordered by a metric: the run's rank, shown before
+  /// its name, and its value of the metric, shown instead of the loss.
+  final RunRanking? ranking;
+
   @override
   Widget build(BuildContext context) {
     switch (AppTheme.styleOf(context)) {
       case AppStyle.lab:
-        return LabRunCard(run: run, onTap: onTap, selected: selected);
+        return LabRunCard(run: run, onTap: onTap, selected: selected, ranking: ranking);
       case AppStyle.ink:
-        return JournalRunRow(run: run, onTap: onTap, selected: selected);
+        return JournalRunRow(run: run, onTap: onTap, selected: selected, ranking: ranking);
       case AppStyle.paper:
         break;
     }
@@ -41,8 +46,8 @@ class RunCard extends StatelessWidget {
     final statusColor = run.status == RunStatus.finished
         ? scheme.outline
         : run.status.color(scheme);
-    final latestLoss = run.latestLoss;
     final small = theme.textTheme.bodySmall?.copyWith(color: muted);
+    final shown = rankedFigure(run, ranking);
 
     final content = Padding(
       padding: const EdgeInsets.fromLTRB(15, 10, 12, 10),
@@ -61,6 +66,18 @@ class RunCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
               ],
+              if (ranking?.score.rank case final rank?) ...[
+                Text(
+                  '$rank',
+                  semanticsLabel: rank == 1 ? 'Best' : 'Rank $rank',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    fontFeatures: AppText.tabular,
+                    color: rank == 1 ? scheme.primary : muted,
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
               Expanded(
                 child: Text(
                   run.name,
@@ -68,15 +85,21 @@ class RunCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (latestLoss != null) ...[
+              if (shown != null) ...[
                 const SizedBox(width: 8),
                 Text(
-                  formatMetric(latestLoss),
-                  semanticsLabel: 'loss ${formatMetric(latestLoss)}',
+                  shown.text,
+                  semanticsLabel: shown.semantics,
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                     fontFeatures: AppText.tabular,
-                    color: crashed ? scheme.error : null,
+                    color: crashed
+                        ? scheme.error
+                        : ranking?.score.best ?? false
+                        ? scheme.primary
+                        : shown.missing
+                        ? muted
+                        : null,
                   ),
                 ),
               ],
@@ -168,6 +191,21 @@ class RunCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The figure a run card shows on the right: its latest loss, or with a
+/// [ranking] its value of the ranking's metric ("–" if it logged none).
+({String text, String semantics, bool missing})? rankedFigure(Run run, RunRanking? ranking) {
+  if (ranking == null) {
+    final loss = run.latestLoss;
+    if (loss == null) return null;
+    return (text: formatMetric(loss), semantics: 'loss ${formatMetric(loss)}', missing: false);
+  }
+  final value = ranking.score.value;
+  final name = ranking.order.label.toLowerCase();
+  if (value == null) return (text: '–', semantics: 'no $name logged', missing: true);
+  final text = ranking.order.format(value);
+  return (text: text, semantics: '$name $text', missing: false);
 }
 
 /// "Epoch 42/100 · 3h 12m", kept current by [clockProvider]. Only this

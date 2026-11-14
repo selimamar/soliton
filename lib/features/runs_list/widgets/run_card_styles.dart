@@ -7,15 +7,18 @@ import '../../../shared/widgets/section_card.dart';
 import '../../../shared/widgets/sparkline.dart';
 import '../../../shared/widgets/style_decor.dart';
 import '../../../shared/widgets/tag_label.dart';
+import '../run_groups.dart';
+import 'run_card.dart' show rankedFigure;
 
 /// A run in the Lab style: an instrument card with a status light, a
 /// readout of the latest loss, a gridded sparkline and a block progress bar.
 class LabRunCard extends StatelessWidget {
-  const LabRunCard({super.key, required this.run, this.onTap, this.selected});
+  const LabRunCard({super.key, required this.run, this.onTap, this.selected, this.ranking});
 
   final Run run;
   final VoidCallback? onTap;
   final bool? selected;
+  final RunRanking? ranking;
 
   @override
   Widget build(BuildContext context) {
@@ -23,7 +26,8 @@ class LabRunCard extends StatelessWidget {
     final scheme = theme.colorScheme;
     final crashed = run.status == RunStatus.crashed;
     final light = run.status == RunStatus.finished ? scheme.outline : run.status.color(scheme);
-    final loss = run.latestLoss;
+    final shown = rankedFigure(run, ranking);
+    final rank = ranking?.score.rank;
     final label = theme.textTheme.labelSmall?.copyWith(
       color: scheme.onSurfaceVariant,
       letterSpacing: 1,
@@ -59,6 +63,14 @@ class LabRunCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
+              if (rank == 1) ...[
+                Text(
+                  '[BEST]',
+                  semanticsLabel: 'Best',
+                  style: label?.copyWith(color: scheme.primary),
+                ),
+                const SizedBox(width: 6),
+              ],
               Text(state, style: label?.copyWith(color: crashed ? scheme.error : null)),
             ],
           ),
@@ -75,6 +87,17 @@ class LabRunCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
               ],
+              if (rank != null) ...[
+                Text(
+                  rank.toString().padLeft(2, '0'),
+                  semanticsLabel: rank == 1 ? null : 'Rank $rank',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontFeatures: AppText.tabular,
+                    color: rank == 1 ? scheme.primary : scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
               Expanded(
                 child: Text(
                   run.name,
@@ -82,14 +105,20 @@ class LabRunCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (loss != null)
+              if (shown != null)
                 Text(
-                  formatMetric(loss),
-                  semanticsLabel: 'loss ${formatMetric(loss)}',
+                  shown.text,
+                  semanticsLabel: shown.semantics,
                   style: theme.textTheme.headlineSmall?.copyWith(
                     fontSize: 21,
                     fontFeatures: AppText.tabular,
-                    color: crashed ? scheme.error : null,
+                    color: crashed
+                        ? scheme.error
+                        : rank == 1
+                        ? scheme.primary
+                        : shown.missing
+                        ? scheme.onSurfaceVariant
+                        : null,
                   ),
                 ),
             ],
@@ -119,11 +148,15 @@ class LabRunCard extends StatelessWidget {
 /// name, where it runs, a small curve with its progress, and the loss; a
 /// crash gets a dagger pointing to a footnote under the table.
 class JournalRunRow extends StatelessWidget {
-  const JournalRunRow({super.key, required this.run, this.onTap, this.selected});
+  const JournalRunRow({super.key, required this.run, this.onTap, this.selected, this.ranking});
 
   final Run run;
   final VoidCallback? onTap;
   final bool? selected;
+
+  /// Ordered by a metric, the last column holds it, the best in bold as in
+  /// a paper's results table, and the rank comes before the name.
+  final RunRanking? ranking;
 
   /// The widths of the Progress and Loss columns, shared with the table's
   /// header row.
@@ -136,7 +169,8 @@ class JournalRunRow extends StatelessWidget {
     final scheme = theme.colorScheme;
     final crashed = run.status == RunStatus.crashed;
     final small = theme.textTheme.bodySmall;
-    final loss = run.latestLoss;
+    final shown = rankedFigure(run, ranking);
+    final rank = ranking?.score.rank;
     final progress = switch (run.status) {
       RunStatus.live => 'ep. ${run.currentEpoch}/${run.totalEpochs}',
       RunStatus.finished => 'finished',
@@ -172,6 +206,12 @@ class JournalRunRow extends StatelessWidget {
                       Text.rich(
                         TextSpan(
                           children: [
+                            if (rank != null)
+                              TextSpan(
+                                text: '$rank. ',
+                                semanticsLabel: rank == 1 ? 'Best, ' : 'Rank $rank, ',
+                                style: TextStyle(color: scheme.onSurfaceVariant),
+                              ),
                             TextSpan(text: run.name),
                             if (crashed && run.statusMessage != null)
                               const TextSpan(text: '†', style: TextStyle(fontSize: 11)),
@@ -218,12 +258,17 @@ class JournalRunRow extends StatelessWidget {
                 SizedBox(
                   width: lossWidth,
                   child: Text(
-                    loss == null ? '–' : formatMetric(loss),
-                    semanticsLabel: loss == null ? null : 'loss ${formatMetric(loss)}',
+                    shown?.text ?? '–',
+                    semanticsLabel: shown?.semantics,
                     textAlign: TextAlign.end,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontFeatures: AppText.tabular,
-                      color: crashed ? scheme.error : null,
+                      fontWeight: rank == 1 ? FontWeight.w700 : null,
+                      color: crashed
+                          ? scheme.error
+                          : shown?.missing ?? false
+                          ? scheme.onSurfaceVariant
+                          : null,
                     ),
                   ),
                 ),

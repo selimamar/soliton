@@ -22,7 +22,7 @@ Map<String, List<String>> summary(List<RunGroup> groups) => {
 };
 
 Future<void> openGroupingMenu(WidgetTester tester) async {
-  await tester.tap(find.byTooltip('Group runs'));
+  await tester.tap(find.byTooltip('Group and order runs'));
   await tester.pumpAndSettle();
 }
 

@@ -175,19 +175,36 @@ class _RunsList extends ConsumerWidget {
     final visibleRuns = filter == null ? runs : runs.where((r) => r.status == filter).toList();
     final grouping = ref.watch(runGroupingProvider);
     final collapsed = ref.watch(collapsedGroupsProvider);
+    // Ordered by a metric, each group (or the whole list) is ranked by it,
+    // best first. Until the values arrive, the list stays newest first.
+    final order = ref.watch(runOrderProvider);
+    final logged = switch (order.metric) {
+      final metric? => ref.watch(latestMetricsProvider(metric)).value,
+      null => null,
+    };
+    List<(Run, RunRanking?)> ranked(List<Run> runs) => logged == null
+        ? [for (final run in runs) (run, null)]
+        : [
+            for (final (run, score) in rankRuns(runs, order, logged))
+              (run, (order: order, score: score)),
+          ];
     // Ink lays the runs out as a table in a paper: an abstract, a header
     // row, rows without gaps, and footnotes.
     final journal = AppTheme.styleOf(context) == AppStyle.ink;
 
-    Widget card(Run run) => picked != null
-        ? RunCard(
-            run: run,
-            selected: picked.contains(run.id),
-            onTap: () => ref.read(compareSelectionProvider.notifier).toggle(run.id),
-          )
-        // `go` (not `push`) so the browser URL follows on the web. The
-        // detail route is nested under '/', so Back still returns here.
-        : RunCard(run: run, onTap: () => context.go(AppRoutes.run(run.id)));
+    Widget card((Run, RunRanking?) entry) {
+      final (run, ranking) = entry;
+      return picked != null
+          ? RunCard(
+              run: run,
+              ranking: ranking,
+              selected: picked.contains(run.id),
+              onTap: () => ref.read(compareSelectionProvider.notifier).toggle(run.id),
+            )
+          // `go` (not `push`) so the browser URL follows on the web. The
+          // detail route is nested under '/', so Back still returns here.
+          : RunCard(run: run, ranking: ranking, onTap: () => context.go(AppRoutes.run(run.id)));
+    }
 
     return RefreshIndicator(
       onRefresh: () => ref.refresh(runsProvider.future),
@@ -199,7 +216,8 @@ class _RunsList extends ConsumerWidget {
           if (journal && picked == null && runs.isNotEmpty) _Abstract(runs: runs),
           _FilterBar(runs: runs),
           if (demo && picked == null) const _DemoBanner(),
-          if (journal && visibleRuns.isNotEmpty) const _TableHeader(),
+          if (journal && visibleRuns.isNotEmpty)
+            _TableHeader(value: logged == null ? 'Loss' : order.shortLabel),
           if (runs.isEmpty)
             const _EmptyState(
               'No runs yet. Start one with the modelsapp Python logger: it appears here '
@@ -208,7 +226,7 @@ class _RunsList extends ConsumerWidget {
           else if (visibleRuns.isEmpty)
             const _EmptyState('No runs with this status'),
           if (grouping == RunGrouping.none)
-            for (final run in visibleRuns) card(run)
+            for (final entry in ranked(visibleRuns)) card(entry)
           else
             for (final group in groupRuns(visibleRuns, grouping)) ...[
               _GroupHeader(
@@ -219,7 +237,7 @@ class _RunsList extends ConsumerWidget {
                     .toggle(CollapsedGroups.keyOf(grouping, group)),
               ),
               if (!collapsed.contains(CollapsedGroups.keyOf(grouping, group)))
-                for (final run in group.runs) card(run),
+                for (final entry in ranked(group.runs)) card(entry),
             ],
           if (journal && visibleRuns.isNotEmpty) _TableFooter(runs: visibleRuns),
         ],
@@ -277,24 +295,45 @@ class _GroupHeader extends StatelessWidget {
   }
 }
 
-/// Picks what the list is grouped by.
+/// Picks what the list is grouped by, and what it's ordered by: grouped,
+/// then ordered by a metric, each group is a small leaderboard.
 class _GroupingButton extends ConsumerWidget {
   const _GroupingButton();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final current = ref.watch(runGroupingProvider);
-    return PopupMenuButton<RunGrouping>(
+    final order = ref.watch(runOrderProvider);
+    final heading = Theme.of(context).textTheme.labelMedium
+        ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant);
+    return PopupMenuButton<Enum>(
       icon: const Icon(Icons.workspaces_outline),
-      tooltip: 'Group runs',
-      onSelected: (grouping) => ref.read(runGroupingProvider.notifier).set(grouping),
+      tooltip: 'Group and order runs',
+      onSelected: (choice) => switch (choice) {
+        final RunGrouping grouping => ref.read(runGroupingProvider.notifier).set(grouping),
+        final RunOrder order => ref.read(runOrderProvider.notifier).set(order),
+        _ => null,
+      },
       itemBuilder: (context) => [
+        PopupMenuItem(enabled: false, height: 32, child: Text('Group', style: heading)),
         for (final grouping in RunGrouping.values)
           CheckedPopupMenuItem(
             value: grouping,
             checked: grouping == current,
             child: Text(
               grouping == RunGrouping.none ? grouping.label : 'By ${grouping.label.toLowerCase()}',
+            ),
+          ),
+        const PopupMenuDivider(),
+        PopupMenuItem(enabled: false, height: 32, child: Text('Order', style: heading)),
+        for (final option in RunOrder.values)
+          CheckedPopupMenuItem(
+            value: option,
+            checked: option == order,
+            child: Text(
+              option.metric == null
+                  ? option.label
+                  : '${option.label}, ${option.lowerIsBetter ? 'lowest' : 'highest'} first',
             ),
           ),
       ],
@@ -532,7 +571,11 @@ class _Abstract extends StatelessWidget {
 
 /// Ink: the runs table's header row, between a heavy and a light rule.
 class _TableHeader extends StatelessWidget {
-  const _TableHeader();
+  const _TableHeader({required this.value});
+
+  /// The last column's heading: "Loss", or the metric the runs are
+  /// ordered by.
+  final String value;
 
   @override
   Widget build(BuildContext context) {
@@ -557,7 +600,7 @@ class _TableHeader extends StatelessWidget {
           ),
           SizedBox(
             width: JournalRunRow.lossWidth,
-            child: Text('Loss', textAlign: TextAlign.end, style: style),
+            child: Text(value, textAlign: TextAlign.end, style: style),
           ),
         ],
       ),
