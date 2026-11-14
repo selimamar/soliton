@@ -5,6 +5,7 @@ import '../../app/routes.dart';
 import '../../app/theme.dart';
 import '../../data/providers.dart';
 import '../../models/run.dart';
+import '../../shared/redirect.dart';
 import '../../shared/widgets/async_value_view.dart';
 import '../../shared/widgets/delete_dialog.dart';
 import '../../shared/widgets/status_chip.dart';
@@ -35,6 +36,12 @@ class RunDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final run = ref.watch(runProvider(runId));
     final loadedRun = run.value;
+    // A simulation's link under /runs (typed, or an old bookmark) opens it
+    // in Compute, where its own tabs are.
+    if (loadedRun != null && loadedRun.isSimulation) {
+      goAfterFrame(context, AppRoutes.simulation(runId));
+      return const Scaffold();
+    }
 
     return DefaultTabController(
       // A link to another tab of the same run switches to it.

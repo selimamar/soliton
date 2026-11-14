@@ -69,8 +69,23 @@ class SystemInfo {
   final String? cudnn;
 
   /// `jobId`, `jobName`, `partition`, `nodes`, `cluster`, `arrayJobId`,
-  /// `arrayTaskId`: whichever Slurm set.
+  /// `arrayTaskId`: whichever Slurm set. Also `submitTime`, `startTime` and
+  /// `timeLimitAt` (UTC, ISO 8601), from Slurm when the job started.
   final Map<String, String> slurm;
+
+  /// When the job was submitted to Slurm's queue.
+  DateTime? get submittedAt => _slurmTime('submitTime');
+
+  /// When Slurm started the job (a little before the script started the run).
+  DateTime? get jobStartedAt => _slurmTime('startTime');
+
+  /// When Slurm stops the job, finished or not: its time limit.
+  DateTime? get timeLimitAt => _slurmTime('timeLimitAt');
+
+  DateTime? _slurmTime(String key) => switch (slurm[key]) {
+    final text? => DateTime.tryParse(text),
+    null => null,
+  };
 
   /// What the job's machine costs per hour in US dollars, if the run said
   /// (`soliton.init(price_per_hour=...)`); see `HourlyPrice` for the

@@ -20,6 +20,7 @@ import '../../../shared/widgets/style_decor.dart';
 import '../widgets/architecture_tree.dart';
 import '../widgets/network_diagram.dart';
 import '../widgets/run_notes_card.dart';
+import '../widgets/job_times.dart';
 import '../widgets/output_card.dart';
 
 /// Key facts about a run: size, timing, progress, tags and notes,
@@ -41,6 +42,7 @@ class OverviewTab extends StatelessWidget {
         // Ink says the progress in the loss sentence instead.
         if (AppTheme.styleOf(context) != AppStyle.ink || run.latestLoss == null)
           _ProgressStrip(run: run),
+        if (JobTimes.showsFor(run)) JobTimes(run: run),
         _SpeedStrip(runId: run.id),
         if (HourlyPrice.of(run.system) case final price?) CostStrip(run: run, price: price),
         RunNotesCard(run: run),
@@ -275,23 +277,31 @@ class _LossSentence extends ConsumerWidget {
     final remaining = run.estimatedRemainingAt(now);
     final endedAt = run.endedAt;
 
+    // "epoch 42 of 100", "epoch 42", or nothing for a run without epochs.
+    final epoch = switch (run.totalEpochs) {
+      > 0 => 'epoch ${run.currentEpoch} of ${run.totalEpochs}',
+      _ when run.currentEpoch > 0 => 'epoch ${run.currentEpoch}',
+      _ => null,
+    };
+    final step = run.totalSteps > 0
+        ? 'step ${formatInt(run.currentStep)} of ${formatInt(run.totalSteps)}'
+        : 'step ${formatInt(run.currentStep)}';
+    final where = [?epoch, step].join(', ');
     final (before, after) = switch (run.status) {
       RunStatus.live => (
         'The loss is now ',
-        '$trend. Training is ${formatPercent(run.progress)} done (epoch ${run.currentEpoch} of '
-            '${run.totalEpochs}, step ${formatInt(run.currentStep)} of '
-            '${formatInt(run.totalSteps)})'
+        '$trend. ${run.hasEnd ? 'Training is ${formatPercent(run.progress)} done ($where)' : 'Training is at $where'}'
             '${remaining == null ? '' : '; about ${formatDuration(remaining)} remain'}.',
       ),
       RunStatus.finished => (
         'The final loss was ',
         '. Training finished${endedAt == null ? '' : ' ${formatTimeAgo(endedAt, now: now)}'} '
-            'after ${run.currentEpoch} epochs (${formatInt(run.currentStep)} steps).',
+            'after ${run.currentEpoch > 0 ? '${run.currentEpoch} epochs (${formatInt(run.currentStep)} steps)' : '${formatInt(run.currentStep)} steps'}.',
       ),
       RunStatus.crashed => (
         'The loss reached ',
-        ' before the run crashed at step ${formatInt(run.currentStep)} '
-            '(epoch ${run.currentEpoch} of ${run.totalEpochs}).',
+        ' before the run crashed at step ${formatInt(run.currentStep)}'
+            '${epoch == null ? '' : ' ($epoch)'}.',
       ),
     };
 
@@ -362,43 +372,51 @@ class _ProgressStrip extends ConsumerWidget {
     // Lab shows times like a clock, 03:12:04.
     final time = lab ? _clock : formatDuration;
 
+    final epoch = run.epochText;
+    final ended = endedAt != null ? formatTimeAgo(endedAt, now: now) : null;
     return StatStrip(
       stats: [
-        ('Progress', formatPercent(run.progress)),
-        ('Epoch', '${run.currentEpoch}/${run.totalEpochs}'),
+        if (run.hasEnd)
+          ('Progress', formatPercent(run.progress))
+        else
+          ('Step', formatInt(run.currentStep)),
+        if (epoch != null) ('Epoch', epoch),
         ('Elapsed', time(run.elapsedAt(now))),
         if (remaining != null)
           (lab ? 'ETA' : 'Remaining', lab ? time(remaining) : '~${time(remaining)}')
-        else
-          ('Ended', endedAt != null ? formatTimeAgo(endedAt, now: now) : '—'),
+        else if (ended != null || run.hasEnd)
+          ('Ended', ended ?? '—'),
       ],
-      footer: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (lab)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-              child: BlockProgress(value: run.progress, label: 'Training progress'),
-            )
-          else
-            LinearProgressIndicator(
-              value: run.progress,
-              minHeight: 2,
-              semanticsLabel: 'Training progress',
-              semanticsValue: formatPercent(run.progress),
+      // Without a total there is nothing to measure progress against.
+      footer: !run.hasEnd
+          ? null
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (lab)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                    child: BlockProgress(value: run.progress, label: 'Training progress'),
+                  )
+                else
+                  LinearProgressIndicator(
+                    value: run.progress,
+                    minHeight: 2,
+                    semanticsLabel: 'Training progress',
+                    semanticsValue: formatPercent(run.progress),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+                  child: Text(
+                    'Step ${formatInt(run.currentStep)} of ${formatInt(run.totalSteps)}',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontFeatures: AppText.tabular,
+                    ),
+                  ),
+                ),
+              ],
             ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
-            child: Text(
-              'Step ${formatInt(run.currentStep)} of ${formatInt(run.totalSteps)}',
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                fontFeatures: AppText.tabular,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

@@ -365,14 +365,17 @@ String _describe(FieldSnapshot s, Map<int, int> indices) {
 }
 
 /// Which way the axes run on a map, in the run's domain: "x 0 → 1 across,
-/// y 0 → 1 down". Null without a domain.
+/// y 0 → 1 down", or "0 → 1 across, 0 → 2 down" for axes logged without
+/// names. Null without a domain.
 String? _axesNote(FieldSnapshot s, {int? rowAxis, required int columnAxis, String? rows}) {
   if (s.domain.isEmpty) return null;
+  final named = s.domain.axes;
   String axis(int a) {
     final range = s.domain.extent?[a];
-    return range == null
-        ? s.domain.axisName(a)
-        : '${s.domain.axisName(a)} ${formatCoordinate(range.$1)} → ${formatCoordinate(range.$2)}';
+    final name = named != null && a < named.length ? named[a] : null;
+    if (range == null) return s.domain.axisName(a);
+    final span = '${formatCoordinate(range.$1)} → ${formatCoordinate(range.$2)}';
+    return name == null ? span : '$name $span';
   }
 
   return [

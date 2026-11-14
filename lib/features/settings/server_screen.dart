@@ -74,8 +74,7 @@ class _ServerScreenState extends ConsumerState<ServerScreen> {
 
   void _disconnect() {
     ref.read(connectionProvider.notifier).disconnect();
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Disconnected. Showing demo data.')));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Disconnected.')));
     context.go(AppRoutes.runs);
   }
 
@@ -188,10 +187,7 @@ class _ConnectedCard extends ConsumerWidget {
           const SizedBox(height: 4),
           Text(status, style: theme.textTheme.bodySmall),
           const SizedBox(height: 12),
-          OutlinedButton(
-            onPressed: onDisconnect,
-            child: const Text('Disconnect and use demo data'),
-          ),
+          OutlinedButton(onPressed: onDisconnect, child: const Text('Disconnect')),
         ],
       ),
     );

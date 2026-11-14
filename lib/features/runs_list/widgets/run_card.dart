@@ -175,7 +175,7 @@ class RunCard extends StatelessWidget {
             run: run,
             style: theme.textTheme.labelMedium?.copyWith(color: crashed ? scheme.error : muted),
           ),
-          if (run.status == RunStatus.live) ...[
+          if (run.status == RunStatus.live && run.hasEnd) ...[
             const SizedBox(height: 8),
             LinearProgressIndicator(
               value: run.progress,
@@ -244,7 +244,10 @@ class _ProgressLabel extends ConsumerWidget {
     final now = ref.watch(clockProvider);
     final text = switch (run.status) {
       RunStatus.live =>
-        'Epoch ${run.currentEpoch}/${run.totalEpochs} · ${formatDuration(run.elapsedAt(now))}',
+        '${switch (run.epochText) {
+          final epoch? => 'Epoch $epoch',
+          null => 'Step ${formatInt(run.currentStep)}',
+        }} · ${formatDuration(run.elapsedAt(now))}',
       RunStatus.finished => 'Finished ${formatTimeAgo(run.endedAt ?? run.startedAt, now: now)}',
       RunStatus.crashed => 'Crashed at step ${formatInt(run.currentStep)}',
     };

@@ -343,7 +343,14 @@ class _LinearYAxis implements _YAxis {
     final scale = niceAxis(low - padding, high + padding);
     min = scale.min;
     max = scale.max;
-    interval = scale.interval;
+    // Labels at the ends aren't drawn (see _axisLabel), so 0–100 % in steps
+    // of 50 would be labelled only "50%": halve the steps until at least
+    // two labels fall between the ends.
+    var step = scale.interval;
+    while (step > 0 && (max - min) / step < 3 - 1e-9) {
+      step /= 2;
+    }
+    interval = step;
   }
 
   final String Function(double value, double interval) _format;

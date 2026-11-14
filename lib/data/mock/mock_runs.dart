@@ -11,6 +11,7 @@ import 'curve_generator.dart';
 import 'mock_architectures.dart';
 import 'mock_fields.dart';
 import 'mock_flows.dart';
+import 'mock_job_times.dart';
 
 /// Everything the mock repository knows about one run.
 class MockRun {
@@ -50,6 +51,8 @@ List<MockRun> buildMockRuns(DateTime now) => [
     totalEpochs: 100,
     architecture: resnet50Cifar(),
     flow: resnet50CifarFlow(),
+    queued: const Duration(hours: 2, minutes: 40),
+    timeLimit: const Duration(hours: 12),
     system: const SystemInfo(
       hostname: 'sh03-12n07.int',
       os: 'Rocky Linux 8.10 (Linux 4.18.0)',
@@ -144,6 +147,8 @@ List<MockRun> buildMockRuns(DateTime now) => [
     totalEpochs: 60,
     architecture: unet(),
     flow: unetFlow(),
+    queued: const Duration(minutes: 45),
+    timeLimit: const Duration(hours: 8),
     system: const SystemInfo(
       hostname: 'sh02-14n03.int',
       os: 'Rocky Linux 8.10 (Linux 4.18.0)',
@@ -192,6 +197,8 @@ List<MockRun> buildMockRuns(DateTime now) => [
     totalSteps: 20000,
     totalEpochs: 400,
     architecture: fno2d(),
+    queued: const Duration(hours: 5, minutes: 10),
+    timeLimit: const Duration(hours: 4),
     system: const SystemInfo(
       hostname: 'sh04-01n05.int',
       os: 'Rocky Linux 8.10 (Linux 4.18.0)',
@@ -251,6 +258,8 @@ List<MockRun> buildMockRuns(DateTime now) => [
     totalSteps: 12000,
     totalEpochs: 120,
     architecture: fno3d(),
+    queued: const Duration(minutes: 35),
+    timeLimit: const Duration(hours: 24),
     system: const SystemInfo(
       hostname: 'sh04-02n11.int',
       os: 'Rocky Linux 8.10 (Linux 4.18.0)',
@@ -357,6 +366,8 @@ MockRun _buildRun({
   required LayerInfo architecture,
   ModelFlow? flow,
   SystemInfo? system,
+  Duration? queued,
+  Duration? timeLimit,
   required Map<String, String> hyperparameters,
   required double initialLoss,
   required double finalLoss,
@@ -375,6 +386,7 @@ MockRun _buildRun({
   extras,
   required int seed,
 }) {
+  system = withJobTimes(system, startedAt, queued: queued, timeLimit: timeLimit);
   final crashed = status == RunStatus.crashed;
   final logEvery = math.max(1, totalSteps ~/ 400);
   final evalEvery = logEvery * 10;

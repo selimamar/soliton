@@ -402,13 +402,16 @@ class _RunSheet extends ConsumerWidget {
       RunStatus.finished => [
         ('Parameters', params),
         ('Final loss', loss()),
-        ('Epochs', '${run.currentEpoch}/${run.totalEpochs}'),
+        if (run.epochText case final epochs?)
+          ('Epochs', epochs)
+        else
+          ('Steps', formatInt(run.currentStep)),
         ('Took', formatDuration(run.elapsedAt(now))),
       ],
       RunStatus.live => [
         ('Parameters', params),
         ('Loss now', loss()),
-        ('Trained', formatPercent(run.progress)),
+        ('Trained', run.hasEnd ? formatPercent(run.progress) : '—'),
         (
           'Hatches in',
           switch (run.estimatedRemainingAt(now)) {
@@ -420,7 +423,10 @@ class _RunSheet extends ConsumerWidget {
       RunStatus.crashed => [
         ('Parameters', params),
         ('Last loss', loss()),
-        ('Stopped at', formatPercent(run.progress)),
+        if (run.hasEnd)
+          ('Stopped at', formatPercent(run.progress))
+        else
+          ('Stopped at', 'step ${formatInt(run.currentStep)}'),
         ('Ran for', formatDuration(run.elapsedAt(now))),
       ],
     };

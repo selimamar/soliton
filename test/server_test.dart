@@ -177,7 +177,7 @@ void main() {
     }
 
     testWidgets('shows the server\'s runs, and remembers the login', (tester) async {
-      final store = MemorySettingsStore();
+      final store = MemorySettingsStore({'demoData': true});
       await tester.pumpWidget(app(store));
       await tester.pumpAndSettle();
       expect(find.text('All · 10'), findsOneWidget, reason: 'demo data first');
@@ -228,7 +228,7 @@ void main() {
       expect(find.textContaining('Enter an address like'), findsOneWidget);
     });
 
-    testWidgets('disconnecting goes back to demo data', (tester) async {
+    testWidgets('disconnecting shows nothing, with demo data off', (tester) async {
       final store = loggedIn();
       await tester.pumpWidget(app(store));
       await tester.pumpAndSettle();
@@ -237,10 +237,11 @@ void main() {
       routerOf(tester).go('/settings/server');
       await tester.pumpAndSettle();
       expect(find.text('Connected server'), findsOneWidget);
-      await tester.tap(find.text('Disconnect and use demo data'));
+      await tester.tap(find.text('Disconnect'));
       await tester.pumpAndSettle();
 
-      expect(find.text('All · 10'), findsOneWidget);
+      expect(find.text('All · 0'), findsOneWidget);
+      expect(find.text('Not connected to a server.'), findsOneWidget);
       expect(store.getString('serverToken'), isNull);
       expect(sockets.opened.single.closed, isTrue);
     });

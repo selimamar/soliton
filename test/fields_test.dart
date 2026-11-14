@@ -426,7 +426,7 @@ void main() {
       await openApp(tester, '/runs/$fno?tab=fields');
       expect(find.text('Step 7,000'), findsOneWidget, reason: 'the Fields tab, straight away');
       await openApp(tester, '/runs/$fno?tab=nonsense');
-      expect(find.text('Tags and notes'), findsOneWidget, reason: 'unknown tabs: the Overview');
+      expect(find.text('Training loss'), findsOneWidget, reason: 'unknown tabs: the Overview');
     });
 
     testWidgets('a run without fields says how to log them', (tester) async {

@@ -15,6 +15,7 @@ import '../../shared/widgets/stat_tile.dart';
 import '../run_detail/tabs/overview_tab.dart' show CostStrip, StatusBanner;
 import '../run_detail/widgets/run_notes_card.dart';
 import 'simulation_text.dart';
+import '../run_detail/widgets/job_times.dart';
 import '../run_detail/widgets/output_card.dart';
 
 /// Where a simulation is (simulated time, or iterations for a steady
@@ -34,6 +35,7 @@ class SimulationOverviewTab extends StatelessWidget {
         if (run.status == RunStatus.crashed) OutputCard(run: run),
         _Progress(simulation: run),
         _Timing(simulation: run),
+        if (JobTimes.showsFor(run)) JobTimes(run: run),
         if (HourlyPrice.of(run.system) case final price?) CostStrip(run: run, price: price),
         RunNotesCard(run: run),
         if (run.status != RunStatus.crashed) OutputCard(run: run),

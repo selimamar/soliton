@@ -8,6 +8,8 @@ String formatCount(num value) {
   final abs = value.abs();
   // Thresholds sit where rounding to one decimal would reach 1000 of the
   // smaller unit, so 999,999 becomes "1M" rather than "1000k".
+  // Past billions (a diverging simulation reaches 1e300): "2.4e+297".
+  if (abs >= 999.95e9) return value.toStringAsExponential(1);
   if (abs >= 999.95e6) return '${_trim(value / 1e9)}B';
   if (abs >= 999.95e3) return '${_trim(value / 1e6)}M';
   if (abs >= 999.5) return '${_trim(value / 1e3)}k';
@@ -64,6 +66,7 @@ String formatRelativeError(double fraction) {
   if (!fraction.isFinite) return formatMetric(fraction);
   final percent = fraction * 100;
   if (percent == 0) return '0%';
+  if (percent >= 1e5) return '${percent.toStringAsExponential(1)}%';
   return '${percent >= 1 ? percent.toStringAsFixed(1) : percent.toStringAsPrecision(2)}%';
 }
 
@@ -108,6 +111,11 @@ String formatPercent(double fraction) => '${(fraction * 100).toStringAsFixed(1)}
 /// (20000, 10000) -> "20k".
 String formatAxisTick(double value, double interval) {
   if (value.abs() < interval * 1e-6) return '0';
+  if (value.abs() >= 999.95e9) {
+    // Short enough for the axis: "2.0e303", not "2.0e+303".
+    final digits = math.max(0, _exponent(value.abs()) - _exponent(interval));
+    return value.toStringAsExponential(digits).replaceFirst('e+', 'e');
+  }
   if (interval >= 1000) return formatCount(value);
   if (interval < 1e-3) {
     final digits = math.max(0, _exponent(value.abs()) - _exponent(interval));
@@ -168,6 +176,49 @@ String formatDuration(Duration d) {
   if (d.inMinutes > 0) return '${d.inMinutes}m ${d.inSeconds % 60}s';
   return '${d.inSeconds}s';
 }
+
+/// A moment soon after (or before) [now], as a clock reads it, local time:
+/// "18:40" today, "tomorrow 02:10", "Mon 14:20" within the week, else
+/// "Nov 20, 14:20". [timeOfDay] writes the hours and minutes (12- or
+/// 24-hour, as the device has it).
+String formatClock(
+  DateTime time, {
+  required DateTime now,
+  required String Function(DateTime) timeOfDay,
+}) {
+  final local = time.toLocal(), today = now.toLocal();
+  // Rounded: a day with a clock change has 23 or 25 hours.
+  final days =
+      (DateTime(
+                local.year,
+                local.month,
+                local.day,
+              ).difference(DateTime(today.year, today.month, today.day)).inHours /
+              24)
+          .round();
+  final clock = timeOfDay(local);
+  if (days == 0) return clock;
+  if (days == 1) return 'tomorrow $clock';
+  if (days == -1) return 'yesterday $clock';
+  if (days > 1 && days < 7) return '${_weekdays[local.weekday - 1]} $clock';
+  return '${_months[local.month - 1]} ${local.day}, $clock';
+}
+
+const _weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const _months = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
 
 /// "just now", "5m ago", "3h ago", "2d ago".
 String formatTimeAgo(DateTime time, {DateTime? now}) {

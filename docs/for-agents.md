@@ -84,4 +84,7 @@ fine, don't work around it.
 The new run should be in the list.
 
 **On Sherlock**, in Slurm job scripts, before `python train.py`:
-`source ~/.soliton_env` and `export SOLITON_DIR=$SCRATCH/soliton-runs`
+`source ~/.soliton_env` and `export SOLITON_DIR=$SCRATCH/soliton-runs`. Add
+`#SBATCH --signal=B:TERM@60` and start Python with `exec python train.py`:
+Sherlock kills a job at its time limit without warning, and this lets the
+run report that it was stopped by the limit.

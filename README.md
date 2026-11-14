@@ -19,7 +19,9 @@ your training script                 your server                    your phone
 - **Server** (`server/`): FastAPI with SQLite (local) or PostgreSQL. Stores
   runs, pushes changes over a WebSocket, marks silent runs as crashed and can
   send phone notifications through ntfy. See [server/README.md](server/README.md).
-- **App** (`lib/`): shows demo data until you connect it to your server.
+- **App** (`lib/`): shows your server's runs once you connect it. Made-up demo
+  runs are off by default (**Settings → Demo data** turns them on while no
+  server is connected).
 
 Training on Stanford's Sherlock cluster: see [docs/sherlock.md](docs/sherlock.md).
 If a coding agent writes your training code, give it the instructions in
@@ -60,7 +62,7 @@ soliton demo                            # 2. a small real training run (PyTorch)
 tool/run_web.sh                           # 3. the app, at http://localhost:8787
 ```
 
-In the app: **Settings → Data source** (or **Connect** on the demo banner), enter
+In the app: **Settings → Data source** (or **Connect server** on the runs list), enter
 `http://127.0.0.1:8000` and the token. The demo run appears and updates live.
 `soliton demo --crash-at 500` shows what a crash looks like.
 
@@ -91,6 +93,9 @@ What it does:
 - **System**: each run's machine (GPUs, CPU, memory, software, Slurm job) and
   how busy it kept them: GPU use and memory per GPU, CPU, memory, GPU
   temperature and power, sampled by the logger every 15 seconds.
+- **Job times** on a run's or simulation's Overview: how long its Slurm job
+  waited in the queue, when it should finish at its current pace, and its
+  time limit, with a warning when the limit comes first.
 - **Compute**: simulations (a PDE solve, or any computation stepping
   through time), monitored like runs from `soliton.simulate()`, in their
   own section (the bar at the bottom, or the side on a wide screen):
@@ -213,7 +218,8 @@ Screen --watch--> Riverpod provider --calls--> RunRepository --> ApiRunRepositor
 ```
 
 Screens never create data themselves. `runRepositoryProvider` picks the
-server when you're connected and demo data otherwise; everything refetches
+server when you're connected, otherwise demo data (or nothing, with the
+**Demo data** setting off, the default); everything refetches
 when that changes. NaN and infinity travel as the strings `"NaN"`,
 `"Infinity"` and `"-Infinity"`, since JSON has no such numbers.
 

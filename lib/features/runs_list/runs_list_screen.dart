@@ -241,7 +241,7 @@ class _RunsList extends ConsumerWidget {
             selected: ref.watch(runFilterProvider),
             onSelected: ref.read(runFilterProvider.notifier).select,
           ),
-          if (demo && picked == null) const _DemoBanner(),
+          if (demo && picked == null) _DemoBanner(demoData: ref.watch(demoDataProvider)),
           if (journal && visibleRuns.isNotEmpty)
             _TableHeader(value: logged == null ? 'Loss' : order.shortLabel),
           if (runs.isEmpty)
@@ -383,10 +383,12 @@ class _EmptyState extends StatelessWidget {
   );
 }
 
-/// One quiet line saying the runs are made up, with a way to connect a
-/// server.
+/// One quiet line saying no server is connected (and the runs are made up,
+/// with [demoData] on), with a way to connect one.
 class _DemoBanner extends StatelessWidget {
-  const _DemoBanner();
+  const _DemoBanner({required this.demoData});
+
+  final bool demoData;
 
   @override
   Widget build(BuildContext context) {
@@ -394,11 +396,11 @@ class _DemoBanner extends StatelessWidget {
     final muted = theme.colorScheme.onSurfaceVariant;
     return Row(
       children: [
-        Icon(Icons.science_outlined, size: 16, color: muted),
+        Icon(demoData ? Icons.science_outlined : Icons.cloud_off_outlined, size: 16, color: muted),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            'Demo data. These runs are made up.',
+            demoData ? 'Demo data. These runs are made up.' : 'Not connected to a server.',
             style: theme.textTheme.bodySmall?.copyWith(color: muted),
           ),
         ),

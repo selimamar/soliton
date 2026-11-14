@@ -31,6 +31,10 @@ void main() {
     expect(gpuPriceOf('NVIDIA L4'), ('L4', 0.8));
     expect(gpuPriceOf('Tesla V100-SXM2-32GB'), ('V100', 2.5));
     expect(gpuPriceOf('NVIDIA GeForce RTX 4090'), ('4090', 0.5));
+    // Sherlock's public GPU nodes.
+    expect(gpuPriceOf('NVIDIA GeForce RTX 2080 Ti'), ('RTX 2080', 0.2));
+    expect(gpuPriceOf('NVIDIA TITAN Xp'), ('TITAN', 0.2));
+    expect(gpuPriceOf('NVIDIA RTX A5000'), ('A5000', 0.4));
     expect(gpuPriceOf('Some Accelerator'), isNull);
   });
 
@@ -106,9 +110,6 @@ void main() {
     expect(find.text(r'≈ $8'), findsOneWidget);
     expect(find.text('Expected total'), findsOneWidget);
     expect(find.text(r'≈ $2.50/h'), findsOneWidget);
-    expect(
-      find.text('Estimated: run time × 1 × A100 at a typical cloud price.'),
-      findsOneWidget,
-    );
+    expect(find.text('Estimated: run time × 1 × A100 at a typical cloud price.'), findsOneWidget);
   });
 }

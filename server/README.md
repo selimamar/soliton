@@ -37,7 +37,7 @@ All from environment variables:
 | `DATABASE_URL` or `SOLITON_DATABASE_URL` | SQLite in the data folder | e.g. `postgresql://user:pass@host/db` |
 | `SOLITON_DATA_DIR` | `./soliton-data` | Where the SQLite database and token live |
 | `SOLITON_LISTEN_HOST`, `PORT` | `127.0.0.1`, `8000` | Address and port (also `--host`, `--port`) |
-| `SOLITON_STALE_MINUTES` | `10` | A live run silent this long is marked crashed ("lost contact") |
+| `SOLITON_STALE_MINUTES` | `10` | A live run silent this long is marked crashed ("lost contact"); one silent past its Slurm job's time limit is marked a minute after it ("Stopped by its Slurm time limit") |
 | `SOLITON_CORS_ORIGINS` | `*` | Web origins allowed to call the API (comma-separated) |
 | `SOLITON_NTFY_URL` | off | Push notifications, e.g. `https://ntfy.sh/<long-random-topic>` |
 | `SOLITON_NTFY_TOKEN` | none | Access token for a protected ntfy topic |

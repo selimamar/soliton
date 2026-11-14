@@ -42,7 +42,10 @@ class LabRunCard extends StatelessWidget {
     );
     final where = [run.host, run.project].where((s) => s.isNotEmpty).join(' · ');
     final state = switch (run.status) {
-      RunStatus.live => 'EP ${run.currentEpoch}/${run.totalEpochs}',
+      RunStatus.live => switch (run.epochText) {
+        final epoch? => 'EP $epoch',
+        null => 'STEP ${formatInt(run.currentStep)}',
+      },
       RunStatus.finished => 'DONE',
       RunStatus.crashed => 'FAIL @${formatInt(run.currentStep)}',
     };
@@ -143,7 +146,7 @@ class LabRunCard extends StatelessWidget {
             grid: true,
             semanticLabel: 'Loss curve, ${trendOf(run.lossPreview)}',
           ),
-          if (run.status == RunStatus.live) ...[
+          if (run.status == RunStatus.live && run.hasEnd) ...[
             const SizedBox(height: 8),
             BlockProgress(value: run.progress, label: 'Training progress'),
           ],
@@ -189,7 +192,10 @@ class JournalRunRow extends StatelessWidget {
     final shown = rankedFigure(run, ranking);
     final rank = ranking?.score.rank;
     final progress = switch (run.status) {
-      RunStatus.live => 'ep. ${run.currentEpoch}/${run.totalEpochs}',
+      RunStatus.live => switch (run.epochText) {
+        final epoch? => 'ep. $epoch',
+        null => 'step ${formatInt(run.currentStep)}',
+      },
       RunStatus.finished => 'finished',
       RunStatus.crashed => 'crashed',
     };

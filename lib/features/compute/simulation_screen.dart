@@ -5,6 +5,7 @@ import '../../app/routes.dart';
 import '../../app/theme.dart';
 import '../../data/providers.dart';
 import '../../models/run.dart';
+import '../../shared/redirect.dart';
 import '../../shared/widgets/async_value_view.dart';
 import '../../shared/widgets/delete_dialog.dart';
 import '../../shared/widgets/status_chip.dart';
@@ -36,6 +37,11 @@ class SimulationScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final value = ref.watch(runProvider(simulationId));
     final loaded = value.value;
+    // A training run's id under /compute opens it as a run.
+    if (loaded != null && !loaded.isSimulation) {
+      goAfterFrame(context, AppRoutes.run(simulationId));
+      return const Scaffold();
+    }
     // Fields at a step are shown at their simulated time.
     final metrics = ref.watch(runMetricsProvider(simulationId)).value;
     final times = metrics == null ? null : SimulatedTimes.from(metrics);

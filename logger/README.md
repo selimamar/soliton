@@ -90,7 +90,9 @@ own (below) and go to the System tab.
 When a run starts, it records the machine: GPUs (model, memory, driver),
 CPU and the cores the job may use, memory (the job's Slurm limit, else the
 machine's), Python, PyTorch, CUDA and cuDNN versions, the OS, the host name,
-and the Slurm job (id, name, partition, nodes, cluster, array task).
+and the Slurm job (id, name, partition, nodes, cluster, array task, and
+when it was submitted, started and will reach its time limit: one
+`scontrol show job` when the run starts).
 
 While it runs, every 15 seconds (`system_interval`), it samples:
 
@@ -446,10 +448,15 @@ leave the machine.
 
 - An exception or Ctrl-C marks the run as crashed, with the error message.
 - `SIGTERM` (a Slurm time limit, `scancel`) marks it as crashed with that
-  reason, uploads for up to 15 seconds, and lets the signal end the process
-  as usual. This applies only if your script doesn't handle `SIGTERM` itself.
+  reason ("Stopped by its Slurm time limit" when the job's limit is at most
+  5 minutes away), uploads for up to 15 seconds, and lets the signal end the
+  process as usual. This applies only if your script doesn't handle
+  `SIGTERM` itself. Some clusters (Sherlock among them) kill a job at its
+  limit without sending SIGTERM first: ask for it early with
+  `#SBATCH --signal=B:TERM@60` and start Python with `exec python ...`.
 - If the process is killed outright (`SIGKILL`, out of memory), the server
-  marks the run as crashed ("lost contact") after 10 minutes of silence.
+  marks the run as crashed: "Stopped by its Slurm time limit" a minute after
+  the job's limit, otherwise "lost contact" after 10 minutes of silence.
 
 ## Try it
 

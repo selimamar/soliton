@@ -54,11 +54,20 @@ final apiClientFactoryProvider = Provider<ApiClient Function(ServerConnection)>(
   (ref) => ApiClient.new,
 );
 
+/// Whether the app shows made-up runs while no server is connected. Off by
+/// default: unconnected, the lists are empty.
+final demoDataProvider = NotifierProvider<Setting<bool>, bool>(
+  () => Setting.boolean('demoData', false),
+);
+
 /// Which [RunRepository] the app uses: the server if connected, else demo
-/// data. Everything below refetches when this changes.
+/// data (or nothing, with [demoDataProvider] off). Everything below
+/// refetches when this changes.
 final runRepositoryProvider = Provider<RunRepository>((ref) {
   final connection = ref.watch(connectionProvider);
-  if (connection == null) return MockRunRepository();
+  if (connection == null) {
+    return ref.watch(demoDataProvider) ? MockRunRepository() : MockRunRepository.empty();
+  }
   final client = ref.watch(apiClientFactoryProvider)(connection);
   ref.onDispose(client.close);
   return ApiRunRepository(client);

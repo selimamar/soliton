@@ -10,6 +10,7 @@ import '../../models/simulation_info.dart';
 import '../../models/system_info.dart';
 import 'curve_generator.dart';
 import 'mock_fields.dart';
+import 'mock_job_times.dart';
 import 'mock_runs.dart';
 
 /// The demo simulations, as `soliton.simulate()` would log them: two
@@ -52,6 +53,8 @@ MockRun _kelvinHelmholtz(DateTime now) {
       'MPI ranks': '64',
     },
     info: const SimulationInfo(tEnd: 10, cflLimit: 1, monitor: 'enstrophy'),
+    queued: const Duration(hours: 1, minutes: 25),
+    timeLimit: const Duration(hours: 48),
     system: const SystemInfo(
       hostname: 'sh04-02n11.int',
       cpu: 'AMD EPYC 9654 96-Core Processor',
@@ -178,6 +181,8 @@ MockRun _burgers(DateTime now) {
       'Initial condition': 'u = −sin(2πx)',
     },
     info: const SimulationInfo(tEnd: 1, cflLimit: 1, monitor: 'energy', diverged: true),
+    queued: const Duration(minutes: 12),
+    timeLimit: const Duration(hours: 6),
     system: const SystemInfo(cpu: 'Intel Xeon Gold 6230', cpuCores: 4, memoryGb: 16),
     fields: [
       simulatedField(
@@ -256,6 +261,8 @@ MockRun _darcy(DateTime now) {
         ],
       ),
     ],
+    queued: const Duration(hours: 7, minutes: 30),
+    timeLimit: const Duration(hours: 24),
     system: const SystemInfo(cpu: 'Intel Xeon Gold 6230', cpuCores: 4, memoryGb: 16),
     fields: [
       simulatedField(
@@ -357,6 +364,8 @@ MockRun _simulation({
   required Map<String, String> setup,
   required SimulationInfo info,
   required SystemInfo system,
+  Duration? queued,
+  Duration? timeLimit,
   int totalSteps = 0,
   List<MockField> fields = const [],
   List<LoggedSeries<CurveStep>> curves = const [],
@@ -396,7 +405,7 @@ MockRun _simulation({
       lossPreview: const [],
       statusMessage: statusMessage,
       tags: tags,
-      system: system,
+      system: withJobTimes(system, startedAt, queued: queued, timeLimit: timeLimit),
       simulation: SimulationInfo(
         tEnd: info.tEnd,
         time: values[SimulationInfo.timeKey]?.last,

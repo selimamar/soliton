@@ -52,15 +52,22 @@ class SettingsScreen extends ConsumerWidget {
             for (final style in AppStyle.values) _StyleTile(style: style),
             const _SectionHeader('Data source'),
             ListTile(
-              leading: Icon(connection == null ? Icons.science_outlined : Icons.dns_outlined),
-              title: Text(connection == null ? 'Demo data' : 'Server'),
+              leading: Icon(connection == null ? Icons.cloud_off_outlined : Icons.dns_outlined),
+              title: Text(connection == null ? 'Not connected' : 'Server'),
               subtitle: Text(
                 connection == null
-                    ? 'Generated runs. Connect to your server to see your own.'
+                    ? 'Connect to your server to see your runs.'
                     : connection.address,
               ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => context.go(AppRoutes.server),
+            ),
+            SwitchListTile(
+              secondary: const Icon(Icons.science_outlined),
+              title: const Text('Demo data'),
+              subtitle: const Text('Made-up runs, shown while no server is connected.'),
+              value: ref.watch(demoDataProvider),
+              onChanged: (v) => ref.read(demoDataProvider.notifier).set(v),
             ),
             const _SectionHeader('Alerts'),
             SwitchListTile(

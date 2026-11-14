@@ -291,7 +291,7 @@ class SimulationCard extends ConsumerWidget {
                       ],
                     ],
                   ),
-                  if (run.status == RunStatus.live) ...[
+                  if (run.status == RunStatus.live && run.hasEnd) ...[
                     const SizedBox(height: 10),
                     LinearProgressIndicator(
                       value: run.progress,

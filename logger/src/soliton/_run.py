@@ -8,10 +8,12 @@ import os
 import signal
 import sys
 import threading
+import time
 import traceback as tracebacks
 import warnings
 import weakref
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
@@ -688,10 +690,35 @@ def _finish_all() -> None:
 
 def _on_sigterm(signum, _frame) -> None:
     for run in list(_active):
-        run.finish(
-            "crashed",
-            "Stopped by SIGTERM (for example a Slurm time limit or scancel)",
-            timeout=15,
-        )
+        run.finish("crashed", _sigterm_reason(run._description.get("system")), timeout=15)
     signal.signal(signum, signal.SIG_DFL)
     os.kill(os.getpid(), signum)
+
+
+# SIGTERM this close to the job's time limit is the limit (the job may ask
+# for it early, e.g. `#SBATCH --signal=B:TERM@60`).
+_NEAR_LIMIT_S = 300
+
+
+def _sigterm_reason(system: Optional[Mapping[str, Any]], now: Optional[float] = None) -> str:
+    """Why SIGTERM came: the Slurm job's time limit if it is (nearly) there,
+    else most likely scancel."""
+    slurm = (system or {}).get("slurm") or {}
+    limit = _unix_time(slurm.get("timeLimitAt"))
+    if limit is not None and (time.time() if now is None else now) >= limit - _NEAR_LIMIT_S:
+        return ("Stopped by its Slurm time limit (SIGTERM). Ask for more time (--time), or "
+                "save checkpoints and continue the run in a new job.")
+    return "Stopped by SIGTERM (for example scancel, or a Slurm time limit)"
+
+
+def _unix_time(text: Any) -> Optional[float]:
+    """"2026-11-14T18:32:22Z" as a Unix time, or None."""
+    if not isinstance(text, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.timestamp()

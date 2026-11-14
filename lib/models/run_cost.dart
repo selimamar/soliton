@@ -67,7 +67,14 @@ const gpuPrices = <(String, double)>[
   ('V100', 2.5),
   ('P100', 1.5),
   ('T4', 0.4),
+  // Workstation and consumer GPUs (common on university clusters, e.g.
+  // Sherlock's RTX 2080 Ti and TITANs), at GPU-cloud rental prices.
+  ('A5000', 0.4),
+  ('A4000', 0.3),
   ('4090', 0.5),
+  ('RTX 3090', 0.3),
+  ('RTX 2080', 0.2),
+  ('TITAN', 0.2),
 ];
 
 /// A CPU core-hour (a general-purpose cloud vCPU), in US dollars.

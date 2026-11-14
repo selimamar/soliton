@@ -196,6 +196,28 @@ def _default_architecture(name: str) -> dict:
     return {"name": name, "type": "Model", "ownParameters": 0, "children": []}
 
 
+# A run quiet for this long after its Slurm job's time limit was stopped by it.
+TIME_LIMIT_GRACE = timedelta(minutes=1)
+
+
+def _slurm(system: RunSystemRow | None) -> dict:
+    """The Slurm job the logger described (`system.slurm`), or {}."""
+    info = system.info if system is not None else None
+    slurm = info.get("slurm") if isinstance(info, dict) else None
+    return slurm if isinstance(slurm, dict) else {}
+
+
+def _parse_time(text: object) -> datetime | None:
+    """"2026-11-14T18:32:22Z" as an aware datetime, or None."""
+    if not isinstance(text, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
 class Store:
     def __init__(self, sessions: sessionmaker, clock: Callable[[], datetime] = utcnow):
         self._sessions = sessions
@@ -436,24 +458,41 @@ class Store:
             existing.latest = latest
 
     def mark_stale(self, stale_after: timedelta) -> list[Change]:
-        """Marks live runs that went quiet as crashed ("lost contact")."""
+        """Marks live runs that went quiet as crashed: a minute after their
+        Slurm job's time limit if they stopped there ("Stopped by its Slurm
+        time limit"), otherwise after `stale_after` ("Lost contact").
+
+        Slurm may kill a job the moment it reaches its limit, before the
+        logger can say so (Sherlock does), so the limit is checked here."""
         now = self._clock()
         cutoff = now - stale_after
         minutes = stale_after.total_seconds() / 60
         changes = []
         with self._sessions.begin() as session:
-            rows = session.scalars(
-                select(RunRow).where(RunRow.status == "live", RunRow.last_seen_at < cutoff)
-            ).all()
-            for row in rows:
+            quiet = select(RunRow).where(RunRow.status == "live")
+            lost = {row.id for row in session.scalars(quiet.where(RunRow.last_seen_at < cutoff))}
+            for row in session.scalars(quiet.where(RunRow.last_seen_at < now - TIME_LIMIT_GRACE)).all():
+                slurm = _slurm(session.get(RunSystemRow, row.id))
+                limit = _parse_time(slurm.get("timeLimitAt"))
+                if limit is not None and now > limit + TIME_LIMIT_GRACE:
+                    job = f" (job {slurm['jobId']})" if slurm.get("jobId") else ""
+                    message = (
+                        f"Stopped by its Slurm time limit{job}: no data since. Ask for more "
+                        "time (--time), or save checkpoints and continue the run in a new job. "
+                        "It shows as live again if data arrives."
+                    )
+                elif row.id in lost:
+                    message = (
+                        f"Lost contact: no data for over {minutes:g} minutes. The job may have "
+                        "been stopped (for example by a time limit) or lost its network "
+                        "connection. It shows as live again if data arrives."
+                    )
+                else:
+                    continue
                 row.status = "crashed"
                 row.lost_contact = True
                 row.ended_at = row.last_seen_at
-                row.status_message = (
-                    f"Lost contact: no data for over {minutes:g} minutes. The job may have "
-                    "been stopped (for example by a time limit) or lost its network "
-                    "connection. It shows as live again if data arrives."
-                )
+                row.status_message = message
                 changes.append(_change(row, "crashed"))
         return changes
 

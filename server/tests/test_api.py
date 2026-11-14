@@ -332,6 +332,34 @@ def test_a_quiet_run_is_marked_crashed_and_comes_back(app, client, clock, notifi
     assert "revived" in [c.event for c in notifications]
 
 
+def test_a_run_quiet_after_its_slurm_time_limit_is_marked_stopped_by_it(app, client, clock):
+    """Slurm can kill a job at its limit before the logger says so."""
+    slurm = {"jobId": "12345679", "timeLimitAt": "2026-11-12T09:05:00Z"}
+    create_run(client, system={"slurm": slurm})
+    create_run(client, "no-limit")
+    store = app.state.store
+
+    clock.advance(minutes=5, seconds=30)   # Past the limit, but not by a minute yet.
+    assert store.mark_stale(app.state.settings.stale_after) == []
+
+    clock.advance(minutes=1)
+    [change] = store.mark_stale(app.state.settings.stale_after)
+    assert change.run_id == "tiny-1" and change.event == "crashed"
+    run = client.get("/api/runs/tiny-1").json()
+    assert run["statusMessage"].startswith("Stopped by its Slurm time limit (job 12345679)")
+    assert run["endedAt"] == "2026-11-12T09:00:00Z"
+    # Without a time limit: still the 10 minutes, as "lost contact".
+    assert client.get("/api/runs/no-limit").json()["status"] == "live"
+
+
+def test_a_run_still_logging_past_its_time_limit_stays_live(app, client, clock):
+    """E.g. a limit extended with scontrol: data keeps arriving."""
+    create_run(client, system={"slurm": {"timeLimitAt": "2026-11-12T09:05:00Z"}})
+    clock.advance(minutes=8)
+    send(client, [metrics(1, train__loss=0.5)])
+    assert app.state.store.mark_stale(app.state.settings.stale_after) == []
+
+
 def test_late_upload_of_an_old_run_does_not_revive_it(app, client, clock):
     """`soliton sync` may upload old data after the run was marked lost."""
     create_run(client)

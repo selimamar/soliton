@@ -71,12 +71,13 @@ tested. If a node ever can't connect, use offline mode (step 5).
 #SBATCH --partition=gpu
 #SBATCH -G 1
 #SBATCH --time=12:00:00
+#SBATCH --signal=B:TERM@60                  # warn the script 60 s before the time limit
 #SBATCH --output=%x-%j.out
 
 source ~/.soliton_env                        # server and token
 export SOLITON_DIR=$SCRATCH/soliton-runs   # where runs are saved first
 
-python train.py                                # calls soliton.init(...), run.log(...)
+exec python train.py                           # calls soliton.init(...), run.log(...)
 ```
 
 Runs show "Sherlock" as their host (from Slurm's cluster name). The local
@@ -85,8 +86,15 @@ purges `$SCRATCH` files after 90 days without changes.
 
 The run's System tab shows the node, its GPU, the job's cores and memory
 limit, and GPU, memory and CPU use (of the whole job, DataLoader workers
-included). Tested on 2026-11-12 on an RTX 2080 Ti node: the numbers matched
-`nvidia-smi` and Slurm's own `seff` accounting.
+included). Tested on 2026-11-12 and 2026-11-14 on CPU and RTX 2080 Ti
+nodes: GPU use, memory, power and temperature matched `nvidia-smi`, and CPU
+use matched what the process counted itself (and `seff`).
+
+The memory shown is the job's cgroup memory, sampled every 15 seconds: what
+Slurm's `--mem` limit applies to. It reads lower than `seff`'s "Memory
+Utilized" (1.4 GB against 2.05 GB in the 2026-11-14 test), which adds up
+each process's resident memory, shared pages counted again, and keeps the
+highest value seen, so it also catches peaks between two samples.
 
 **With Sherlock's PyTorch module** instead of your own environment:
 
@@ -178,10 +186,18 @@ token travels over plain HTTP on the cluster's network.
 
 - **Finishes:** shown as finished.
 - **Python error** (e.g. CUDA out of memory): crashed, with the error.
-- **Time limit or `scancel`:** Slurm sends SIGTERM. The logger marks the run
-  as crashed ("Stopped by SIGTERM ...") and uploads for up to 15 seconds
-  before the job ends (Slurm waits 30 seconds by default before it kills a
-  job outright).
+- **Time limit:** on Sherlock, Slurm kills the job the moment it reaches
+  its limit, without a grace period (tested on 2026-11-14), so the logger
+  gets no chance to report. Two lines in the job script fix that, as in
+  the example above: `#SBATCH --signal=B:TERM@60` sends SIGTERM to the job
+  script a minute before the limit, and `exec python ...` makes Python the
+  job script, so it receives it. The logger then marks the run as crashed,
+  "Stopped by its Slurm time limit", and uploads for up to 15 seconds.
+  Without them, the server notices by itself: a minute after the time limit
+  of a run that has gone quiet, it marks it "Stopped by its Slurm time limit
+  (job ...)".
+- **`scancel`:** Slurm sends SIGTERM. The logger marks the run as crashed
+  ("Stopped by SIGTERM ...") and uploads for up to 15 seconds.
 - **Killed outright** (out of memory, node failure): no chance to report. The
   server marks the run as crashed ("lost contact") after 10 minutes without
   data. If the run was offline, it shows whatever `sync` uploaded.
@@ -193,7 +209,7 @@ and parameter counts, and per-layer summary statistics. What the script
 prints (its output and errors, the last 1,000 lines kept); turn that off with
 `export SOLITON_CAPTURE_OUTPUT=0` if it prints anything sensitive. Plus, from
 the logger itself: the node's name, its GPU and CPU models, software versions,
-the Slurm job's id, name and partition, and GPU, memory and CPU use every 15
+the Slurm job's id, name, partition, submit and start times and time limit, and GPU, memory and CPU use every 15
 seconds (turn the sampling off with `system_metrics=False`). No training data
 or model weights. Run names and hyperparameters go to your server, so don't put
 anything sensitive in them. Sherlock is approved for low- and moderate-risk

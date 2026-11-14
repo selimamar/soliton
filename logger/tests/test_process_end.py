@@ -73,3 +73,14 @@ def test_a_script_with_its_own_sigterm_handler_keeps_it(tmp_path):
     process.send_signal(signal.SIGTERM)
     assert process.wait(30) == 3
     assert "mine" in process.stdout.read()
+
+
+def test_sigterm_near_the_slurm_time_limit_is_reported_as_the_limit():
+    from soliton._run import _sigterm_reason
+
+    system = {"slurm": {"jobId": "1", "timeLimitAt": "2026-11-14T18:47:50Z"}}
+    limit = 1_794_682_070.0  # 2026-11-14T18:47:50Z
+    assert _sigterm_reason(system, now=limit - 60).startswith("Stopped by its Slurm time limit")
+    assert _sigterm_reason(system, now=limit + 5).startswith("Stopped by its Slurm time limit")
+    assert _sigterm_reason(system, now=limit - 3600).startswith("Stopped by SIGTERM (for example scancel")
+    assert _sigterm_reason(None).startswith("Stopped by SIGTERM")

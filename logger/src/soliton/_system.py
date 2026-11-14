@@ -22,6 +22,7 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import datetime, timezone, tzinfo
 from pathlib import Path
 from typing import Callable, Dict, List, Mapping, Optional
 
@@ -437,8 +438,77 @@ def system_info(env: Mapping[str, str] = os.environ, root: Path = Path("/")) -> 
         if env.get(var)
     }
     if slurm:
+        slurm.update(slurm_times(env))
         info["slurm"] = slurm
     return info
+
+
+# Slurm job times ------------------------------------------------------------
+
+_NO_TIME = {"", "Unknown", "None", "N/A", "(null)"}
+_A_YEAR = 365 * 24 * 3600  # A time limit further than this is no limit.
+
+
+def slurm_times(env: Mapping[str, str] = os.environ,
+                scontrol: Optional[Callable[[str], Optional[str]]] = None,
+                local: Optional[tzinfo] = None) -> Dict[str, str]:
+    """When the job was submitted and started, and when its time limit
+    stops it, as UTC times ("2026-11-14T18:23:45Z"): `submitTime`,
+    `startTime`, `timeLimitAt`, whichever Slurm says. Asks `scontrol` once
+    (the submit time is in no environment variable); never raises."""
+    job = env.get("SLURM_JOB_ID")
+    if not job:
+        return {}
+    fields = parse_scontrol((scontrol or run_scontrol)(job) or "")
+    submitted = _slurm_time(fields.get("SubmitTime"), local)
+    started = _epoch(env.get("SLURM_JOB_START_TIME")) or _slurm_time(fields.get("StartTime"), local)
+    ends = _epoch(env.get("SLURM_JOB_END_TIME")) or _slurm_time(fields.get("EndTime"), local)
+    if fields.get("TimeLimit") == "UNLIMITED" or (ends and started and ends - started > _A_YEAR):
+        ends = None
+    times = {"submitTime": submitted, "startTime": started, "timeLimitAt": ends}
+    return {key: _iso(value) for key, value in times.items() if value}
+
+
+def run_scontrol(job: str, timeout: float = 5) -> Optional[str]:
+    """`scontrol show job -o <job>`: the job on one line, or None."""
+    exe = shutil.which("scontrol")
+    if exe is None:
+        return None
+    try:
+        result = subprocess.run([exe, "show", "job", "-o", job],
+                                capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return result.stdout if result.returncode == 0 else None
+
+
+def parse_scontrol(text: str) -> Dict[str, str]:
+    """"JobId=42 SubmitTime=2026-11-14T10:23:45 ..." as a dict."""
+    return dict(re.findall(r"(?:^|\s)(\w+)=(\S*)", text))
+
+
+def _slurm_time(text: Optional[str], local: Optional[tzinfo]) -> Optional[float]:
+    """Slurm's local time ("2026-11-14T10:23:45") as a Unix time."""
+    if text is None or text in _NO_TIME:
+        return None
+    try:
+        moment = datetime.strptime(text, "%Y-%m-%dT%H:%M:%S")
+    except ValueError:
+        return None
+    # Naive: the machine's time zone, Slurm's too.
+    return (moment.replace(tzinfo=local) if local else moment.astimezone()).timestamp()
+
+
+def _epoch(text: Optional[str]) -> Optional[float]:
+    try:
+        value = float(text) if text else 0
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def _iso(seconds: float) -> str:
+    return datetime.fromtimestamp(seconds, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def framework_versions() -> dict:

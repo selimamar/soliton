@@ -140,8 +140,21 @@ class Run {
     return change;
   }
 
+  /// Whether it knows how far it has to go: training given `total_steps`,
+  /// or a simulation with an end time or a maximum number of iterations.
+  /// Only then do [progress], a progress bar and a time left mean anything.
+  bool get hasEnd => (simulation?.tEnd ?? 0) > 0 || totalSteps > 0;
+
+  /// The epoch, for labels: "42/100", "42" without a total, or null for a
+  /// run that logs no epochs (show its step instead).
+  String? get epochText => totalEpochs > 0
+      ? '$currentEpoch/$totalEpochs'
+      : currentEpoch > 0
+      ? '$currentEpoch'
+      : null;
+
   /// How far along it is (0–1): steps of [totalSteps], or a simulation's
-  /// simulated time of its end time.
+  /// simulated time of its end time. 0 without either (see [hasEnd]).
   double get progress =>
       simulation?.timeProgress ??
       (totalSteps == 0 ? 0 : (currentStep / totalSteps).clamp(0.0, 1.0).toDouble());
@@ -161,12 +174,31 @@ class Run {
       if (time >= tEnd) return Duration.zero;
       return Duration(milliseconds: (elapsedAt(now).inMilliseconds * (tEnd - time) / time).round());
     }
-    // A steady solve without a maximum number of iterations: unknown.
-    if (currentStep == 0 || (isSimulation && totalSteps == 0)) return null;
+    // No total steps (training without total_steps, a steady solve without
+    // a maximum number of iterations): unknown.
+    if (currentStep == 0 || totalSteps == 0) return null;
     if (currentStep >= totalSteps) return Duration.zero;
     final msPerStep = elapsedAt(now).inMilliseconds / currentStep;
     return Duration(milliseconds: (msPerStep * (totalSteps - currentStep)).round());
   }
+
+  /// When it should finish, from [estimatedRemainingAt]. Null if not live.
+  DateTime? estimatedEndAt(DateTime now) => switch (estimatedRemainingAt(now)) {
+    final remaining? => now.add(remaining),
+    null => null,
+  };
+
+  /// How long its Slurm job waited in the queue before it started, if the
+  /// logger found out.
+  Duration? get queueWait {
+    final submitted = system?.submittedAt;
+    if (submitted == null) return null;
+    final wait = (system?.jobStartedAt ?? startedAt).difference(submitted);
+    return wait.isNegative ? null : wait;
+  }
+
+  /// Its Slurm time limit, while that can still stop it.
+  DateTime? get liveTimeLimitAt => status == RunStatus.live ? system?.timeLimitAt : null;
 
   Map<String, Object?> toJson() => {
     'id': id,

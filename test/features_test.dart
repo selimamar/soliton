@@ -138,7 +138,11 @@ void main() {
       await tester.tap(find.text('Dark'));
       await tester.pumpAndSettle();
       // The switch is below the style picker: scroll to it.
-      await tester.ensureVisible(find.text('When a run finishes'));
+      await tester.scrollUntilVisible(
+        find.text('When a run finishes'),
+        200,
+        scrollable: visibleList(),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.text('When a run finishes'));
       await tester.pumpAndSettle();

@@ -7,6 +7,7 @@ import os
 import stat
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -17,6 +18,7 @@ from soliton._system import (
     _job_level,
     cores,
     parse_nvidia_smi,
+    slurm_times,
     system_info,
     visible_gpus,
 )
@@ -205,6 +207,41 @@ def test_the_machine_gpus_and_slurm_job_are_described(fake_nvidia_smi):
     assert info["slurm"] == {"jobId": "12345678", "jobName": "resnet50", "partition": "gpu",
                              "cluster": "sherlock"}
     assert info["cpuCores"] >= 1 and info["python"] and info["os"] and info["hostname"]
+
+
+PACIFIC = timezone(timedelta(hours=-8))
+SCONTROL = ("JobId=12345678 JobName=resnet50 UserId=me(1) JobState=RUNNING Reason=None "
+            "RunTime=00:05:00 TimeLimit=12:00:00 SubmitTime=2026-11-14T07:10:00 "
+            "EligibleTime=2026-11-14T07:10:00 StartTime=2026-11-14T10:22:00 "
+            "EndTime=2026-11-14T22:22:00 Partition=gpu Command=/home/me/job.sbatch\n")
+
+
+def test_the_job_s_queue_wait_and_time_limit_are_asked_once():
+    asked = []
+    times = slurm_times({"SLURM_JOB_ID": "12345678"},
+                        scontrol=lambda job: asked.append(job) or SCONTROL, local=PACIFIC)
+    assert asked == ["12345678"]
+    assert times == {"submitTime": "2026-11-14T15:10:00Z", "startTime": "2026-11-14T18:22:00Z",
+                     "timeLimitAt": "2026-11-15T06:22:00Z"}
+
+
+def test_slurm_s_environment_times_come_first():
+    start = datetime(2026, 11, 14, 18, 30, tzinfo=timezone.utc).timestamp()
+    env = {"SLURM_JOB_ID": "1", "SLURM_JOB_START_TIME": str(int(start)),
+           "SLURM_JOB_END_TIME": str(int(start) + 3600)}
+    assert slurm_times(env, scontrol=lambda job: None) == {
+        "startTime": "2026-11-14T18:30:00Z", "timeLimitAt": "2026-11-14T19:30:00Z"}
+
+
+def test_what_slurm_doesn_t_know_is_left_out():
+    unknown = "JobId=7 SubmitTime=2026-11-14T07:10:00 StartTime=Unknown EndTime=Unknown"
+    assert slurm_times({"SLURM_JOB_ID": "7"}, scontrol=lambda job: unknown, local=PACIFIC) == {
+        "submitTime": "2026-11-14T15:10:00Z"}
+    unlimited = SCONTROL.replace("TimeLimit=12:00:00", "TimeLimit=UNLIMITED")
+    assert "timeLimitAt" not in slurm_times({"SLURM_JOB_ID": "7"},
+                                            scontrol=lambda job: unlimited, local=PACIFIC)
+    assert slurm_times({}, scontrol=lambda job: SCONTROL) == {}, "not a Slurm job"
+    assert slurm_times({"SLURM_JOB_ID": "7"}, scontrol=lambda job: "garbage") == {}
 
 
 def test_cudnn_versions_read_like_people_write_them():
