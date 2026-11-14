@@ -186,14 +186,16 @@ token travels over plain HTTP on the cluster's network.
 
 - **Finishes:** shown as finished.
 - **Python error** (e.g. CUDA out of memory): crashed, with the error.
-- **Time limit:** on Sherlock, Slurm kills the job the moment it reaches
-  its limit, without a grace period (tested on 2026-11-14), so the logger
-  gets no chance to report. Two lines in the job script fix that, as in
-  the example above: `#SBATCH --signal=B:TERM@60` sends SIGTERM to the job
-  script a minute before the limit, and `exec python ...` makes Python the
-  job script, so it receives it. The logger then marks the run as crashed,
-  "Stopped by its Slurm time limit", and uploads for up to 15 seconds.
-  Without them, the server notices by itself: a minute after the time limit
+- **Time limit:** Slurm sends SIGTERM to the job script, then kills the
+  job a moment later. Python started from the script with plain
+  `python train.py` is a child of it: it never gets the signal and is
+  killed without reporting (tested on 2026-11-14). Start it with
+  `exec python train.py`, as in the example above, so that Python *is* the
+  job script and gets SIGTERM: the logger then marks the run as crashed,
+  "Stopped by its Slurm time limit". `#SBATCH --signal=B:TERM@60` sends
+  that SIGTERM a minute early, so the upload isn't cut short (in the test,
+  the job ended within a second of the signal at the limit). If a run still
+  can't report, the server notices by itself: a minute after the time limit
   of a run that has gone quiet, it marks it "Stopped by its Slurm time limit
   (job ...)".
 - **`scancel`:** Slurm sends SIGTERM. The logger marks the run as crashed

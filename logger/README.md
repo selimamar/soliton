@@ -451,9 +451,10 @@ leave the machine.
   reason ("Stopped by its Slurm time limit" when the job's limit is at most
   5 minutes away), uploads for up to 15 seconds, and lets the signal end the
   process as usual. This applies only if your script doesn't handle
-  `SIGTERM` itself. Some clusters (Sherlock among them) kill a job at its
-  limit without sending SIGTERM first: ask for it early with
-  `#SBATCH --signal=B:TERM@60` and start Python with `exec python ...`.
+  `SIGTERM` itself. In a Slurm job script, start Python with
+  `exec python ...`: Slurm signals the job script, and a Python started as
+  its child never gets the signal. `#SBATCH --signal=B:TERM@60` sends it a
+  minute before the limit, leaving time to upload.
 - If the process is killed outright (`SIGKILL`, out of memory), the server
   marks the run as crashed: "Stopped by its Slurm time limit" a minute after
   the job's limit, otherwise "lost contact" after 10 minutes of silence.

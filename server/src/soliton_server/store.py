@@ -462,8 +462,8 @@ class Store:
         Slurm job's time limit if they stopped there ("Stopped by its Slurm
         time limit"), otherwise after `stale_after` ("Lost contact").
 
-        Slurm may kill a job the moment it reaches its limit, before the
-        logger can say so (Sherlock does), so the limit is checked here."""
+        A run can't always say so itself: Slurm signals only the job script,
+        so a Python started as its child is killed without reporting."""
         now = self._clock()
         cutoff = now - stale_after
         minutes = stale_after.total_seconds() / 60
