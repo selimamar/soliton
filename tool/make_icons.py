@@ -1,8 +1,9 @@
 """Draw the Soliton "neural wave" logo and write every platform's app icon.
 
 A wave threaded through the nodes of a small neural network: a network
-learning a physical signal. Colours come from the light theme (slate
-background, crimson nodes).
+learning a physical signal. In the Paper style, like the app's header: a
+light paper tile with a crimson band along the top, a slate wave and crimson
+nodes, and a hairline edge so it holds up on light backgrounds.
 
     source env.sh && uv run python tool/make_icons.py
 
@@ -15,14 +16,20 @@ import json
 import math
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
 
-SLATE = (0x25, 0x2A, 0x31)
-PAPER = (0xEC, 0xEE, 0xF0)
-CRIMSON = (0xE4, 0x56, 0x6A)  # the site's #981B2B, lifted to read on slate
-EDGE = tuple(round(0.6 * e + 0.4 * s) for e, s in zip((0x8A, 0x92, 0x9C), SLATE))
+PANEL = (0xF6, 0xF7, 0xF8)  # the header's paper
+SLATE = (0x25, 0x2A, 0x31)  # text
+CRIMSON = (0x98, 0x1B, 0x2B)  # the accent
+HAIRLINE = (0xCF, 0xD4, 0xDA)
+EDGE = (0xC0, 0xC6, 0xCD)  # the network's edges, faint behind the wave
+
+# The crimson band along the top, as a fraction of the tile's height, and
+# how far the mark sits below centre to balance it.
+BAND = 0.075
+DROP = 0.035
 
 # Geometry in a unit box; the wave and the nodes share the same curve.
 # Two periods of a sine, with a node on each crest and trough.
@@ -59,21 +66,25 @@ def draw_mark(img, box, style, mono=None):
     h = st["wave"] * bs / 2
     for u, v in wave_points(round(bs * 1.5)):
         x, y = p(u, v)
-        d.ellipse([x - h, y - h, x + h, y + h], fill=col(PAPER))
+        d.ellipse([x - h, y - h, x + h, y + h], fill=col(SLATE))
     for u, v in NODES:
         x, y = p(u, v)
         r, ring = st["node"] * bs, st["ring"] * bs
         if mono is None:  # a ring in the background colour separates node and wave
-            d.ellipse([x - r - ring, y - r - ring, x + r + ring, y + r + ring], fill=SLATE)
+            d.ellipse([x - r - ring, y - r - ring, x + r + ring, y + r + ring], fill=PANEL)
         d.ellipse([x - r, y - r, x + r, y + r], fill=col(CRIMSON))
 
 
-def render(size, shape="square", scale=0.82, style=None, background=True, mono=None):
+def render(
+    size, shape="square", scale=0.82, style=None, background=True, mark=True, mono=None, band_top=0.0
+):
     """Render one icon.
 
     shape: "square" (full bleed, the OS masks it), "rounded" (rounded square
     filling the canvas) or "macos" (rounded square on the macOS icon grid
     with a soft shadow). scale: the mark's width as a fraction of the body.
+    background: the paper and its band; mark: the wave. band_top: where the
+    band starts, as a fraction of the height (for icons a launcher crops).
     """
     style = style or ("small" if size <= 64 else "full")
     ss = max(4, 2048 // size)
@@ -92,9 +103,25 @@ def render(size, shape="square", scale=0.82, style=None, background=True, mono=N
         body, off = n, 0
         radius = n * 0.225 if shape == "rounded" else 0
     if background:
-        ImageDraw.Draw(img).rounded_rectangle([off, off, off + body - 1, off + body - 1], radius, fill=SLATE)
-    ms = body * scale
-    draw_mark(img, (off + (body - ms) / 2, off + (body - ms) / 2, ms), style, mono)
+        box = [off, off, off + body - 1, off + body - 1]
+        tile = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+        ImageDraw.Draw(tile).rounded_rectangle(box, radius, fill=PANEL)
+        # The band, clipped to the tile's rounded corners.
+        band = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+        top = off + band_top * body
+        ImageDraw.Draw(band).rectangle([off, top, off + body, top + BAND * body], fill=CRIMSON)
+        band.putalpha(ImageChops.multiply(band.getchannel("A"), tile.getchannel("A")))
+        tile = Image.alpha_composite(tile, band)
+        # A hairline edge, except where the system draws its own mask.
+        if shape != "square":
+            ImageDraw.Draw(tile).rounded_rectangle(
+                box, radius, outline=HAIRLINE, width=max(1, round(n / 256))
+            )
+        img = Image.alpha_composite(img, tile)
+    if mark:
+        ms = body * scale
+        x0 = off + (body - ms) / 2
+        draw_mark(img, (x0, x0 + DROP * body, ms), style, mono)
     return img.resize((size, size), Image.LANCZOS)
 
 
@@ -123,17 +150,21 @@ def write_svg(path):
     )
     wave = " L".join(f"{q(u)} {q(v)}" for u, v in wave_points(80))
     nodes = "".join(
-        f'<circle cx="{q(u)}" cy="{q(v)}" r="{st["node"] * s:.1f}" stroke="#252A31" '
+        f'<circle cx="{q(u)}" cy="{q(v)}" r="{st["node"] * s:.1f}" stroke="#F6F7F8" '
         f'stroke-width="{2 * st["ring"] * s:.1f}" paint-order="stroke"/>'
         for u, v in NODES
     )
     hexc = lambda c: "#%02X%02X%02X" % c
     svg = (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {s} {s}">\n'
-        f'<rect width="{s}" height="{s}" rx="{0.225 * s:.0f}" fill="#252A31"/>\n'
-        f'<g transform="translate({s * 0.09:.1f} {s * 0.09:.1f}) scale(0.82)">\n'
+        f'<clipPath id="tile"><rect width="{s}" height="{s}" rx="{0.225 * s:.0f}"/></clipPath>\n'
+        f'<g clip-path="url(#tile)"><rect width="{s}" height="{s}" fill="#F6F7F8"/>'
+        f'<rect width="{s}" height="{BAND * s:.0f}" fill="#981B2B"/></g>\n'
+        f'<rect x="2" y="2" width="{s - 4}" height="{s - 4}" rx="{0.225 * s - 2:.0f}" fill="none" '
+        f'stroke="#CFD4DA" stroke-width="4"/>\n'
+        f'<g transform="translate({s * 0.09:.1f} {s * (0.09 + DROP):.1f}) scale(0.82)">\n'
         f'<g stroke="{hexc(EDGE)}" stroke-width="{st["edge"] * s:.1f}">{edges}</g>\n'
-        f'<path d="M{wave}" fill="none" stroke="#ECEEF0" stroke-width="{st["wave"] * s:.1f}" '
+        f'<path d="M{wave}" fill="none" stroke="#252A31" stroke-width="{st["wave"] * s:.1f}" '
         f'stroke-linecap="round" stroke-linejoin="round"/>\n'
         f'<g fill="{hexc(CRIMSON)}">{nodes}</g>\n</g>\n</svg>\n'
     )
@@ -161,6 +192,9 @@ def main():
         # Adaptive layers are 108 dp; the launcher shows the centre 72 dp
         # and may crop to a 66 dp circle.
         fg = round(108 * factor)
+        # The paper and band are the background layer; the band starts where
+        # the visible 72 dp begins (18 dp down).
+        save(render(fg, mark=False, band_top=18 / 108), res / f"mipmap-{dpi}/ic_launcher_background.png", opaque=True)
         save(render(fg, scale=0.56, style="full", background=False), res / f"mipmap-{dpi}/ic_launcher_foreground.png")
         save(
             render(fg, scale=0.56, style="small", background=False, mono=(255, 255, 255)),
@@ -172,8 +206,8 @@ def main():
     save(render(192, "rounded"), web / "icons/Icon-192.png")
     save(render(512, "rounded"), web / "icons/Icon-512.png")
     # Maskable icons may be cropped to the central 80% circle.
-    save(render(192, scale=0.64), web / "icons/Icon-maskable-192.png", opaque=True)
-    save(render(512, scale=0.64), web / "icons/Icon-maskable-512.png", opaque=True)
+    save(render(192, scale=0.64, band_top=0.1), web / "icons/Icon-maskable-192.png", opaque=True)
+    save(render(512, scale=0.64, band_top=0.1), web / "icons/Icon-maskable-512.png", opaque=True)
 
 
 if __name__ == "__main__":
