@@ -27,11 +27,10 @@ New here: [docs/getting-started.md](docs/getting-started.md), the app and
 how to use it in a few minutes. Training on Stanford's Sherlock cluster:
 [docs/sherlock.md](docs/sherlock.md). Coding agents: [docs/for-agents.md](docs/for-agents.md)
 explains how Soliton works and how to add monitoring to any computation;
-for Claude Code, the `soliton` skill in [skills/soliton](skills/soliton/SKILL.md)
-does it by itself (install: `ln -s "$PWD/skills/soliton" ~/.claude/skills/soliton`).
-Programs that aren't Python (compiled solvers, MPI jobs) report through
-[skills/soliton/scripts/monitor_solver.py](skills/soliton/scripts/monitor_solver.py)
-without being changed.
+the `soliton` skills for Claude Code and Codex in [skills/](skills/README.md)
+make agents do it by themselves (install instructions there). Programs that
+aren't Python (compiled solvers, MPI jobs) report through the skills'
+`scripts/monitor_solver.py` without being changed.
 
 ## Setting up (everything stays in this folder)
 
@@ -213,8 +212,10 @@ server/                         the server (package `soliton-server`)
 docs/getting-started.md         the app and how to use it, for people
 docs/sherlock.md                using the logger on Sherlock
 docs/for-agents.md              how Soliton works, for coding agents
-skills/soliton/                 the Claude Code skill that adds monitoring
-  scripts/monitor_solver.py     reports any program (a compiled solver) unchanged
+skills/                         skills that make coding agents add monitoring
+  claude-code/soliton/          for Claude Code
+  codex/soliton/                for OpenAI Codex
+  */scripts/monitor_solver.py   reports any program (a compiled solver) unchanged
 tool/sherlock_check/            small Sherlock jobs that check the app's numbers
 env.sh, pyproject.toml, uv.lock the project environment
 ```

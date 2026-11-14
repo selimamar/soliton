@@ -11,9 +11,9 @@ Python logger. Your job: whenever you write, change or submit a computation,
 add that reporting, the right way for its kind, without changing what it
 computes.
 
-The full reference is `docs/for-agents.md` in the Soliton repository (on
-the user's Mac: `/path/to/soliton`; on GitHub:
-`selimamar/soliton`); the logger's API is in `logger/README.md` there. Read
+The full reference is `docs/for-agents.md` in the Soliton repository
+(GitHub: `selimamar/soliton`, or wherever the user keeps their copy); the
+logger's API is in `logger/README.md` there. Read
 them when something here isn't enough.
 
 ## Rules
@@ -251,7 +251,7 @@ in the job. One-time setup (check, don't redo): the logger and the wrapper on
 Sherlock at `$HOME/soliton/logger` and `$HOME/soliton/monitor_solver.py`. If
 missing, and the user has authorized Sherlock access, copy them from the
 repository:
-`rsync -a --exclude __pycache__ --exclude tests logger skills/soliton/scripts/monitor_solver.py sherlock:soliton/`.
+`rsync -a --exclude __pycache__ --exclude tests logger skills/claude-code/soliton/scripts/monitor_solver.py sherlock:soliton/`.
 
 In the job script:
 
@@ -300,7 +300,7 @@ detected (Modal, AWS, GCP, ...). If there is no public server, use
 `SOLITON_SERVER=http://127.0.0.1:8000` and the token from
 `soliton-server --show-token`, set by the user in their shell. The logger
 and the wrapper are in the Soliton repository (`logger/src` on
-`PYTHONPATH`, `skills/soliton/scripts/monitor_solver.py`). Set `SOLITON_DIR`
+`PYTHONPATH`, `skills/claude-code/soliton/scripts/monitor_solver.py`). Set `SOLITON_DIR`
 explicitly (the default is `./soliton-runs` in the current directory) and
 follow the project's own rules about where files may go. Outside Slurm and
 containers, CPU and memory include the program only if `psutil` is

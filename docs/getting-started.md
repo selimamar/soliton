@@ -59,18 +59,23 @@ shows the server's runs from then on, updating live.
 
 ### With a coding agent (the easy way)
 
-Claude Code has a `soliton` skill: whenever it writes, edits or submits a
-training script, a simulation or a job (for Sherlock, Modal or elsewhere),
-it adds the monitoring by itself, checks it with a short run, and tells you
-the run's name. Just ask for the computation, e.g. "run this solver on
-Sherlock with 4 nodes". For other agents (Codex, ...), copy the block at the
-end of [for-agents.md](for-agents.md) into your project's `AGENTS.md`.
+Claude Code and Codex each have a `soliton` skill: whenever the agent
+writes, edits or submits a training script, a simulation or a job (for
+Sherlock, Modal or elsewhere), it adds the monitoring by itself, checks it
+with a short run, and tells you the run's name. Just ask for the
+computation, e.g. "run this solver on Sherlock with 4 nodes".
 
-Install the skill once, on the computer where you use Claude Code:
+Install the skill once, on the computer where you use the agent (from this
+repository):
 
 ```bash
-ln -s "$PWD/skills/soliton" ~/.claude/skills/soliton     # from this repository
+ln -s "$PWD/skills/claude-code/soliton" ~/.claude/skills/soliton    # Claude Code
+ln -s "$PWD/skills/codex/soliton" ~/.agents/skills/soliton          # Codex
 ```
+
+[skills/README.md](../skills/README.md) has the details. For other agents,
+copy the block at the end of [for-agents.md](for-agents.md) into your
+project's `AGENTS.md`.
 
 ### By hand
 
@@ -111,7 +116,7 @@ launch it through the wrapper, telling it which output files or lines hold
 the values to follow:
 
 ```bash
-python3 skills/soliton/scripts/monitor_solver.py --name channel-re180 --t-end 50 \
+python3 skills/claude-code/soliton/scripts/monitor_solver.py --name channel-re180 --t-end 50 \
     --table 'run/diagnostics.dat,t=2,energy=3,residual=5' \
     -- srun ./solver input.cfg
 ```

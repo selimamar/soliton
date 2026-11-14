@@ -307,7 +307,7 @@ with sim:
   `id`, `server`, `token`, `mode`, `dir`) are as for `init()`.
 
 Solvers that aren't in Python can still report, unchanged: launch them
-through [skills/soliton/scripts/monitor_solver.py](../skills/soliton/scripts/monitor_solver.py),
+through [skills/claude-code/soliton/scripts/monitor_solver.py](../skills/claude-code/soliton/scripts/monitor_solver.py),
 which reads what the solver writes (text tables of numbers, HDF5 tables) or
 prints, and calls `sim.log` for it. Its `--help` has the details.
 

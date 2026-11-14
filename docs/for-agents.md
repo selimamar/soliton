@@ -1,11 +1,11 @@
 # Soliton for coding agents
 
 How Soliton works, and how to make any computation you write or submit show
-up in it. For Claude Code, the `soliton` skill
-([skills/soliton/SKILL.md](../skills/soliton/SKILL.md)) holds the
-step-by-step recipe and loads by itself; this page is the reference behind
-it, and works for any agent (copy the block at the end into a project's
-`AGENTS.md` or `CLAUDE.md`).
+up in it. For Claude Code and Codex, the `soliton` skills
+([skills/](../skills/README.md)) hold the step-by-step recipe and load by
+themselves once installed; this page is the reference behind them, and
+works for any agent (copy the block at the end into a project's `AGENTS.md`
+or `CLAUDE.md`).
 
 ## What Soliton is
 
@@ -108,7 +108,7 @@ Where the server is depends on the user's setup:
    `max_iterations=` and logs once per iteration.
 3. **Any other program** (compiled solvers, community codes, MPI launches,
    shell pipelines): don't edit it. Launch it through
-   [skills/soliton/scripts/monitor_solver.py](../skills/soliton/scripts/monitor_solver.py),
+   [skills/claude-code/soliton/scripts/monitor_solver.py](../skills/claude-code/soliton/scripts/monitor_solver.py),
    which runs it unchanged, passes its output through, reads the values it
    writes (text tables of numbers, HDF5 tables, or progress lines it
    prints) and reports them as a simulation. It keeps the program's exit
@@ -119,7 +119,7 @@ Where the server is depends on the user's setup:
    splits=)`, passed to `init(datasets=[...])`; a run that writes data
    registers it with `run.register_dataset(path)`.
 
-The [skill](../skills/soliton/SKILL.md) has a code example for each, job
+The [skill](../skills/claude-code/soliton/SKILL.md) has a code example for each, job
 script templates for Sherlock, Modal and cloud machines, and how to find
 and choose what to watch in a program's output. The full API is in
 [logger/README.md](../logger/README.md).
@@ -156,8 +156,8 @@ Replace `/path/to/soliton` with where the Soliton repository (or its
 ## Monitoring: Soliton
 
 Every computation in this project reports to Soliton, so I can follow it in
-the Soliton app. Follow /path/to/soliton/docs/for-agents.md (Claude Code: the
-`soliton` skill). In short:
+the Soliton app. Follow /path/to/soliton/docs/for-agents.md (Claude Code or
+Codex: the `soliton` skill, from /path/to/soliton/skills). In short:
 
 - Training scripts: `soliton.init(...)`, `run.log(...)`, `run.watch(model)`.
   Python simulations: `soliton.simulate(...)`, `sim.log(..., t=t)`. Other

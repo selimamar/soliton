@@ -1,0 +1,12 @@
+interface:
+  display_name: "Soliton monitoring"
+  short_description: "Report training runs, simulations and jobs to the Soliton app"
+  icon_small: "./assets/icon-small.png"
+  icon_large: "./assets/icon-large.png"
+  brand_color: "#981B2B"
+  default_prompt: "Add Soliton monitoring to this computation and its job script, then check it with a short run."
+
+policy:
+  # Codex picks this skill by itself when a task matches its description:
+  # monitoring should be added even when the user doesn't ask for it.
+  allow_implicit_invocation: true

@@ -1,4 +1,4 @@
-"""skills/soliton/scripts/monitor_solver.py: a program run unchanged and
+"""skills/claude-code/soliton/scripts/monitor_solver.py: a program run unchanged and
 reported as a simulation, from what it writes and prints."""
 
 import json
@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "skills" / "soliton" / "scripts" / "monitor_solver.py"
+SCRIPT = ROOT / "skills" / "claude-code" / "soliton" / "scripts" / "monitor_solver.py"
 
 # Appends to a diagnostics table whose header numbers the columns (the time
 # is column 3, not 1) and prints "it=... t=... residual=..." lines.
@@ -218,3 +218,22 @@ def test_a_source_that_stops_does_not_hold_the_others_back(tmp_path):
     def when(r):
         return datetime.fromisoformat(r["time"].replace("Z", "+00:00"))
     assert (when(status(recs)) - when(rows[-1])).total_seconds() > 2
+
+
+def test_the_codex_skill_carries_the_same_wrapper():
+    """Each skill is installed on its own, so each has a copy: keep them equal.
+    After changing the wrapper: cp skills/claude-code/soliton/scripts/monitor_solver.py
+    skills/codex/soliton/scripts/"""
+    codex = ROOT / "skills" / "codex" / "soliton" / "scripts" / "monitor_solver.py"
+    assert codex.read_bytes() == SCRIPT.read_bytes()
+
+
+def test_both_skills_name_their_files_correctly():
+    for skill in ("claude-code", "codex"):
+        text = (ROOT / "skills" / skill / "soliton" / "SKILL.md").read_text()
+        front = text.split("---")[1]
+        assert "name: soliton" in front and "description:" in front
+        for reference in ("references/recipes.md", "references/other-programs.md",
+                          "references/where-it-runs.md", "scripts/monitor_solver.py"):
+            if skill == "codex" or reference.startswith("scripts/"):
+                assert (ROOT / "skills" / skill / "soliton" / reference).is_file(), reference
