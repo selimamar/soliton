@@ -179,6 +179,7 @@ lib/
     run_repository.dart         interface the UI reads data through
     api_run_repository.dart     ... implemented with the server's API
     mock/                       ... implemented with generated demo data
+    empty_run_repository.dart   ... with nothing (not connected, demo data off)
     providers.dart              Riverpod providers: the server login, which
                                 repository to use, and the data itself
     services/
@@ -242,7 +243,8 @@ flutter test test/server_contract_test.dart
   chart already show up under "Other metrics".
 - **Add a setting:** a `NotifierProvider` with `Setting.boolean(...)` or
   `Setting.choice(...)` (see `features/settings/settings_providers.dart`);
-  it is saved automatically.
+  it is saved automatically. Settings that choose where data comes from
+  (the server login, demo data) live in `data/providers.dart` instead.
 - **Change colours:** `app/theme.dart` (seed colour and `ChartColors`).
 - **Add a screen:** create a folder under `features/`, register its route in
   `app/router.dart` and add its path to `app/routes.dart`.

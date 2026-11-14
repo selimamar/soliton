@@ -10,6 +10,7 @@ import '../../shared/clock.dart';
 import '../../shared/search.dart';
 import '../../shared/selection.dart';
 import '../../shared/widgets/async_value_view.dart';
+import '../../shared/widgets/connection_banner.dart';
 import '../../shared/widgets/delete_dialog.dart';
 import '../../shared/widgets/picking_app_bar.dart';
 import '../../shared/widgets/sparkline.dart';
@@ -102,16 +103,22 @@ class _SimulationsList extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     if (simulations.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Text(
-            'No simulations yet. Monitor one from Python with '
-            'soliton.simulate(name, t_end=...), then sim.log({...}, t=t).',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+        children: [
+          const ConnectionBanner(),
+          Padding(
+            padding: const EdgeInsets.all(32),
+            child: Text(
+              'No simulations yet. Monitor one from Python with '
+              'soliton.simulate(name, t_end=...), then sim.log({...}, t=t).',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
-        ),
+        ],
       );
     }
     final filter = ref.watch(simulationFilterProvider);
@@ -143,6 +150,7 @@ class _SimulationsList extends ConsumerWidget {
                     selected: filter,
                     onSelected: ref.read(simulationFilterProvider.notifier).select,
                   ),
+                  if (picked == null) const ConnectionBanner(),
                   const SizedBox(height: 12),
                   if (shown.isEmpty) _NoMatch(query: query),
                   for (final s in shown) ...[

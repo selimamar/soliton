@@ -39,7 +39,14 @@ class SimulationScreen extends ConsumerWidget {
     final loaded = value.value;
     // A training run's id under /compute opens it as a run.
     if (loaded != null && !loaded.isSimulation) {
-      goAfterFrame(context, AppRoutes.run(simulationId));
+      final tab = switch (initialTab) {
+        SimulationTab.overview => null,
+        SimulationTab.diagnostics => 'metrics',
+        SimulationTab.fields => 'fields',
+        SimulationTab.system => 'system',
+      };
+      final page = AppRoutes.run(simulationId);
+      goAfterFrame(context, tab == null ? page : '$page?tab=$tab');
       return const Scaffold();
     }
     // Fields at a step are shown at their simulated time.

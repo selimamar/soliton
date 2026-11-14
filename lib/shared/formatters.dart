@@ -8,8 +8,9 @@ String formatCount(num value) {
   final abs = value.abs();
   // Thresholds sit where rounding to one decimal would reach 1000 of the
   // smaller unit, so 999,999 becomes "1M" rather than "1000k".
-  // Past billions (a diverging simulation reaches 1e300): "2.4e+297".
-  if (abs >= 999.95e9) return value.toStringAsExponential(1);
+  // Past trillions (a diverging simulation reaches 1e300): "2.4e+297".
+  if (abs >= 999.95e12) return value.toStringAsExponential(1);
+  if (abs >= 999.95e9) return '${_trim(value / 1e12)}T';
   if (abs >= 999.95e6) return '${_trim(value / 1e9)}B';
   if (abs >= 999.95e3) return '${_trim(value / 1e6)}M';
   if (abs >= 999.5) return '${_trim(value / 1e3)}k';
@@ -111,7 +112,7 @@ String formatPercent(double fraction) => '${(fraction * 100).toStringAsFixed(1)}
 /// (20000, 10000) -> "20k".
 String formatAxisTick(double value, double interval) {
   if (value.abs() < interval * 1e-6) return '0';
-  if (value.abs() >= 999.95e9) {
+  if (value.abs() >= 999.95e12) {
     // Short enough for the axis: "2.0e303", not "2.0e+303".
     final digits = math.max(0, _exponent(value.abs()) - _exponent(interval));
     return value.toStringAsExponential(digits).replaceFirst('e+', 'e');
@@ -187,15 +188,10 @@ String formatClock(
   required String Function(DateTime) timeOfDay,
 }) {
   final local = time.toLocal(), today = now.toLocal();
+  final day = DateTime(local.year, local.month, local.day);
+  final thisDay = DateTime(today.year, today.month, today.day);
   // Rounded: a day with a clock change has 23 or 25 hours.
-  final days =
-      (DateTime(
-                local.year,
-                local.month,
-                local.day,
-              ).difference(DateTime(today.year, today.month, today.day)).inHours /
-              24)
-          .round();
+  final days = (day.difference(thisDay).inHours / 24).round();
   final clock = timeOfDay(local);
   if (days == 0) return clock;
   if (days == 1) return 'tomorrow $clock';

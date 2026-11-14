@@ -10,6 +10,7 @@ import '../../models/run.dart';
 import '../../shared/search.dart';
 import '../../shared/selection.dart';
 import '../../shared/widgets/async_value_view.dart';
+import '../../shared/widgets/connection_banner.dart';
 import '../../shared/widgets/delete_dialog.dart';
 import '../../shared/widgets/picking_app_bar.dart';
 import '../../shared/widgets/spaced_list_view.dart';
@@ -177,7 +178,6 @@ class _RunsList extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final filter = ref.watch(runFilterProvider);
     final picked = ref.watch(runSelectionProvider);
-    final demo = ref.watch(connectionProvider) == null;
     final query = ref.watch(runSearchProvider);
     // The status counts are of the runs that match the search.
     final found = searchRuns(runs, query);
@@ -241,7 +241,7 @@ class _RunsList extends ConsumerWidget {
             selected: ref.watch(runFilterProvider),
             onSelected: ref.read(runFilterProvider.notifier).select,
           ),
-          if (demo && picked == null) _DemoBanner(demoData: ref.watch(demoDataProvider)),
+          if (picked == null) const ConnectionBanner(),
           if (journal && visibleRuns.isNotEmpty)
             _TableHeader(value: logged == null ? 'Loss' : order.shortLabel),
           if (runs.isEmpty)
@@ -381,36 +381,6 @@ class _EmptyState extends StatelessWidget {
     padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 16),
     child: Center(child: Text(text, textAlign: TextAlign.center)),
   );
-}
-
-/// One quiet line saying no server is connected (and the runs are made up,
-/// with [demoData] on), with a way to connect one.
-class _DemoBanner extends StatelessWidget {
-  const _DemoBanner({required this.demoData});
-
-  final bool demoData;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final muted = theme.colorScheme.onSurfaceVariant;
-    return Row(
-      children: [
-        Icon(demoData ? Icons.science_outlined : Icons.cloud_off_outlined, size: 16, color: muted),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            demoData ? 'Demo data. These runs are made up.' : 'Not connected to a server.',
-            style: theme.textTheme.bodySmall?.copyWith(color: muted),
-          ),
-        ),
-        TextButton(
-          onPressed: () => context.go(AppRoutes.server),
-          child: const Text('Connect server'),
-        ),
-      ],
-    );
-  }
 }
 
 /// Whether live updates are flowing; opens the server settings. Hidden on

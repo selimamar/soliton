@@ -39,7 +39,16 @@ class RunDetailScreen extends ConsumerWidget {
     // A simulation's link under /runs (typed, or an old bookmark) opens it
     // in Compute, where its own tabs are.
     if (loadedRun != null && loadedRun.isSimulation) {
-      goAfterFrame(context, AppRoutes.simulation(runId));
+      // The same tab where there is one: a simulation's Diagnostics are its
+      // Metrics.
+      final tab = switch (initialTab) {
+        RunTab.overview || RunTab.layers => null,
+        RunTab.metrics => 'diagnostics',
+        RunTab.fields => 'fields',
+        RunTab.system => 'system',
+      };
+      final page = AppRoutes.simulation(runId);
+      goAfterFrame(context, tab == null ? page : '$page?tab=$tab');
       return const Scaffold();
     }
 

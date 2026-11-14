@@ -118,11 +118,13 @@ void main() {
 
   test('huge values (a diverging simulation) stay short', () {
     expect(formatMetric(2.38886989229767e294), '2.4e+294');
-    expect(formatCount(1.5e12), '1.5e+12');
+    expect(formatCount(1.5e12), '1.5T');
+    expect(formatCount(2e15), '2.0e+15');
     expect(formatCount(2.5e9), '2.5B');
     expect(formatRelativeError(2.353577187273388e305), '2.4e+307%');
     expect(formatRelativeError(97.91), '9791.0%');
     expect(formatAxisTick(2e303, 5e302), '2.0e303');
-    expect(formatAxisTick(1e12, 1e12), '1e12');
+    expect(formatAxisTick(1e12, 1e12), '1T');
+    expect(formatAxisTick(3e15, 1e15), '3e15');
   });
 }

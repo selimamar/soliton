@@ -8,6 +8,7 @@ import '../models/run.dart';
 import '../models/run_insights.dart';
 import '../models/run_output.dart';
 import 'api_run_repository.dart';
+import 'empty_run_repository.dart';
 import 'mock/mock_run_repository.dart';
 import 'run_repository.dart';
 import 'services/api_client.dart';
@@ -55,7 +56,9 @@ final apiClientFactoryProvider = Provider<ApiClient Function(ServerConnection)>(
 );
 
 /// Whether the app shows made-up runs while no server is connected. Off by
-/// default: unconnected, the lists are empty.
+/// default: unconnected, the lists are empty. A setting, but kept here
+/// rather than in `features/settings/settings_providers.dart` because it
+/// picks the repository, like [connectionProvider].
 final demoDataProvider = NotifierProvider<Setting<bool>, bool>(
   () => Setting.boolean('demoData', false),
 );
@@ -66,7 +69,7 @@ final demoDataProvider = NotifierProvider<Setting<bool>, bool>(
 final runRepositoryProvider = Provider<RunRepository>((ref) {
   final connection = ref.watch(connectionProvider);
   if (connection == null) {
-    return ref.watch(demoDataProvider) ? MockRunRepository() : MockRunRepository.empty();
+    return ref.watch(demoDataProvider) ? MockRunRepository() : const EmptyRunRepository();
   }
   final client = ref.watch(apiClientFactoryProvider)(connection);
   ref.onDispose(client.close);

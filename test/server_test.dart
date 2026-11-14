@@ -242,6 +242,11 @@ void main() {
 
       expect(find.text('All · 0'), findsOneWidget);
       expect(find.text('Not connected to a server.'), findsOneWidget);
+      for (final section in ['/compute', '/data']) {
+        routerOf(tester).go(section);
+        await tester.pumpAndSettle();
+        expect(find.text('Not connected to a server.'), findsOneWidget, reason: section);
+      }
       expect(store.getString('serverToken'), isNull);
       expect(sockets.opened.single.closed, isTrue);
     });

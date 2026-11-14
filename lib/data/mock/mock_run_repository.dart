@@ -17,14 +17,7 @@ import 'mock_simulations.dart';
 /// restarts.
 class MockRunRepository implements RunRepository {
   MockRunRepository({this.latency = const Duration(milliseconds: 350)})
-    : _runs = _build(DateTime.now()),
-      _empty = false;
-
-  /// No runs, simulations or datasets: what the app shows unconnected with
-  /// demo data turned off.
-  MockRunRepository.empty() : latency = Duration.zero, _runs = [], _empty = true;
-
-  final bool _empty;
+    : _runs = _build(DateTime.now());
 
   static List<MockRun> _build(DateTime now) => [
     for (final r in [...buildMockRuns(now), ...buildMockSimulations(now)])
@@ -47,9 +40,8 @@ class MockRunRepository implements RunRepository {
   late List<Dataset> _datasets = _buildDatasets();
 
   List<Dataset> _buildDatasets() => [
-    if (!_empty)
-      for (final d in buildMockDatasets(_builtAt, [for (final r in _runs) r.run]))
-        if (!_deletedDatasets.contains(d.id)) d,
+    for (final d in buildMockDatasets(_builtAt, [for (final r in _runs) r.run]))
+      if (!_deletedDatasets.contains(d.id)) d,
   ];
 
   @override

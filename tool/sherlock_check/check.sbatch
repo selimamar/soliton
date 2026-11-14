@@ -1,7 +1,7 @@
 #!/bin/bash
 # One scenario of check.py, reporting live to the Soliton test server job
 # (server/deploy/sherlock-server.sbatch). Resources go on the command line,
-# per scenario (see README.md next to this file):
+# per scenario (see README.md next to this file, with what the app should show):
 #   sbatch -J appcheck-train -c 2 --mem=4G --time=00:20:00 check.sbatch train
 # Submit from $SCRATCH/soliton-appcheck (logs go to logs/).
 #SBATCH --output=logs/%x-%j.out

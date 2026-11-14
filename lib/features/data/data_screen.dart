@@ -10,6 +10,7 @@ import '../../shared/formatters.dart';
 import '../../shared/search.dart';
 import '../../shared/selection.dart';
 import '../../shared/widgets/async_value_view.dart';
+import '../../shared/widgets/connection_banner.dart';
 import '../../shared/widgets/delete_dialog.dart';
 import '../../shared/widgets/picking_app_bar.dart';
 import '../../shared/widgets/stat_tile.dart';
@@ -83,17 +84,23 @@ class _DatasetsList extends ConsumerWidget {
     final theme = Theme.of(context);
     final picked = ref.watch(datasetSelectionProvider);
     if (datasets.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Text(
-            'No datasets yet. Register one with soliton.register_dataset(path), or every '
-            'data file in a folder with `soliton data scan FOLDER`. Only their description '
-            'is uploaded, not the data.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+        children: [
+          const ConnectionBanner(),
+          Padding(
+            padding: const EdgeInsets.all(32),
+            child: Text(
+              'No datasets yet. Register one with soliton.register_dataset(path), or every '
+              'data file in a folder with `soliton data scan FOLDER`. Only their description '
+              'is uploaded, not the data.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
-        ),
+        ],
       );
     }
     final query = ref.watch(datasetSearchProvider);
@@ -119,6 +126,7 @@ class _DatasetsList extends ConsumerWidget {
                     provider: datasetSearchProvider,
                     hint: 'Search name, source, host, path…',
                   ),
+                  if (picked == null) const ConnectionBanner(),
                   const SizedBox(height: 12),
                   StatStrip(
                     stats: [

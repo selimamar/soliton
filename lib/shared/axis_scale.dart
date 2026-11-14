@@ -40,6 +40,18 @@ double niceInterval(double rough) {
   return nice * magnitude;
 }
 
+/// The next smaller of 1, 2 or 5 times a power of ten: 50 -> 20, 20 -> 10,
+/// 10 -> 5. Ticks stay round numbers (unlike halving: 5 -> 2.5).
+double smallerNiceInterval(double interval) {
+  final magnitude = math.pow(10, (math.log(interval) / math.ln10).floor()).toDouble();
+  final fraction = (interval / magnitude).round();
+  return switch (fraction) {
+    >= 5 => 2 * magnitude,
+    >= 2 => magnitude,
+    _ => magnitude / 2,
+  };
+}
+
 /// A logarithmic axis: positive bounds and round ticks between them.
 typedef LogAxisScale = ({double min, double max, List<double> ticks});
 

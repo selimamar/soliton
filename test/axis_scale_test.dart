@@ -2,6 +2,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:soliton/shared/axis_scale.dart';
 
 void main() {
+  test('smallerNiceInterval steps down 5, 2, 1, keeping ticks round', () {
+    expect(smallerNiceInterval(50), 20);
+    expect(smallerNiceInterval(5), 2);
+    expect(smallerNiceInterval(2), 1);
+    expect(smallerNiceInterval(1), 0.5);
+    expect(smallerNiceInterval(0.5), closeTo(0.2, 1e-12));
+  });
+
   test('niceInterval rounds up to 1, 2 or 5 times a power of ten', () {
     expect(niceInterval(1), 1);
     expect(niceInterval(1.2), 2);
