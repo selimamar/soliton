@@ -26,6 +26,10 @@ class FakeServer {
   /// The bodies of the edits (PATCH requests) it received.
   final edits = <Map<String, Object?>>[];
 
+  /// The paths it was asked to delete (DELETE requests), e.g. `runs/x`.
+  final deletes = <String>[];
+  final _deleted = <String>{};
+
   final _data = MockRunRepository(latency: Duration.zero);
 
   /// For `apiClientFactoryProvider.overrideWithValue(server.clientFor)`.
@@ -53,11 +57,17 @@ class FakeServer {
           )).toJson(),
         );
       }
+      if (request.method == 'DELETE' && path.length == 3) {
+        deletes.add('${path[1]}/${path[2]}');
+        if (path[1] == 'runs') await _run(path[2]);
+        if (!_deleted.add(path[2])) throw RunNotFoundException(path[2]);
+        return http.Response('', 204);
+      }
       return switch (path.sublist(1)) {
         ['session'] => _json({'ok': true, 'version': '0.1.0'}),
         ['runs'] => _json([
           for (final run in await _data.fetchRuns())
-            if (runIds.contains(run.id)) run.toJson(),
+            if (runIds.contains(run.id) && !_deleted.contains(run.id)) run.toJson(),
         ]),
         ['runs', final id] => _json((await _run(id)).toJson()),
         ['runs', final id, 'metrics'] => _json([
@@ -111,7 +121,7 @@ class FakeServer {
   }
 
   Future<Run> _run(String id) async {
-    if (!runIds.contains(id)) throw RunNotFoundException(id);
+    if (!runIds.contains(id) || _deleted.contains(id)) throw RunNotFoundException(id);
     return _data.fetchRun(id);
   }
 

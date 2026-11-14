@@ -11,7 +11,8 @@ import 'mock_datasets.dart';
 import 'mock_simulations.dart';
 
 /// A [RunRepository] serving generated demo data, with a fake network delay.
-/// Edited tags and notes are kept in memory, until the app restarts.
+/// Edited tags and notes, and deletions, are kept in memory, until the app
+/// restarts.
 class MockRunRepository implements RunRepository {
   MockRunRepository({this.latency = const Duration(milliseconds: 350)})
     : _runs = _build(DateTime.now());
@@ -30,9 +31,31 @@ class MockRunRepository implements RunRepository {
         r,
   ];
 
-  late final List<Dataset> _datasets = buildMockDatasets(DateTime.now(), [
-    for (final r in _runs) r.run,
-  ]);
+  final _builtAt = DateTime.now();
+  final _deletedDatasets = <String>{};
+
+  /// Rebuilt when a run is deleted, so no dataset names it any more.
+  late List<Dataset> _datasets = _buildDatasets();
+
+  List<Dataset> _buildDatasets() => [
+    for (final d in buildMockDatasets(_builtAt, [for (final r in _runs) r.run]))
+      if (!_deletedDatasets.contains(d.id)) d,
+  ];
+
+  @override
+  Future<void> deleteRun(String runId) async {
+    await Future<void>.delayed(latency);
+    _runs.removeWhere((r) => r.run.id == runId);
+    _edited.remove(runId);
+    _datasets = _buildDatasets();
+  }
+
+  @override
+  Future<void> deleteDataset(String datasetId) async {
+    await Future<void>.delayed(latency);
+    _deletedDatasets.add(datasetId);
+    _datasets = _buildDatasets();
+  }
 
   @override
   Future<List<Dataset>> fetchDatasets() async {

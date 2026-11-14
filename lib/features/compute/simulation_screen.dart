@@ -1,9 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../app/routes.dart';
 import '../../app/theme.dart';
 import '../../data/providers.dart';
+import '../../models/run.dart';
 import '../../shared/widgets/async_value_view.dart';
+import '../../shared/widgets/delete_dialog.dart';
 import '../../shared/widgets/status_chip.dart';
 import '../run_detail/fields_wording.dart';
 import '../run_detail/run_detail_screen.dart' show KeepAliveTab;
@@ -59,15 +62,20 @@ class SimulationScreen extends ConsumerWidget {
                   ],
                 ),
           actions: [
-            if (loaded != null)
-              Padding(
-                padding: const EdgeInsets.only(right: 16),
-                child: StatusChip(
-                  status: loaded.status,
-                  inHeader: true,
-                  label: simulationStatusLabel(loaded),
-                ),
+            if (loaded != null) ...[
+              StatusChip(
+                status: loaded.status,
+                inHeader: true,
+                label: simulationStatusLabel(loaded),
               ),
+              const SizedBox(width: 4),
+              DeleteButton(
+                kind: DeleteKind.simulation,
+                item: (id: loaded.id, name: loaded.name, live: loaded.status == RunStatus.live),
+                then: AppRoutes.compute,
+              ),
+              const SizedBox(width: 4),
+            ],
           ],
           bottom: loaded == null
               ? null

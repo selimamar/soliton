@@ -17,10 +17,20 @@ import 'run_card_styles.dart';
 /// latest loss, where it runs and how the loss moved, its tags and the start
 /// of its note, a loss sparkline and its progress.
 class RunCard extends StatelessWidget {
-  const RunCard({super.key, required this.run, this.onTap, this.selected, this.ranking});
+  const RunCard({
+    super.key,
+    required this.run,
+    this.onTap,
+    this.onLongPress,
+    this.selected,
+    this.ranking,
+  });
 
   final Run run;
   final VoidCallback? onTap;
+
+  /// Starts picking runs, with this one picked.
+  final VoidCallback? onLongPress;
 
   /// Non-null while picking runs to compare: whether this one is picked.
   final bool? selected;
@@ -33,9 +43,21 @@ class RunCard extends StatelessWidget {
   Widget build(BuildContext context) {
     switch (AppTheme.styleOf(context)) {
       case AppStyle.lab:
-        return LabRunCard(run: run, onTap: onTap, selected: selected, ranking: ranking);
+        return LabRunCard(
+          run: run,
+          onTap: onTap,
+          onLongPress: onLongPress,
+          selected: selected,
+          ranking: ranking,
+        );
       case AppStyle.ink:
-        return JournalRunRow(run: run, onTap: onTap, selected: selected, ranking: ranking);
+        return JournalRunRow(
+          run: run,
+          onTap: onTap,
+          onLongPress: onLongPress,
+          selected: selected,
+          ranking: ranking,
+        );
       case AppStyle.paper:
         break;
     }
@@ -169,6 +191,7 @@ class RunCard extends StatelessWidget {
 
     return SectionCard(
       onTap: onTap,
+      onLongPress: onLongPress,
       selected: selected,
       padding: EdgeInsets.zero,
       // The status strip is laid over the card's left edge; the card sizes

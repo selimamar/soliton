@@ -7,7 +7,10 @@ import '../../app/theme.dart';
 import '../../data/providers.dart';
 import '../../models/dataset.dart';
 import '../../shared/formatters.dart';
+import '../../shared/selection.dart';
 import '../../shared/widgets/async_value_view.dart';
+import '../../shared/widgets/delete_dialog.dart';
+import '../../shared/widgets/picking_app_bar.dart';
 import '../../shared/widgets/stat_tile.dart';
 
 /// The Data section: every dataset the server knows about, with its size,
@@ -17,31 +20,54 @@ class DataScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final picked = ref.watch(datasetSelectionProvider);
     return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ExcludeSemantics(
-              child: Image.asset('assets/branding/app_mark.png', width: 24, height: 24),
-            ),
-            const SizedBox(width: 10),
-            const Flexible(child: Text('Data', overflow: TextOverflow.ellipsis)),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: 'Settings',
-            onPressed: () => context.go(AppRoutes.settings),
-          ),
-        ],
-      ),
+      appBar: picked == null ? _appBar(context, ref) : _pickingAppBar(context, ref, picked),
       body: AsyncValueView(
         value: ref.watch(datasetsProvider),
         onRetry: () => ref.invalidate(datasetsProvider),
         data: (datasets) => _DatasetsList(datasets: datasets),
       ),
+    );
+  }
+
+  AppBar _pickingAppBar(BuildContext context, WidgetRef ref, List<String> picked) {
+    final datasets = ref.watch(datasetsProvider).value ?? const <Dataset>[];
+    final byId = {for (final d in datasets) d.id: d};
+    return pickingAppBar(
+      context,
+      kind: DeleteKind.dataset,
+      picked: picked,
+      shown: [for (final d in datasets) d.id],
+      selection: ref.read(datasetSelectionProvider.notifier),
+      describe: (id) => (id: id, name: byId[id]?.title ?? id, live: false),
+    );
+  }
+
+  AppBar _appBar(BuildContext context, WidgetRef ref) {
+    return AppBar(
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ExcludeSemantics(
+            child: Image.asset('assets/branding/app_mark.png', width: 24, height: 24),
+          ),
+          const SizedBox(width: 10),
+          const Flexible(child: Text('Data', overflow: TextOverflow.ellipsis)),
+        ],
+      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.checklist),
+          tooltip: 'Pick datasets to delete',
+          onPressed: () => ref.read(datasetSelectionProvider.notifier).start(),
+        ),
+        IconButton(
+          icon: const Icon(Icons.settings_outlined),
+          tooltip: 'Settings',
+          onPressed: () => context.go(AppRoutes.settings),
+        ),
+      ],
     );
   }
 }
@@ -54,6 +80,7 @@ class _DatasetsList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final picked = ref.watch(datasetSelectionProvider);
     if (datasets.isEmpty) {
       return Center(
         child: Padding(
@@ -93,7 +120,7 @@ class _DatasetsList extends ConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                   for (final d in datasets) ...[
-                    DatasetCard(dataset: d),
+                    DatasetCard(dataset: d, selected: picked?.contains(d.id)),
                     const SizedBox(height: 10),
                   ],
                 ],
@@ -115,13 +142,18 @@ String describeContents(Dataset d) => [
 
 /// A dataset in the list: name, size, contents, where it is, how it was
 /// obtained, and who used it.
-class DatasetCard extends StatelessWidget {
-  const DatasetCard({super.key, required this.dataset});
+class DatasetCard extends ConsumerWidget {
+  const DatasetCard({super.key, required this.dataset, this.selected});
 
   final Dataset dataset;
 
+  /// Non-null while picking datasets: whether this one is picked. A tap
+  /// then picks it (or not) instead of opening it.
+  final bool? selected;
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selection = ref.read(datasetSelectionProvider.notifier);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final d = dataset;
@@ -132,46 +164,57 @@ class DatasetCard extends StatelessWidget {
       if (d.madeBy case final m?) 'Made by ${m.name}',
       used == 0 ? 'Not used yet' : (used == 1 ? 'Used by 1 run' : 'Used by $used runs'),
     ];
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => context.go(AppRoutes.dataset(d.id)),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
+    // One focus stop that says whether it's picked.
+    return MergeSemantics(
+      child: Semantics(
+        selected: selected,
+        child: Card(
+          clipBehavior: Clip.antiAlias,
+          shape: pickedCardShape(context, selected: selected),
+          child: InkWell(
+            onTap: selected == null
+                ? () => context.go(AppRoutes.dataset(d.id))
+                : () => selection.toggle(d.id),
+            onLongPress: selected == null ? () => selection.start(d.id) : null,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: Text(
-                      d.title,
-                      style: theme.textTheme.titleSmall,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      if (selected case final isSelected?) PickMark(selected: isSelected),
+                      Expanded(
+                        child: Text(
+                          d.title,
+                          style: theme.textTheme.titleSmall,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (d.sizeBytes case final size?)
+                        Text(
+                          formatBytes(size),
+                          style: theme.textTheme.bodySmall?.copyWith(fontFeatures: AppText.tabular),
+                        ),
+                    ],
+                  ),
+                  if (describeContents(d) case final contents when contents.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      contents,
+                      style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  if (d.sizeBytes case final size?)
-                    Text(
-                      formatBytes(size),
-                      style: theme.textTheme.bodySmall?.copyWith(fontFeatures: AppText.tabular),
-                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Wrap(spacing: 6, runSpacing: 6, children: [for (final c in chips) _Tag(text: c)]),
                 ],
               ),
-              if (describeContents(d) case final contents when contents.isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text(
-                  contents,
-                  style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-              const SizedBox(height: 8),
-              Wrap(spacing: 6, runSpacing: 6, children: [for (final c in chips) _Tag(text: c)]),
-            ],
+            ),
           ),
         ),
       ),

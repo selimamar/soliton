@@ -7,7 +7,10 @@ import '../../app/theme.dart';
 import '../../data/providers.dart';
 import '../../data/services/live_updates.dart';
 import '../../models/run.dart';
+import '../../shared/selection.dart';
 import '../../shared/widgets/async_value_view.dart';
+import '../../shared/widgets/delete_dialog.dart';
+import '../../shared/widgets/picking_app_bar.dart';
 import '../../shared/widgets/spaced_list_view.dart';
 import 'run_groups.dart';
 import 'widgets/run_card.dart';
@@ -36,33 +39,8 @@ class CollapsedGroups extends Notifier<Set<String>> {
       state = state.contains(key) ? ({...state}..remove(key)) : {...state, key};
 }
 
-/// The runs picked for comparing, in the order they were picked; null when
-/// not picking.
-final compareSelectionProvider = NotifierProvider<CompareSelection, List<String>?>(
-  CompareSelection.new,
-);
-
-class CompareSelection extends Notifier<List<String>?> {
-  /// More lines than this make a chart unreadable.
-  static const maxRuns = 6;
-
-  @override
-  List<String>? build() => null;
-
-  void start() => state = const [];
-
-  void cancel() => state = null;
-
-  void toggle(String runId) {
-    final picked = state;
-    if (picked == null) return;
-    if (picked.contains(runId)) {
-      state = [...picked]..remove(runId);
-    } else if (picked.length < maxRuns) {
-      state = [...picked, runId];
-    }
-  }
-}
+/// More lines than this make a comparison chart unreadable.
+const maxComparedRuns = 6;
 
 /// Home screen: every run as a card, with status filters, optionally in
 /// groups (by project, model, dataset, tag or host).
@@ -71,7 +49,7 @@ class RunsListScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final picked = ref.watch(compareSelectionProvider);
+    final picked = ref.watch(runSelectionProvider);
 
     return Scaffold(
       appBar: picked == null ? _appBar(context, ref) : _pickingAppBar(context, ref, picked),
@@ -126,9 +104,9 @@ class RunsListScreen extends ConsumerWidget {
         onPressed: () => context.go(AppRoutes.sweep),
       ),
       IconButton(
-        icon: const Icon(Icons.compare_arrows),
-        tooltip: 'Compare runs',
-        onPressed: () => ref.read(compareSelectionProvider.notifier).start(),
+        icon: const Icon(Icons.checklist),
+        tooltip: 'Pick runs to compare or delete',
+        onPressed: () => ref.read(runSelectionProvider.notifier).start(),
       ),
       IconButton(
         icon: const Icon(Icons.settings_outlined),
@@ -138,28 +116,46 @@ class RunsListScreen extends ConsumerWidget {
     ],
   );
 
-  AppBar _pickingAppBar(BuildContext context, WidgetRef ref, List<String> picked) => AppBar(
-    leading: IconButton(
-      icon: const Icon(Icons.close),
-      tooltip: 'Stop comparing',
-      onPressed: () => ref.read(compareSelectionProvider.notifier).cancel(),
-    ),
-    title: Text(picked.isEmpty ? 'Pick runs to compare' : '${picked.length} picked'),
-    actions: [
-      Padding(
-        padding: const EdgeInsets.only(right: 12),
-        child: FilledButton(
-          onPressed: picked.length < 2
-              ? null
-              : () {
-                  ref.read(compareSelectionProvider.notifier).cancel();
-                  context.go(AppRoutes.compare(picked));
-                },
-          child: const Text('Compare'),
+  /// While picking runs: how many, and what to do with them.
+  AppBar _pickingAppBar(BuildContext context, WidgetRef ref, List<String> picked) {
+    final selection = ref.read(runSelectionProvider.notifier);
+    final runs = ref.watch(runsProvider).value ?? const <Run>[];
+    final filter = ref.watch(runFilterProvider);
+    final byId = {for (final run in runs) run.id: run};
+    return pickingAppBar(
+      context,
+      kind: DeleteKind.run,
+      picked: picked,
+      shown: [
+        for (final run in runs)
+          if (filter == null || run.status == filter) run.id,
+      ],
+      selection: selection,
+      describe: (id) =>
+          (id: id, name: byId[id]?.name ?? id, live: byId[id]?.status == RunStatus.live),
+      trailing: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, right: 8),
+          child: Tooltip(
+            message: 'Compare 2 to $maxComparedRuns runs',
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                visualDensity: VisualDensity.compact,
+              ),
+              onPressed: picked.length >= 2 && picked.length <= maxComparedRuns
+                  ? () {
+                      selection.cancel();
+                      context.go(AppRoutes.compare(picked));
+                    }
+                  : null,
+              child: const Text('Compare'),
+            ),
+          ),
         ),
-      ),
-    ],
-  );
+      ],
+    );
+  }
 }
 
 class _RunsList extends ConsumerWidget {
@@ -170,7 +166,7 @@ class _RunsList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final filter = ref.watch(runFilterProvider);
-    final picked = ref.watch(compareSelectionProvider);
+    final picked = ref.watch(runSelectionProvider);
     final demo = ref.watch(connectionProvider) == null;
     final visibleRuns = filter == null ? runs : runs.where((r) => r.status == filter).toList();
     final grouping = ref.watch(runGroupingProvider);
@@ -199,11 +195,16 @@ class _RunsList extends ConsumerWidget {
               run: run,
               ranking: ranking,
               selected: picked.contains(run.id),
-              onTap: () => ref.read(compareSelectionProvider.notifier).toggle(run.id),
+              onTap: () => ref.read(runSelectionProvider.notifier).toggle(run.id),
             )
           // `go` (not `push`) so the browser URL follows on the web. The
           // detail route is nested under '/', so Back still returns here.
-          : RunCard(run: run, ranking: ranking, onTap: () => context.go(AppRoutes.run(run.id)));
+          : RunCard(
+              run: run,
+              ranking: ranking,
+              onTap: () => context.go(AppRoutes.run(run.id)),
+              onLongPress: () => ref.read(runSelectionProvider.notifier).start(run.id),
+            );
     }
 
     return RefreshIndicator(

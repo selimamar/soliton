@@ -1,9 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../app/routes.dart';
 import '../../app/theme.dart';
 import '../../data/providers.dart';
+import '../../models/run.dart';
 import '../../shared/widgets/async_value_view.dart';
+import '../../shared/widgets/delete_dialog.dart';
 import '../../shared/widgets/status_chip.dart';
 import 'tabs/fields_tab.dart';
 import 'tabs/layers_tab.dart';
@@ -56,11 +59,20 @@ class RunDetailScreen extends ConsumerWidget {
                   ],
                 ),
           actions: [
-            if (loadedRun != null)
-              Padding(
-                padding: const EdgeInsets.only(right: 16),
-                child: StatusChip(status: loadedRun.status, inHeader: true),
+            if (loadedRun != null) ...[
+              StatusChip(status: loadedRun.status, inHeader: true),
+              const SizedBox(width: 4),
+              DeleteButton(
+                kind: DeleteKind.run,
+                item: (
+                  id: loadedRun.id,
+                  name: loadedRun.name,
+                  live: loadedRun.status == RunStatus.live,
+                ),
+                then: AppRoutes.runs,
               ),
+              const SizedBox(width: 4),
+            ],
           ],
           // Tabs only make sense once there is a run to show.
           bottom: loadedRun == null

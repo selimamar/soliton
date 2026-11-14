@@ -11,6 +11,7 @@ import '../../shared/clock.dart';
 import '../../shared/colormaps.dart';
 import '../../shared/formatters.dart';
 import '../../shared/widgets/async_value_view.dart';
+import '../../shared/widgets/delete_dialog.dart';
 import '../../shared/widgets/key_value_row.dart';
 import '../../shared/widgets/section_card.dart';
 import '../../shared/widgets/spaced_list_view.dart';
@@ -48,6 +49,15 @@ class DatasetScreen extends ConsumerWidget {
                   ),
                 ],
               ),
+        actions: [
+          if (loaded != null)
+            DeleteButton(
+              kind: DeleteKind.dataset,
+              item: (id: loaded.id, name: loaded.title, live: false),
+              then: AppRoutes.data,
+            ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: AsyncValueView(
         value: value,

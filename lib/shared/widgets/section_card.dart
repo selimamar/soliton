@@ -12,6 +12,7 @@ class SectionCard extends StatelessWidget {
     this.trailing,
     required this.child,
     this.onTap,
+    this.onLongPress,
     this.padding = const EdgeInsets.all(16),
     this.selected,
   });
@@ -23,6 +24,9 @@ class SectionCard extends StatelessWidget {
 
   final Widget child;
   final VoidCallback? onTap;
+
+  /// E.g. to start picking cards, with this one picked.
+  final VoidCallback? onLongPress;
   final EdgeInsetsGeometry padding;
 
   /// Non-null for a card that can be picked (e.g. runs to compare): a
@@ -54,6 +58,7 @@ class SectionCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Padding(
           padding: journal
               ? EdgeInsets.fromLTRB(isSelected ? 12 : 0, inset.top, 0, inset.bottom)

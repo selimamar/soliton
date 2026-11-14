@@ -127,6 +127,13 @@ class ApiRunRepository implements RunRepository {
     }
   }
 
+  @override
+  Future<void> deleteRun(String runId) => _client.delete(_runPath(runId));
+
+  @override
+  Future<void> deleteDataset(String datasetId) =>
+      _client.delete('/datasets/${Uri.encodeComponent(datasetId)}');
+
   static String _runPath(String runId) => '/runs/${Uri.encodeComponent(runId)}';
 
   Future<List<Map<String, Object?>>> _list(String path) async =>

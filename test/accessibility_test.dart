@@ -72,7 +72,7 @@ void main() {
   testWidgets('a picked run card says it is selected', (tester) async {
     final handle = tester.ensureSemantics();
     await openApp(tester);
-    await tester.tap(find.byTooltip('Compare runs'));
+    await tester.tap(find.byTooltip('Pick runs to compare or delete'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('resnet50-cifar'));
     await tester.pumpAndSettle();

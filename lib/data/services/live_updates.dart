@@ -175,6 +175,8 @@ class LiveUpdates extends Notifier<LiveStatus> {
     if (runId is! String) return;
     _changedRuns.add(runId);
     _scheduleRefresh(list: true);
+    // Datasets list the runs that used them.
+    if (message['event'] == 'deleted') ref.invalidate(datasetsProvider);
 
     final status = switch (message['event']) {
       'finished' => RunStatus.finished,

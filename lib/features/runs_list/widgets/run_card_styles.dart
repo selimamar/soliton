@@ -13,10 +13,18 @@ import 'run_card.dart' show rankedFigure;
 /// A run in the Lab style: an instrument card with a status light, a
 /// readout of the latest loss, a gridded sparkline and a block progress bar.
 class LabRunCard extends StatelessWidget {
-  const LabRunCard({super.key, required this.run, this.onTap, this.selected, this.ranking});
+  const LabRunCard({
+    super.key,
+    required this.run,
+    this.onTap,
+    this.onLongPress,
+    this.selected,
+    this.ranking,
+  });
 
   final Run run;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final bool? selected;
   final RunRanking? ranking;
 
@@ -41,6 +49,7 @@ class LabRunCard extends StatelessWidget {
 
     return SectionCard(
       onTap: onTap,
+      onLongPress: onLongPress,
       selected: selected,
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       child: Column(
@@ -148,10 +157,18 @@ class LabRunCard extends StatelessWidget {
 /// name, where it runs, a small curve with its progress, and the loss; a
 /// crash gets a dagger pointing to a footnote under the table.
 class JournalRunRow extends StatelessWidget {
-  const JournalRunRow({super.key, required this.run, this.onTap, this.selected, this.ranking});
+  const JournalRunRow({
+    super.key,
+    required this.run,
+    this.onTap,
+    this.onLongPress,
+    this.selected,
+    this.ranking,
+  });
 
   final Run run;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final bool? selected;
 
   /// Ordered by a metric, the last column holds it, the best in bold as in
@@ -183,6 +200,7 @@ class JournalRunRow extends StatelessWidget {
         selected: selected,
         child: InkWell(
           onTap: onTap,
+          onLongPress: onLongPress,
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 8),
             decoration: BoxDecoration(

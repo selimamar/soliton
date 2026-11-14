@@ -11,9 +11,9 @@ void main() {
   group('compare', () {
     testWidgets('picking two runs shows them side by side', (tester) async {
       await openApp(tester);
-      await tester.tap(find.byTooltip('Compare runs'));
+      await tester.tap(find.byTooltip('Pick runs to compare or delete'));
       await tester.pumpAndSettle();
-      expect(find.text('Pick runs to compare'), findsOneWidget);
+      expect(find.text('Pick runs'), findsOneWidget);
       final compare = find.widgetWithText(FilledButton, 'Compare');
       expect(tester.widget<FilledButton>(compare).onPressed, isNull, reason: 'needs two runs');
 
@@ -36,9 +36,9 @@ void main() {
 
     testWidgets('stopping leaves the list as it was', (tester) async {
       await openApp(tester);
-      await tester.tap(find.byTooltip('Compare runs'));
+      await tester.tap(find.byTooltip('Pick runs to compare or delete'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Stop comparing'));
+      await tester.tap(find.byTooltip('Stop picking'));
       await tester.pumpAndSettle();
       expect(find.descendant(of: find.byType(AppBar), matching: find.text('Runs')), findsOneWidget);
       await tester.tap(find.text('resnet50-cifar'));

@@ -87,6 +87,17 @@ void main() {
       );
       await expectLater(offline.getJson('/runs'), throwsA(isA<ServerUnreachableException>()));
     });
+
+    test('deletes: 204 and 404 are done, other failures throw', () async {
+      Future<void> delete(int status) => clientReturning((r) {
+        expect(r.method, 'DELETE');
+        return http.Response('', status);
+      }).delete('/runs/x');
+      await delete(204);
+      await delete(404);
+      await expectLater(delete(500), throwsA(isA<ServerErrorException>()));
+      await expectLater(delete(401), throwsA(isA<UnauthorizedException>()));
+    });
   });
 
   group('ApiRunRepository', () {
@@ -103,6 +114,17 @@ void main() {
       expect(metrics.keys, contains('train/loss'));
       expect(await repository.fetchLayerStats('resnet50-cifar'), isNotEmpty);
       expect(await repository.fetchLayerGradNorms('resnet50-cifar'), isNotEmpty);
+    });
+
+    test('deletes a run and a dataset; already gone counts as done', () async {
+      final server = FakeServer();
+      final repository = ApiRunRepository(server.clientFor(connection()));
+      await repository.deleteRun('unet-seg');
+      expect((await repository.fetchRuns()).map((r) => r.id), ['resnet50-cifar']);
+      await expectLater(repository.fetchRun('unet-seg'), throwsA(isA<RunNotFoundException>()));
+      await repository.deleteRun('unet-seg');
+      await repository.deleteDataset('cifar10');
+      expect(server.deletes, ['runs/unet-seg', 'runs/unet-seg', 'datasets/cifar10']);
     });
 
     test('a 404 for a run means the run does not exist', () async {

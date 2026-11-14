@@ -53,6 +53,14 @@ abstract interface class RunRepository {
   /// Replaces a run's [tags] and/or [notes] (null: unchanged) and returns
   /// the run as saved (tags trimmed, each once).
   Future<Run> updateNotes(String runId, {List<String>? tags, String? notes});
+
+  /// Removes a run (or simulation) and everything it logged from the
+  /// server. Already gone counts as done.
+  Future<void> deleteRun(String runId);
+
+  /// Forgets a dataset: its description goes, its files aren't touched.
+  /// Already gone counts as done.
+  Future<void> deleteDataset(String datasetId);
 }
 
 /// The run has no snapshot of that field at that step. Retrying won't help.

@@ -192,3 +192,48 @@ class RunNotesEditor {
     return run;
   }
 }
+
+/// Deletes runs, simulations and datasets from the server.
+final deleterProvider = Provider<Deleter>(Deleter.new);
+
+/// What a deletion did: how many went, and the first error (null if none).
+typedef DeleteOutcome = ({int deleted, Object? error});
+
+class Deleter {
+  Deleter(this._ref);
+
+  final Ref _ref;
+
+  /// Deletes each run (or simulation) in turn, stopping at the first
+  /// error, then refreshes the lists (datasets list who used them).
+  Future<DeleteOutcome> deleteRuns(List<String> runIds) async {
+    final outcome = await _each(runIds, _ref.read(runRepositoryProvider).deleteRun);
+    _ref
+      ..invalidate(allRunsProvider)
+      ..invalidate(latestMetricsProvider)
+      ..invalidate(datasetsProvider)
+      ..invalidate(datasetProvider);
+    return outcome;
+  }
+
+  /// Forgets each dataset in turn (their files aren't touched), stopping
+  /// at the first error, then refreshes the list.
+  Future<DeleteOutcome> deleteDatasets(List<String> datasetIds) async {
+    final outcome = await _each(datasetIds, _ref.read(runRepositoryProvider).deleteDataset);
+    _ref.invalidate(datasetsProvider);
+    return outcome;
+  }
+
+  static Future<DeleteOutcome> _each(List<String> ids, Future<void> Function(String) delete) async {
+    var deleted = 0;
+    for (final id in ids) {
+      try {
+        await delete(id);
+        deleted++;
+      } catch (error) {
+        return (deleted: deleted, error: error);
+      }
+    }
+    return (deleted: deleted, error: null);
+  }
+}

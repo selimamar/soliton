@@ -64,6 +64,15 @@ class ApiClient {
     ),
   );
 
+  /// Removes a resource. Already gone (404) counts as done.
+  Future<void> delete(String path) async {
+    try {
+      await _send(() => _http.delete(connection.api(path), headers: _headers));
+    } on NotFoundException {
+      return;
+    }
+  }
+
   Map<String, String> get _headers => {
     'Authorization': 'Bearer ${connection.token}',
     'Accept': 'application/json',
@@ -85,6 +94,8 @@ class ApiClient {
         } on FormatException {
           throw ServerErrorException(response.statusCode);
         }
+      case 204:
+        return null;
       case 401 || 403:
         throw const UnauthorizedException();
       case 404:
