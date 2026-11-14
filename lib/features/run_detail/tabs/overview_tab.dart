@@ -20,6 +20,7 @@ import '../../../shared/widgets/style_decor.dart';
 import '../widgets/architecture_tree.dart';
 import '../widgets/network_diagram.dart';
 import '../widgets/run_notes_card.dart';
+import '../widgets/output_card.dart';
 
 /// Key facts about a run: size, timing, progress, tags and notes,
 /// hyperparameters and architecture.
@@ -34,6 +35,8 @@ class OverviewTab extends StatelessWidget {
       children: [
         if (run.statusMessage case final message?)
           StatusBanner(message: message, isError: run.status == RunStatus.crashed),
+        // A crashed run's traceback first: it's why it stopped.
+        if (run.status == RunStatus.crashed) OutputCard(run: run),
         if (run.latestLoss != null) _LossHero(run: run),
         // Ink says the progress in the loss sentence instead.
         if (AppTheme.styleOf(context) != AppStyle.ink || run.latestLoss == null)
@@ -41,6 +44,7 @@ class OverviewTab extends StatelessWidget {
         _SpeedStrip(runId: run.id),
         if (HourlyPrice.of(run.system) case final price?) CostStrip(run: run, price: price),
         RunNotesCard(run: run),
+        if (run.status != RunStatus.crashed) OutputCard(run: run),
         if (run.datasets.isNotEmpty) _DatasetsCard(datasets: run.datasets),
         SectionCard(
           title: 'Hyperparameters',

@@ -8,6 +8,7 @@ import os
 import signal
 import sys
 import threading
+import traceback as tracebacks
 import warnings
 import weakref
 from contextlib import contextmanager
@@ -24,6 +25,7 @@ from ._fields import (
     layer_event,
 )
 from ._datasets import Dataset
+from ._output import OutputCapture
 from ._datasets import describe as describe_dataset
 from ._datasets import upload as upload_dataset
 from ._system import SystemMonitor, framework_versions, system_info
@@ -72,6 +74,7 @@ class Run:
         notes: str = "",
         system_metrics: bool = True,
         system_interval: float = 15,
+        capture_output: Optional[bool] = None,
         price_per_hour: Optional[float] = None,
         total_steps: int = 0,
         total_epochs: int = 0,
@@ -136,6 +139,7 @@ class Run:
         self._finished = mode == "disabled"
         self._uploader: Optional[Uploader] = None
         self._monitor: Optional[SystemMonitor] = None
+        self._output: Optional[OutputCapture] = None
         if self._finished:
             return
         if system_interval < 1:
@@ -151,6 +155,9 @@ class Run:
         if system_metrics:
             self._monitor = SystemMonitor(self._log_system, interval=system_interval)
             self._monitor.start()
+        if _capture_output(capture_output):
+            self._output = OutputCapture(self._log_output)
+            self._output.start()
         _register(self)
 
     # Datasets -------------------------------------------------------------
@@ -453,6 +460,23 @@ class Run:
                 event["epoch"] = self._epoch
             self._files.append(event)
 
+    def _log_output(self, start: int, lines: list) -> None:
+        """Lines the script printed, numbered from [start] (so a batch sent
+        twice replaces itself)."""
+        with self._lock:
+            if self._finished:
+                return
+            self._files.append({"type": "output", "start": start, "lines": lines,
+                                "time": utc_now_iso()})
+
+    def _add_traceback(self, kind, error, traceback) -> None:
+        """The error's traceback, to the output: Python prints it only after
+        the run has ended."""
+        if self._output is None or kind is None:
+            return
+        text = "".join(tracebacks.format_exception(kind, error, traceback))
+        self._output.add(text.rstrip("\n").split("\n"))
+
     def _add_flow(self, tree: dict, flow: dict) -> None:
         """After the model's first forward pass: the layers in the order they
         ran, for the app's network diagram."""
@@ -470,6 +494,9 @@ class Run:
         waiting up to [timeout] seconds."""
         if status not in ("finished", "crashed"):
             raise ValueError("status must be 'finished' or 'crashed'")
+        output = self._output
+        if output is not None and not self._finished:
+            output.stop()  # The last lines, before the status (outside the lock).
         with self._lock:
             if self._finished:
                 return
@@ -500,6 +527,7 @@ class Run:
         if error is None:
             self.finish()
         else:
+            self._add_traceback(kind, error, _traceback)
             self.finish("crashed", _describe(kind, error))
 
     def _warn_once(self, key: str, message: str) -> None:
@@ -600,6 +628,15 @@ def _hyperparameters(config, train_samples, val_samples, loss, pde=None) -> dict
     return {**first, **{k: v for k, v in flatten_config(config).items() if k not in first}}
 
 
+def _capture_output(value: Optional[bool]) -> bool:
+    """capture_output=, else SOLITON_CAPTURE_OUTPUT (0, false, no or off
+    turn it off); on by default."""
+    if value is not None:
+        return bool(value)
+    setting = os.environ.get("SOLITON_CAPTURE_OUTPUT", "").strip().lower()
+    return setting not in ("0", "false", "no", "off")
+
+
 def _describe(kind, error) -> str:
     if kind is not None and issubclass(kind, KeyboardInterrupt):
         return "Interrupted (KeyboardInterrupt)"
@@ -623,6 +660,7 @@ def _register(run: Run) -> None:
 
     def excepthook(kind, error, traceback):
         for active in list(_active):
+            active._add_traceback(kind, error, traceback)
             active.finish("crashed", _describe(kind, error), timeout=30)
         previous_hook(kind, error, traceback)
 

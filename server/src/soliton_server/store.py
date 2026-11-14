@@ -12,7 +12,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from .db import (
@@ -24,6 +24,7 @@ from .db import (
     MetricPointRow,
     RunItemRow,
     RunNotesRow,
+    RunOutputRow,
     RunRow,
     RunSimulationRow,
     RunSystemRow,
@@ -36,6 +37,8 @@ from .schemas import (
     FieldEvent,
     LayersEvent,
     MetricsEvent,
+    OUTPUT_KEPT,
+    OutputEvent,
     RunIn,
     RunNotesIn,
     StatusEvent,
@@ -278,12 +281,38 @@ class Store:
         with self._sessions() as session:
             return self._run_json(session, self._find(session, run_id))
 
+    def output(self, run_id: str) -> dict:
+        """The latest lines the run's script printed, and how many it
+        printed in all (older lines aren't kept)."""
+        with self._sessions() as session:
+            self._find(session, run_id)
+            rows = session.execute(
+                select(RunOutputRow.number, RunOutputRow.line)
+                .where(RunOutputRow.run_id == run_id)
+                .order_by(RunOutputRow.number)
+            ).all()
+            return {
+                "lines": [line for _, line in rows],
+                "total": rows[-1][0] + 1 if rows else 0,
+            }
+
+    @staticmethod
+    def _trim_output(session: Session, run_id: str) -> None:
+        last = session.scalar(
+            select(func.max(RunOutputRow.number)).where(RunOutputRow.run_id == run_id)
+        )
+        if last is not None and last >= OUTPUT_KEPT:
+            session.execute(delete(RunOutputRow).where(
+                RunOutputRow.run_id == run_id, RunOutputRow.number <= last - OUTPUT_KEPT
+            ))
+
     def delete_run(self, run_id: str) -> Change:
         with self._sessions.begin() as session:
             row = self._find(session, run_id)
             change = _change(row, "deleted")
             for table in (MetricPointRow, LayerPointRow, LayerRow, FieldRow, RunItemRow,
-                          RunNotesRow, RunSystemRow, RunSimulationRow, DatasetUseRow):
+                          RunNotesRow, RunSystemRow, RunSimulationRow, DatasetUseRow,
+                          RunOutputRow):
                 session.execute(delete(table).where(table.run_id == run_id))
             session.delete(row)
             return change
@@ -303,6 +332,7 @@ class Store:
             layer_point_rows: list[dict] = []
             field_rows: list[dict] = []
             item_rows: list[dict] = []
+            output_rows: list[dict] = []
             for event in events:
                 # Clamp to now: a clock running ahead mustn't keep a dead run alive.
                 time = min(event.time or now, now)
@@ -348,10 +378,18 @@ class Store:
                 elif isinstance(event, (EvalEvent, CurveEvent)):
                     item_rows.append(_item_row(run_id, event))
                     row.current_step = max(row.current_step, event.step)
+                elif isinstance(event, OutputEvent):
+                    output_rows.extend(
+                        {"run_id": run_id, "number": event.start + i, "line": line}
+                        for i, line in enumerate(event.lines)
+                    )
 
             _upsert(session, MetricPointRow, metric_rows, ("run_id", "name", "step"))
             _upsert(session, LayerPointRow, layer_point_rows, ("run_id", "layer", "step"))
             _upsert(session, RunItemRow, item_rows, ("run_id", "type", "name", "step"))
+            if output_rows:
+                _upsert(session, RunOutputRow, output_rows, ("run_id", "number"))
+                self._trim_output(session, run_id)
             # One at a time: each row is up to a megabyte or so.
             for field_row in field_rows:
                 _upsert(session, FieldRow, [field_row], ("run_id", "name", "step"))

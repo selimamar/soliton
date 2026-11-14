@@ -698,3 +698,39 @@ def test_dataset_changes_are_announced_live(client):
         assert socket.receive_json()["type"] == "ready"
         client.put("/api/datasets/d", json=DATASET)
         assert socket.receive_json() == {"type": "dataset", "event": "updated", "datasetId": "d"}
+
+
+def output(start, *lines):
+    return {"type": "output", "start": start, "lines": list(lines)}
+
+
+def test_a_runs_output_is_kept_in_order_and_resending_is_harmless(client):
+    create_run(client)
+    assert client.get("/api/runs/tiny-1/output").json() == {"lines": [], "total": 0}
+    send(client, [output(0, "epoch 1", "epoch 2")])
+    send(client, [output(2, "Traceback (most recent call last):", "RuntimeError: NaN")])
+    send(client, [output(2, "Traceback (most recent call last):", "RuntimeError: NaN")])
+    got = client.get("/api/runs/tiny-1/output").json()
+    assert got == {
+        "lines": ["epoch 1", "epoch 2", "Traceback (most recent call last):",
+                  "RuntimeError: NaN"],
+        "total": 4,
+    }
+    assert client.get("/api/runs/nope/output").status_code == 404
+
+
+def test_only_the_latest_output_lines_are_kept(client):
+    create_run(client)
+    send(client, [output(0, *[f"line {i}" for i in range(1000)])])
+    send(client, [output(1000, *[f"line {i}" for i in range(1000, 1500)])])
+    got = client.get("/api/runs/tiny-1/output").json()
+    assert got["total"] == 1500 and len(got["lines"]) == 1000
+    assert (got["lines"][0], got["lines"][-1]) == ("line 500", "line 1499")
+
+
+def test_deleting_a_run_deletes_its_output(client):
+    create_run(client)
+    send(client, [output(0, "old")])
+    client.delete("/api/runs/tiny-1")
+    create_run(client)
+    assert client.get("/api/runs/tiny-1/output").json()["lines"] == []

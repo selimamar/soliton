@@ -301,7 +301,7 @@ with sim:
 - `setup`: how it's set up, shown on its Overview (equation, method, grid,
   parameters, boundary and initial conditions; nested dicts are fine).
   `monitor`: the value drawn on its card in the list. The other options
-  (`project`, `tags`, `notes`, `system_metrics`, `price_per_hour`, `host`,
+  (`project`, `tags`, `notes`, `system_metrics`, `capture_output`, `price_per_hour`, `host`,
   `id`, `server`, `token`, `mode`, `dir`) are as for `init()`.
 
 Solvers that aren't in Python can still report: write a small Python driver
@@ -359,6 +359,7 @@ soliton data scan $SCRATCH/data          # each data file or folder of them in t
 | `name` | required | Shown in the app |
 | `project` | `""` | Shown under the name; the app can group runs by it |
 | `system_metrics`, `system_interval` | `True`, `15` | Sample GPU, memory and CPU use every `system_interval` seconds (see above) |
+| `capture_output` | `SOLITON_CAPTURE_OUTPUT`, else `True` | Send what the script prints (see Output, below) |
 | `price_per_hour` | `SOLITON_PRICE_PER_HOUR`, else estimated | What the machine costs in US dollars per hour (all its GPUs), for the app's rounded cost estimate. Without it, the app assumes a typical on-demand cloud price for the GPUs (e.g. about $4/h per H100, $2.50 per A100, $0.80 per L4) or $0.05 per CPU core. `0` hides the estimate (e.g. a cluster you don't pay by the hour for) |
 | `tags`, `notes` | none | To organise runs in the app, e.g. `tags=["baseline"]`, `notes="first try with AdamW"`. Only the starting values: they're then edited in the app, and the logger never overwrites them |
 | `config` | none | Hyperparameters: a dict (nested is fine) or argparse namespace |
@@ -426,6 +427,20 @@ soliton sync path/to/run-folder   # one run
 duplicates, so running it twice is harmless. With `SOLITON_MODE=offline`,
 nothing is uploaded during training. Use it where there's no internet, then
 `sync` from a machine that has it.
+
+## Output
+
+What the script prints (`print`, logging, warnings, its errors) is sent with
+the run every 30 seconds, and shown on its Overview: for a crashed run, the
+end of the output with the traceback, first thing. It still goes where it
+went too (the terminal, Slurm's `.out` file). The server keeps the last 1,000
+lines. Progress bars keep only their last frame, colours are removed, and a
+line is cut at 1,000 characters.
+
+Only Python's own output is seen: what a C library or a subprocess writes
+straight to the terminal isn't. Turn it off with `capture_output=False` or
+`SOLITON_CAPTURE_OUTPUT=0`, e.g. when the script prints things that shouldn't
+leave the machine.
 
 ## Stopped jobs
 

@@ -6,6 +6,7 @@ import '../models/layer_stats.dart';
 import '../models/metric_series.dart';
 import '../models/run.dart';
 import '../models/run_insights.dart';
+import '../models/run_output.dart';
 import 'api_run_repository.dart';
 import 'mock/mock_run_repository.dart';
 import 'run_repository.dart';
@@ -153,6 +154,12 @@ typedef FieldSnapshotKey = ({String runId, String name, int step});
 /// A logged snapshot never changes, so live updates don't refetch it.
 final fieldSnapshotProvider = FutureProvider.autoDispose.family<FieldSnapshot, FieldSnapshotKey>(
   (ref, key) => ref.watch(runRepositoryProvider).fetchFieldSnapshot(key.runId, key.name, key.step),
+  retry: retryDataRequest,
+);
+
+/// The latest lines a run's script printed.
+final runOutputProvider = FutureProvider.autoDispose.family<RunOutput, String>(
+  (ref, runId) => ref.watch(runRepositoryProvider).fetchOutput(runId),
   retry: retryDataRequest,
 );
 

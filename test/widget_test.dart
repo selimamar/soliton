@@ -115,7 +115,10 @@ void main() {
   testWidgets('the crashed run renders all tabs', (tester) async {
     await openApp(tester, '/runs/unet-seg');
 
-    expect(find.textContaining('Loss became NaN'), findsOneWidget);
+    expect(
+      find.text('Loss became NaN at step 3,412. The learning rate may be too high.'),
+      findsOneWidget,
+    );
     for (final tab in ['Metrics', 'Layers', 'Overview']) {
       await tester.tap(find.text(tab));
       await tester.pumpAndSettle();

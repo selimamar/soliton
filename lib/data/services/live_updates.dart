@@ -214,6 +214,7 @@ class LiveUpdates extends Notifier<LiveStatus> {
       ref.invalidate(fieldsProvider(runId));
       ref.invalidate(evalsProvider(runId));
       ref.invalidate(curvesProvider(runId));
+      ref.invalidate(runOutputProvider(runId));
     }
     _changedRuns.clear();
     _refreshList = false;

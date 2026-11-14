@@ -188,9 +188,11 @@ token travels over plain HTTP on the cluster's network.
 
 ## What leaves Sherlock
 
-Only what you log: metric values, hyperparameters, the model's layer names
-and parameter counts, and per-layer summary statistics. Plus, from the
-logger itself: the node's name, its GPU and CPU models, software versions,
+What you log: metric values, hyperparameters, the model's layer names
+and parameter counts, and per-layer summary statistics. What the script
+prints (its output and errors, the last 1,000 lines kept); turn that off with
+`export SOLITON_CAPTURE_OUTPUT=0` if it prints anything sensitive. Plus, from
+the logger itself: the node's name, its GPU and CPU models, software versions,
 the Slurm job's id, name and partition, and GPU, memory and CPU use every 15
 seconds (turn the sampling off with `system_metrics=False`). No training data
 or model weights. Run names and hyperparameters go to your server, so don't put

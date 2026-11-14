@@ -104,6 +104,7 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
 | `GET /api/runs/{id}/fields/snapshot?name=u&step=1200` | One field snapshot (the latest without `step`) |
 | `GET /api/runs/{id}/evals` | Validation-set summaries (`run.log_eval`), per name and step |
 | `GET /api/runs/{id}/curves` | Curves (`run.log_curve`), per name and step |
+| `GET /api/runs/{id}/output` | The last 1,000 lines the script printed: `{"lines": [...], "total": 52341}` |
 | `GET /api/datasets` | Every dataset, most recently updated first, without previews |
 | `GET /api/datasets/{id}` | One dataset, with its previews, `madeBy` and `usedBy` |
 | `PUT /api/datasets/{id}` | Registers or updates a dataset (the logger does this) |
@@ -127,6 +128,7 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
 {"type": "field", "step": 1200, "name": "layers/blocks.0", "kind": "layer",
  "layer": "blocks.0", "position": 1, "reduction": "mean of 32 channels",
  "layerShape": [32, 64, 64], "shape": [64, 64], "target": null, ...}
+{"type": "output", "start": 120, "lines": ["epoch 3: loss 0.41", "Traceback ..."]}
 {"type": "status", "status": "crashed", "message": "RuntimeError: CUDA out of memory"}
 {"type": "status", "status": "crashed", "diverged": true,
  "message": "Diverged at t = 0.83: energy is NaN"}

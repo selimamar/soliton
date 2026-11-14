@@ -355,8 +355,22 @@ class StatusEvent(_In):
     diverged: bool = False
 
 
+OUTPUT_KEPT = 1000  # Lines of a run's output the server keeps (the latest).
+OutputLine = Annotated[str, StringConstraints(max_length=2000)]
+
+
+class OutputEvent(_In):
+    """Lines the script printed, numbered from [start] in the whole output,
+    so a batch sent twice replaces itself."""
+
+    type: Literal["output"]
+    start: int = Field(ge=0)
+    time: Time = None
+    lines: list[OutputLine] = Field(max_length=OUTPUT_KEPT)
+
+
 Event = Annotated[
-    Union[MetricsEvent, LayersEvent, FieldEvent, EvalEvent, CurveEvent, StatusEvent],
+    Union[MetricsEvent, LayersEvent, FieldEvent, EvalEvent, CurveEvent, StatusEvent, OutputEvent],
     Field(discriminator="type"),
 ]
 

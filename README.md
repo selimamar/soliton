@@ -131,6 +131,12 @@ What it does:
 - **Live updates**: charts and the list refresh as the server receives data.
 - **Compare**: pick up to six runs on the runs list to overlay their curves,
   and see the fields they share side by side on one colour scale.
+- **Output**: the end of what a run's script printed, on its Overview; for
+  a crashed run, first thing, with the traceback, folded away until the
+  arrow on the card shows it (for every crashed run, until hidden again).
+  Open it to read or copy
+  all of it (the server keeps the last 1,000 lines). Off with
+  `SOLITON_CAPTURE_OUTPUT=0`.
 - **Search** at the top of Runs, Compute and Data: every word typed must
   appear somewhere in the name, project, host, tags, notes, model, dataset
   or PDE (for datasets: name, source, host, format, path, description).

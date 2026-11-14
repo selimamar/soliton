@@ -4,10 +4,12 @@ import '../../models/layer_stats.dart';
 import '../../models/metric_series.dart';
 import '../../models/run.dart';
 import '../../models/run_insights.dart';
+import '../../models/run_output.dart';
 import '../run_repository.dart';
 import '../tags.dart';
 import 'mock_runs.dart';
 import 'mock_datasets.dart';
+import 'mock_output.dart';
 import 'mock_simulations.dart';
 
 /// A [RunRepository] serving generated demo data, with a fake network delay.
@@ -153,6 +155,12 @@ class MockRunRepository implements RunRepository {
   Future<List<LoggedSeries<CurveStep>>> fetchCurves(String runId) async {
     await Future<void>.delayed(latency);
     return _find(runId).curves;
+  }
+
+  @override
+  Future<RunOutput> fetchOutput(String runId) async {
+    await Future<void>.delayed(latency);
+    return mockOutput(_find(runId).run);
   }
 
   @override

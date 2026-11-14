@@ -4,6 +4,7 @@ import '../models/layer_stats.dart';
 import '../models/metric_series.dart';
 import '../models/run.dart';
 import '../models/run_insights.dart';
+import '../models/run_output.dart';
 
 /// The only way the UI gets data.
 ///
@@ -43,6 +44,10 @@ abstract interface class RunRepository {
   /// For sweeps: per run id, the latest and lowest value of each metric in
   /// [names] that the run logged.
   Future<Map<String, Map<String, LatestMetric>>> fetchLatestMetrics(List<String> names);
+
+  /// The latest lines the run's script printed. Empty for a run that
+  /// printed nothing, or whose logger doesn't send its output.
+  Future<RunOutput> fetchOutput(String runId);
 
   /// Every dataset the server knows about (without their previews).
   Future<List<Dataset>> fetchDatasets();

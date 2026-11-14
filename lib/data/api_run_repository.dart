@@ -4,6 +4,7 @@ import '../models/layer_stats.dart';
 import '../models/metric_series.dart';
 import '../models/run.dart';
 import '../models/run_insights.dart';
+import '../models/run_output.dart';
 import 'run_repository.dart';
 import 'services/api_client.dart';
 
@@ -89,6 +90,10 @@ class ApiRunRepository implements RunRepository {
         LoggedSeries.fromJson(json, CurveStep.fromJson),
     ];
   }
+
+  @override
+  Future<RunOutput> fetchOutput(String runId) async =>
+      RunOutput.fromJson(await _object(runId, '${_runPath(runId)}/output') as Map<String, Object?>);
 
   @override
   Future<Map<String, Map<String, LatestMetric>>> fetchLatestMetrics(List<String> names) async {

@@ -184,6 +184,11 @@ def create_app(
         """Validation-set summaries (run.log_eval), per name and step."""
         return store.items(run_id, "eval")
 
+    @app.get("/api/runs/{run_id}/output", dependencies=auth)
+    def output(run_id: RunId):
+        """The latest lines the run's script printed (its output and errors)."""
+        return store.output(run_id)
+
     @app.get("/api/runs/{run_id}/curves", dependencies=auth)
     def curves(run_id: RunId):
         """Curves (run.log_curve), per name and step."""

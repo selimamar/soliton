@@ -116,6 +116,19 @@ class RunSystemRow(Base):
     info: Mapped[dict] = mapped_column(JSON)
 
 
+class RunOutputRow(Base):
+    """One line the run's script printed, by its number in the whole
+    output; only the latest lines are kept (see OUTPUT_KEPT)."""
+
+    __tablename__ = "run_output"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    number: Mapped[int] = mapped_column(Integer, primary_key=True)
+    line: Mapped[str] = mapped_column(Text)
+
+
 class RunSimulationRow(Base):
     """What makes a run a simulation: tEnd, cflLimit, monitor (as the
     logger sends them) and whether it diverged. A table of its own, so older

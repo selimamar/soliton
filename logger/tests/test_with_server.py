@@ -293,3 +293,17 @@ def test_datasets_reach_the_server_with_who_made_and_used_them(tmp_path, databas
             cli_main(["sync", str(tmp_path / "offline")])
         assert server.get("/api/datasets/later")["samples"] == 6
         assert not list((tmp_path / "offline" / "datasets").iterdir()), "uploaded, then removed"
+
+
+def test_a_crashed_runs_output_and_traceback_reach_the_server(tmp_path, database_url):
+    with LiveServer(database_url) as server:
+        with pytest.raises(RuntimeError):
+            with soliton.init("crashy", server=server.url, token=TOKEN, dir=str(tmp_path),
+                              system_metrics=False) as run:
+                print("epoch 1: loss 0.5")
+                raise RuntimeError("CUDA out of memory")
+        got = server.get(f"/api/runs/{run.id}/output")
+        assert got["lines"][0] == "epoch 1: loss 0.5"
+        assert got["lines"][-1] == "RuntimeError: CUDA out of memory"
+        assert got["total"] == len(got["lines"])
+        assert server.get(f"/api/runs/{run.id}")["status"] == "crashed"

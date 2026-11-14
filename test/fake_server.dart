@@ -104,6 +104,9 @@ class FakeServer {
               'steps': [for (final s in series.steps) s.toJson()],
             },
         ]),
+        ['runs', final id, 'output'] => _json(
+          (await _data.fetchOutput((await _run(id)).id)).toJson(),
+        ),
         ['metrics', 'latest'] => _json({
           for (final run in (await _data.fetchLatestMetrics(
             request.url.queryParameters['names']!.split(','),

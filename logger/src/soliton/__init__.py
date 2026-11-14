@@ -59,6 +59,7 @@ def init(
     notes: str = "",
     system_metrics: bool = True,
     system_interval: float = 15,
+    capture_output: Optional[bool] = None,
     price_per_hour: Optional[float] = None,
     total_steps: int = 0,
     total_epochs: int = 0,
@@ -84,7 +85,10 @@ def init(
     to organise runs in the app (e.g. tags=["baseline"]); they only set the
     starting values, which are then edited in the app. system_metrics:
     sample GPU, memory and CPU usage every system_interval seconds (the
-    machine, GPUs and Slurm job are recorded either way). price_per_hour:
+    machine, GPUs and Slurm job are recorded either way). capture_output:
+    send the last lines the script prints (its output and errors, with the
+    traceback if it crashes) to show with the run; default on, off with
+    SOLITON_CAPTURE_OUTPUT=0. price_per_hour:
     what the machine costs in US dollars per hour, for the app's cost
     estimate (default SOLITON_PRICE_PER_HOUR, else the app assumes a
     typical cloud price for the GPUs; 0 hides the estimate). total_steps,
@@ -108,6 +112,7 @@ def init(
         notes=notes,
         system_metrics=system_metrics,
         system_interval=system_interval,
+        capture_output=capture_output,
         price_per_hour=price_per_hour,
         total_steps=total_steps,
         total_epochs=total_epochs,
@@ -134,6 +139,7 @@ def simulate(
     notes: str = "",
     system_metrics: bool = True,
     system_interval: float = 15,
+    capture_output: Optional[bool] = None,
     price_per_hour: Optional[float] = None,
     host: Optional[str] = None,
     id: Optional[str] = None,
@@ -168,6 +174,7 @@ def simulate(
         notes=notes,
         system_metrics=system_metrics,
         system_interval=system_interval,
+        capture_output=capture_output,
         price_per_hour=price_per_hour,
         host=host,
         id=id,
