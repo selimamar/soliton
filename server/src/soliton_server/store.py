@@ -196,6 +196,11 @@ def _default_architecture(name: str) -> dict:
     return {"name": name, "type": "Model", "ownParameters": 0, "children": []}
 
 
+def _aware(moment: datetime) -> datetime:
+    """[moment] in UTC: SQLite hands back stored times without a time zone."""
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
 # A run quiet for this long after its Slurm job's time limit was stopped by it.
 TIME_LIMIT_GRACE = timedelta(minutes=1)
 
@@ -244,8 +249,20 @@ class Store:
                 )
                 session.add(row)
                 event = "created"
-            elif body.startedAt is not None:
-                row.started_at = min(body.startedAt, now)
+            else:
+                if body.startedAt is not None:
+                    # A new process continuing a run that had ended (a job
+                    # restarted from a checkpoint, `init(id=...)`): live again.
+                    # Re-sending the run as it was (`soliton sync`) carries its
+                    # original start, from before it ended, and changes nothing.
+                    restarted = min(body.startedAt, now)
+                    ended = row.ended_at
+                    if row.status != "live" and ended is not None and _aware(restarted) > _aware(ended):
+                        row.status, row.status_message, row.ended_at = "live", None, None
+                        row.lost_contact = False
+                        row.last_seen_at = now
+                        event = "revived"
+                    row.started_at = restarted
             row.name = body.name
             row.project = body.project
             row.host = body.host

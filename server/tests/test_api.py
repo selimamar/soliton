@@ -360,6 +360,25 @@ def test_a_run_still_logging_past_its_time_limit_stays_live(app, client, clock):
     assert app.state.store.mark_stale(app.state.settings.stale_after) == []
 
 
+def test_a_new_process_continuing_an_ended_run_makes_it_live_again(client, clock, notifications):
+    """A job restarted from a checkpoint calls init(id=...) again."""
+    create_run(client)
+    send(client, [{"type": "status", "status": "crashed", "message": "Stopped by SIGTERM"}])
+    clock.advance(minutes=30)
+    run = create_run(client, startedAt="2026-11-12T09:30:00Z")
+    assert (run["status"], run["statusMessage"], run["endedAt"]) == ("live", None, None)
+    assert "revived" in [c.event for c in notifications]
+
+
+def test_re_sending_an_ended_run_as_it_was_does_not_revive_it(client, clock):
+    """`soliton sync` sends the run again with its original start."""
+    create_run(client, startedAt="2026-11-12T08:00:00Z")
+    send(client, [{"type": "status", "status": "finished", "time": "2026-11-12T09:00:00Z"}])
+    clock.advance(minutes=30)
+    run = create_run(client, startedAt="2026-11-12T08:00:00Z")
+    assert run["status"] == "finished"
+
+
 def test_late_upload_of_an_old_run_does_not_revive_it(app, client, clock):
     """`soliton sync` may upload old data after the run was marked lost."""
     create_run(client)

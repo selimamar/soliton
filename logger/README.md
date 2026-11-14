@@ -306,8 +306,10 @@ with sim:
   (`project`, `tags`, `notes`, `system_metrics`, `capture_output`, `price_per_hour`, `host`,
   `id`, `server`, `token`, `mode`, `dir`) are as for `init()`.
 
-Solvers that aren't in Python can still report: write a small Python driver
-that reads the solver's output as it runs and calls `sim.log`.
+Solvers that aren't in Python can still report, unchanged: launch them
+through [skills/soliton/scripts/monitor_solver.py](../skills/soliton/scripts/monitor_solver.py),
+which reads what the solver writes (text tables of numbers, HDF5 tables) or
+prints, and calls `sim.log` for it. Its `--help` has the details.
 
 ### Datasets: `soliton.register_dataset`, `soliton data`
 
@@ -371,7 +373,7 @@ soliton data scan $SCRATCH/data          # each data file or folder of them in t
 | `pde` | none | What is solved, listed right after the data and loss: `{"equation": "Navier-Stokes 2D", "viscosity": 1e-3, "domain": "[0, 1]² periodic", "resolution": "64 × 64"}` (nested is fine). The equation becomes the `PDE` hyperparameter, which the app can group runs by |
 | `total_steps`, `total_epochs` | 0 | Progress bar, time left, epochs on the x-axis |
 | `host` | detected | Where it runs: `SOLITON_HOST`, else the Slurm cluster (e.g. "Sherlock"), the platform (Modal, RunPod, Colab, Kaggle, SageMaker, AWS Batch), the cloud (AWS, GCP, Azure, DigitalOcean, Hetzner, Oracle Cloud, Vultr, Linode), Kubernetes, else the machine's name |
-| `id` | new | Pass a previous run's id to continue it |
+| `id` | new | Pass a previous run's id to continue it, e.g. in a job restarted from a checkpoint (save `run.id` in the checkpoint); a run that had ended turns live again |
 | `server`, `token` | `SOLITON_SERVER`, `SOLITON_TOKEN` | |
 | `mode` | `SOLITON_MODE`, else `online` if a server is set | `online`, `offline` (save only) or `disabled` |
 | `dir` | `SOLITON_DIR`, else `./soliton-runs` | Where runs are saved |
@@ -419,6 +421,9 @@ Every run is saved to `soliton-runs/<run id>/events.jsonl` first. In
 `online` mode a background thread uploads new records every 2 seconds and
 retries with backoff when the server can't be reached. If something is
 left when the run ends, it says so; upload it later with:
+
+Without installing (the logger on `PYTHONPATH`, e.g. on a cluster),
+`python3 -m soliton` is the same command.
 
 ```bash
 soliton sync                      # every run in ./soliton-runs
