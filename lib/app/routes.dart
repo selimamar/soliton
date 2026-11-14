@@ -8,6 +8,9 @@ abstract final class AppRoutes {
   /// Runs of a project side by side by what they varied.
   static const sweep = '/sweep';
 
+  /// The runs as ducks and eggs on a farm.
+  static const farm = '/farm';
+
   static String run(String runId) => '/runs/${Uri.encodeComponent(runId)}';
 
   /// The compare screen for [runIds], e.g. `/compare?runs=a,b`.

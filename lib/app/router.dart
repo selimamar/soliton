@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/compare/compare_screen.dart';
+import '../features/farm/farm_screen.dart';
 import '../features/not_found/not_found_screen.dart';
 import '../features/run_detail/run_detail_screen.dart';
 import '../features/runs_list/runs_list_screen.dart';
@@ -16,6 +17,7 @@ import '../features/sweep/sweep_screen.dart';
 ///                         system) opens on that tab
 ///   /compare?runs=a,b     runs side by side
 ///   /sweep                runs of a project by hyperparameters or metrics
+///   /farm                 runs as ducks (finished) and eggs (live)
 ///   /settings             settings
 ///   /settings/server      connect to a server
 ///
@@ -49,6 +51,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ),
           GoRoute(path: 'sweep', builder: (context, state) => const SweepScreen()),
+          GoRoute(path: 'farm', builder: (context, state) => const FarmScreen()),
           GoRoute(
             path: 'settings',
             builder: (context, state) => const SettingsScreen(),

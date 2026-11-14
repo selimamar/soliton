@@ -116,6 +116,11 @@ class RunsListScreen extends ConsumerWidget {
       const _LiveStatusButton(),
       const _GroupingButton(),
       IconButton(
+        icon: const Icon(Icons.egg_outlined),
+        tooltip: 'Farm: runs as ducks and eggs',
+        onPressed: () => context.go(AppRoutes.farm),
+      ),
+      IconButton(
         icon: const Icon(Icons.grid_on),
         tooltip: 'Sweep: runs by hyperparameters',
         onPressed: () => context.go(AppRoutes.sweep),
