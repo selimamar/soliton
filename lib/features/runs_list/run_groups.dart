@@ -202,3 +202,17 @@ List<(Run, RunScore)> rankRuns(
     ...rest,
   ];
 }
+
+/// What a search in the runs (or simulations) list looks through: the
+/// name, project, host, tags, notes, model, dataset and PDE.
+List<String?> runSearchFields(Run run) => [
+  run.name,
+  run.project,
+  run.host,
+  ...run.tags,
+  run.notes,
+  if (!(run.architecture.isLeaf && run.architecture.type == 'Model')) run.architecture.type,
+  ...run.datasets,
+  datasetOf(run),
+  pdeOf(run),
+];

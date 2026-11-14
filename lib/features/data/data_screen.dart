@@ -7,6 +7,7 @@ import '../../app/theme.dart';
 import '../../data/providers.dart';
 import '../../models/dataset.dart';
 import '../../shared/formatters.dart';
+import '../../shared/search.dart';
 import '../../shared/selection.dart';
 import '../../shared/widgets/async_value_view.dart';
 import '../../shared/widgets/delete_dialog.dart';
@@ -38,7 +39,7 @@ class DataScreen extends ConsumerWidget {
       context,
       kind: DeleteKind.dataset,
       picked: picked,
-      shown: [for (final d in datasets) d.id],
+      shown: [for (final d in searchDatasets(datasets, ref.watch(datasetSearchProvider))) d.id],
       selection: ref.read(datasetSelectionProvider.notifier),
       describe: (id) => (id: id, name: byId[id]?.title ?? id, live: false),
     );
@@ -95,9 +96,12 @@ class _DatasetsList extends ConsumerWidget {
         ),
       );
     }
-    final bytes = datasets.fold<int>(0, (sum, d) => sum + (d.sizeBytes ?? 0));
+    final query = ref.watch(datasetSearchProvider);
+    // The totals are of the datasets that match the search.
+    final found = searchDatasets(datasets, query);
+    final bytes = found.fold<int>(0, (sum, d) => sum + (d.sizeBytes ?? 0));
     final hosts = {
-      for (final d in datasets)
+      for (final d in found)
         if (d.host.isNotEmpty) d.host,
     };
     return RefreshIndicator(
@@ -111,15 +115,28 @@ class _DatasetsList extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  ListSearchField(
+                    provider: datasetSearchProvider,
+                    hint: 'Search name, source, host, path…',
+                  ),
+                  const SizedBox(height: 12),
                   StatStrip(
                     stats: [
-                      ('Datasets', formatInt(datasets.length)),
+                      ('Datasets', formatInt(found.length)),
                       ('Stored', formatBytes(bytes)),
                       ('On', hosts.length == 1 ? hosts.single : '${hosts.length} systems'),
                     ],
                   ),
                   const SizedBox(height: 12),
-                  for (final d in datasets) ...[
+                  if (found.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 16),
+                      child: Text(
+                        'No datasets match "${query.trim()}"',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  for (final d in found) ...[
                     DatasetCard(dataset: d, selected: picked?.contains(d.id)),
                     const SizedBox(height: 10),
                   ],
@@ -132,6 +149,24 @@ class _DatasetsList extends ConsumerWidget {
     );
   }
 }
+
+/// The datasets whose name, version, source, host, format, location,
+/// description or maker match [query] (see [matchesSearch]).
+List<Dataset> searchDatasets(List<Dataset> datasets, String query) => query.trim().isEmpty
+    ? datasets
+    : [
+        for (final d in datasets)
+          if (matchesSearch(query, [
+            d.title,
+            d.source,
+            d.host,
+            d.format,
+            d.location,
+            d.description,
+            d.madeBy?.name,
+          ]))
+            d,
+      ];
 
 /// "1,200 samples · 64 × 64 × 50 · HDF5".
 String describeContents(Dataset d) => [

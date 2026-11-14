@@ -7,13 +7,14 @@ import '../../app/theme.dart';
 import '../../data/providers.dart';
 import '../../models/run.dart';
 import '../../shared/clock.dart';
+import '../../shared/search.dart';
 import '../../shared/selection.dart';
 import '../../shared/widgets/async_value_view.dart';
 import '../../shared/widgets/delete_dialog.dart';
 import '../../shared/widgets/picking_app_bar.dart';
 import '../../shared/widgets/sparkline.dart';
 import '../../shared/widgets/status_chip.dart';
-import '../runs_list/runs_list_screen.dart' show StatusFilterBar;
+import '../runs_list/runs_list_screen.dart' show StatusFilterBar, searchRuns;
 import 'simulation_text.dart';
 
 /// The status the simulations list is filtered to (null: all).
@@ -55,7 +56,7 @@ class SimulationsScreen extends ConsumerWidget {
       kind: DeleteKind.simulation,
       picked: picked,
       shown: [
-        for (final s in simulations)
+        for (final s in searchRuns(simulations, ref.watch(simulationSearchProvider)))
           if (filter == null || s.status == filter) s.id,
       ],
       selection: ref.read(simulationSelectionProvider.notifier),
@@ -115,8 +116,10 @@ class _SimulationsList extends ConsumerWidget {
     }
     final filter = ref.watch(simulationFilterProvider);
     final picked = ref.watch(simulationSelectionProvider);
+    final query = ref.watch(simulationSearchProvider);
+    final found = searchRuns(simulations, query);
     final shown = [
-      for (final s in simulations)
+      for (final s in found)
         if (filter == null || s.status == filter) s,
     ];
     return RefreshIndicator(
@@ -130,12 +133,18 @@ class _SimulationsList extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  const SizedBox(height: 8),
+                  ListSearchField(
+                    provider: simulationSearchProvider,
+                    hint: 'Search name, project, host…',
+                  ),
                   StatusFilterBar(
-                    runs: simulations,
+                    runs: found,
                     selected: filter,
                     onSelected: ref.read(simulationFilterProvider.notifier).select,
                   ),
                   const SizedBox(height: 12),
+                  if (shown.isEmpty) _NoMatch(query: query),
                   for (final s in shown) ...[
                     SimulationCard(simulation: s, selected: picked?.contains(s.id)),
                     const SizedBox(height: 10),
@@ -148,6 +157,24 @@ class _SimulationsList extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Why the list is empty: nothing matches the search, or the status.
+class _NoMatch extends StatelessWidget {
+  const _NoMatch({required this.query});
+
+  final String query;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 16),
+    child: Text(
+      query.trim().isEmpty
+          ? 'No simulations with this status'
+          : 'No simulations match "${query.trim()}"',
+      textAlign: TextAlign.center,
+    ),
+  );
 }
 
 /// A simulation in the list: name, where it runs, where it is (simulated

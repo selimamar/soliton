@@ -7,6 +7,7 @@ import '../../app/theme.dart';
 import '../../data/providers.dart';
 import '../../data/services/live_updates.dart';
 import '../../models/run.dart';
+import '../../shared/search.dart';
 import '../../shared/selection.dart';
 import '../../shared/widgets/async_value_view.dart';
 import '../../shared/widgets/delete_dialog.dart';
@@ -38,6 +39,15 @@ class CollapsedGroups extends Notifier<Set<String>> {
   void toggle(String key) =>
       state = state.contains(key) ? ({...state}..remove(key)) : {...state, key};
 }
+
+/// The runs whose name, project, host, tags, notes, model, dataset or PDE
+/// match [query] (see [matchesSearch]).
+List<Run> searchRuns(List<Run> runs, String query) => query.trim().isEmpty
+    ? runs
+    : [
+        for (final run in runs)
+          if (matchesSearch(query, runSearchFields(run))) run,
+      ];
 
 /// More lines than this make a comparison chart unreadable.
 const maxComparedRuns = 6;
@@ -127,7 +137,7 @@ class RunsListScreen extends ConsumerWidget {
       kind: DeleteKind.run,
       picked: picked,
       shown: [
-        for (final run in runs)
+        for (final run in searchRuns(runs, ref.watch(runSearchProvider)))
           if (filter == null || run.status == filter) run.id,
       ],
       selection: selection,
@@ -168,7 +178,10 @@ class _RunsList extends ConsumerWidget {
     final filter = ref.watch(runFilterProvider);
     final picked = ref.watch(runSelectionProvider);
     final demo = ref.watch(connectionProvider) == null;
-    final visibleRuns = filter == null ? runs : runs.where((r) => r.status == filter).toList();
+    final query = ref.watch(runSearchProvider);
+    // The status counts are of the runs that match the search.
+    final found = searchRuns(runs, query);
+    final visibleRuns = filter == null ? found : found.where((r) => r.status == filter).toList();
     final grouping = ref.watch(runGroupingProvider);
     final collapsed = ref.watch(collapsedGroupsProvider);
     // Ordered by a metric, each group (or the whole list) is ranked by it,
@@ -215,8 +228,16 @@ class _RunsList extends ConsumerWidget {
         spacing: journal ? 0 : 8,
         children: [
           if (journal && picked == null && runs.isNotEmpty) _Abstract(runs: runs),
+          if (runs.isNotEmpty)
+            Padding(
+              padding: EdgeInsets.only(top: journal ? 12 : 8),
+              child: ListSearchField(
+                provider: runSearchProvider,
+                hint: 'Search name, tag, project, host…',
+              ),
+            ),
           StatusFilterBar(
-            runs: runs,
+            runs: found,
             selected: ref.watch(runFilterProvider),
             onSelected: ref.read(runFilterProvider.notifier).select,
           ),
@@ -229,7 +250,11 @@ class _RunsList extends ConsumerWidget {
               'as soon as it logs.',
             )
           else if (visibleRuns.isEmpty)
-            const _EmptyState('No runs with this status'),
+            _EmptyState(switch ((query.trim(), found.isEmpty)) {
+              ('', _) => 'No runs with this status',
+              (final q, true) => 'No runs match "$q"',
+              (final q, false) => 'No runs with this status match "$q"',
+            }),
           if (grouping == RunGrouping.none)
             for (final entry in ranked(visibleRuns)) card(entry)
           else

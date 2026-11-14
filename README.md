@@ -131,6 +131,10 @@ What it does:
 - **Live updates**: charts and the list refresh as the server receives data.
 - **Compare**: pick up to six runs on the runs list to overlay their curves,
   and see the fields they share side by side on one colour scale.
+- **Search** at the top of Runs, Compute and Data: every word typed must
+  appear somewhere in the name, project, host, tags, notes, model, dataset
+  or PDE (for datasets: name, source, host, format, path, description).
+  The status counts and Data's totals follow the search.
 - **Delete** what clutters a section: from a run's, simulation's or
   dataset's page, or several at once by picking them in the list (a long
   press, or the pick button). The app asks first. Deleting a run removes
