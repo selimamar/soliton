@@ -7,6 +7,8 @@ or when `soliton sync` uploads a saved run), and points are keyed by
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import math
 from collections import defaultdict
 from collections.abc import Callable, Sequence
@@ -25,6 +27,7 @@ from .db import (
     MetricPointRow,
     RunItemRow,
     RunJobRow,
+    RunKeyRow,
     RunNotesRow,
     RunOutputRow,
     RunResumeRow,
@@ -61,6 +64,23 @@ class RunNotFound(Exception):
 
 class RunNotLive(Exception):
     """Only a live run can be asked to stop."""
+
+
+class RunKeyRefused(Exception):
+    """A job-token request without the run's key."""
+
+
+RUN_KEY_REFUSED = (
+    "This run belongs to the process that started it: with the job token, a "
+    "request must carry its run key (the logger keeps it in the run's folder, "
+    "soliton-runs/<id>/key, or reads SOLITON_RUN_KEY). Continue it from that "
+    "folder, or with the main token."
+)
+
+
+def run_key_hash(key: str) -> str:
+    """SHA-256 of a long random key."""
+    return hashlib.sha256(key.encode()).hexdigest()
 
 
 class DatasetNotFound(Exception):
@@ -272,8 +292,13 @@ class Store:
 
     # Runs -----------------------------------------------------------------
 
-    def put_run(self, run_id: str, body: RunIn) -> tuple[dict, list[Change]]:
+    def put_run(self, run_id: str, body: RunIn, writer: str = "main",
+                run_key: str | None = None) -> tuple[dict, list[Change]]:
         """Creates the run, or updates its description if it exists.
+
+        [writer] is "main" or "job" (the token used); [run_key] the key the
+        logger made for the run (see _check_writer): kept, hashed, when the
+        run is created. Raises RunKeyRefused.
 
         With `queued` (from `soliton sbatch` and `soliton queue`), a Slurm job
         still waiting to start. When it starts, its logger's description
@@ -286,6 +311,11 @@ class Store:
             new_job = False
             if row is None and body.updateOnly:
                 raise RunNotFound(run_id)
+            if row is not None:
+                # `soliton queue` refreshing what Slurm says of a waiting job
+                # knows no run keys; that is all it can change.
+                refresh = body.queued and body.updateOnly and row.status == "queued"
+                self._check_writer(session, row, writer, run_key, queue_refresh=refresh)
             if row is not None and body.queued:
                 return self._requeue(session, row, body, now)
             event = "updated"
@@ -359,6 +389,8 @@ class Store:
                 session.add(RunNotesRow(run_id=run_id, tags=list(body.tags), notes=body.notes,
                                         updated_at=now))
             session.flush()
+            if event == "created" and run_key:
+                session.add(RunKeyRow(run_id=run_id, key_hash=run_key_hash(run_key)))
             if (event in ("created", "started", "revived") and not body.queued) or new_job:
                 self._start_job(session, row, body.system)
             if event == "created" and not body.queued:
@@ -380,6 +412,32 @@ class Store:
     def stop_requested(self, run_id: str) -> bool:
         with self._sessions() as session:
             return session.get(RunStopRow, run_id) is not None
+
+    @staticmethod
+    def _check_writer(session: Session, row: RunRow, writer: str, run_key: str | None,
+                      queue_refresh: bool = False) -> None:
+        """With the job token, a run may only be changed with its key.
+
+        A run without a stored key (logged before keys, or by an older
+        logger) may be, while it is queued or live (its process still
+        running), and the first key sent becomes its key. The main token
+        may change any run; a key it sends is kept for a run without one.
+        Raises RunKeyRefused."""
+        stored = session.get(RunKeyRow, row.id)
+        if writer != "job":
+            if stored is None and run_key:
+                session.add(RunKeyRow(run_id=row.id, key_hash=run_key_hash(run_key)))
+            return
+        if queue_refresh:
+            return
+        if stored is not None:
+            if not run_key or not hmac.compare_digest(run_key_hash(run_key), stored.key_hash):
+                raise RunKeyRefused(row.id)
+            return
+        if row.status not in ("queued", "live"):
+            raise RunKeyRefused(row.id)
+        if run_key:
+            session.add(RunKeyRow(run_id=row.id, key_hash=run_key_hash(run_key)))
 
     @staticmethod
     def _start_job(session: Session, row: RunRow, system: dict | None) -> None:
@@ -475,7 +533,7 @@ class Store:
             if theirs.get("cluster") and slurm.get("cluster") and theirs["cluster"] != slurm["cluster"]:
                 continue
             changes.append(_change(queued, "deleted"))
-            for table in (RunNotesRow, RunSystemRow, RunSimulationRow, DatasetUseRow):
+            for table in (RunNotesRow, RunSystemRow, RunSimulationRow, DatasetUseRow, RunKeyRow):
                 session.execute(delete(table).where(table.run_id == queued.id))
             session.delete(queued)
         return changes
@@ -558,19 +616,25 @@ class Store:
             change = _change(row, "deleted")
             for table in (MetricPointRow, LayerPointRow, LayerRow, FieldRow, RunItemRow,
                           RunNotesRow, RunSystemRow, RunSimulationRow, DatasetUseRow,
-                          RunOutputRow, RunResumeRow, RunStopRow, RunJobRow):
+                          RunOutputRow, RunResumeRow, RunStopRow, RunJobRow, RunKeyRow):
                 session.execute(delete(table).where(table.run_id == run_id))
             session.delete(row)
             return change
 
     # Ingest ---------------------------------------------------------------
 
-    def ingest(self, run_id: str, events: Sequence) -> list[Change]:
-        """Stores a batch of events. Returns what changed."""
+    def ingest(self, run_id: str, events: Sequence, writer: str = "main",
+               run_key: str | None = None) -> list[Change]:
+        """Stores a batch of events. Returns what changed. [writer] and
+        [run_key]: see put_run."""
         now = self._clock()
         changes: list[Change] = []
         with self._sessions.begin() as session:
             row = self._find(session, run_id)
+            # `soliton queue` ending a queued job that left the queue
+            # (cancelled, failed) knows no run keys.
+            refresh = row.status == "queued" and all(isinstance(e, StatusEvent) for e in events)
+            self._check_writer(session, row, writer, run_key, queue_refresh=refresh)
             layers = {layer.name: layer for layer in session.scalars(
                 select(LayerRow).where(LayerRow.run_id == run_id)
             )}

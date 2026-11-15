@@ -297,14 +297,26 @@ def sbatch_main(args, client_or_none, run: Runner = subprocess.run,
     name = args.name or slurm.get("jobName") or f"job {job}"
     try:
         run_id = run_id_for(job, args.id)
+        # With --id, the job continues that run from here: the key its
+        # logger will find (and send) in the run's folder.
+        key = run_key_for(run_id) if args.id else None
         client_or_none.put_run(run_id, queued_run(slurm, name, args.project or "",
-                                                  cluster_host(cluster)))
+                                                  cluster_host(cluster)), key)
     except Exception as error:  # The job is submitted either way.
         print(f"soliton: job {job} is submitted, but not shown as queued: {error}", file=sys.stderr)
         return 0
     say(f"soliton: {name} shows as queued in the app (run {run_id}); `soliton queue` updates it")
     return 0
 
+
+
+def run_key_for(run_id: str) -> str:
+    """The key of run [run_id], as a job run from this directory finds it."""
+    from pathlib import Path
+
+    from ._upload import RunFiles
+
+    return RunFiles(Path(os.environ.get("SOLITON_DIR") or "soliton-runs") / run_id).run_key()
 
 
 def split_sbatch_args(argv: List[str]) -> Tuple[Dict[str, str], List[str]]:

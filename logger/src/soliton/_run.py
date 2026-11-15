@@ -155,6 +155,7 @@ class Run:
             raise ValueError("system_interval must be at least 1 second")
 
         self._files.append(self._description)
+        self._files.run_key()  # Made now, so a job continuing from this folder has it.
         if mode == "online":
             self._uploader = Uploader(self._files, ApiClient(server, token), _say,
                                       on_reply=self._on_server_reply)

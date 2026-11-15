@@ -7,7 +7,7 @@ import os
 import sys
 
 from . import __version__
-from .config import Settings
+from .config import Settings, TokenTooWeak, secure_data_dir
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -28,9 +28,27 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--show-token", action="store_true", help="Print the API token and exit."
     )
+    parser.add_argument(
+        "--tls-cert", default=os.environ.get("SOLITON_TLS_CERT"),
+        help="Serve https with this certificate (PEM; default: $SOLITON_TLS_CERT).",
+    )
+    parser.add_argument(
+        "--tls-key", default=os.environ.get("SOLITON_TLS_KEY"),
+        help="The certificate's private key (default: $SOLITON_TLS_KEY).",
+    )
     args = parser.parse_args(argv)
+    if bool(args.tls_cert) != bool(args.tls_key):
+        sys.exit("soliton-server: --tls-cert and --tls-key go together")
 
-    settings = Settings.from_env()
+    # Everything the server writes (the database, its journal, the token)
+    # is readable by you only: it holds everything the runs logged.
+    os.umask(0o077)
+    try:
+        settings = Settings.from_env()
+    except TokenTooWeak as error:
+        sys.exit(f"soliton-server: {error}")
+    if settings.data_dir is not None and settings.data_dir.is_dir():
+        secure_data_dir(settings.data_dir)
     if args.show_token:
         print(settings.token)
         return
@@ -41,7 +59,11 @@ def main(argv: list[str] | None = None) -> None:
 
     database = settings.database_url.split("@")[-1]  # Hide any password.
     print(f"Soliton server {__version__}", file=sys.stderr)
-    print(f"  Address:  http://{args.host}:{args.port}", file=sys.stderr)
+    scheme = "https" if args.tls_cert else "http"
+    print(f"  Address:  {scheme}://{args.host}:{args.port}", file=sys.stderr)
+    if scheme == "http" and args.host not in ("127.0.0.1", "localhost", "::1"):
+        print("  Warning:  plain http on a shared network: the token and the data travel "
+              "unencrypted (see --tls-cert)", file=sys.stderr)
     print(f"  Database: {database}", file=sys.stderr)
     if os.environ.get("SOLITON_TOKEN"):
         print("  Token:    from SOLITON_TOKEN", file=sys.stderr)
@@ -49,7 +71,8 @@ def main(argv: list[str] | None = None) -> None:
         print("  Token:    soliton-server --show-token", file=sys.stderr)
     if settings.ntfy_url:
         print("  Push notifications: on (ntfy)", file=sys.stderr)
-    uvicorn.run(create_app(settings), host=args.host, port=args.port, log_level="info")
+    uvicorn.run(create_app(settings), host=args.host, port=args.port, log_level="info",
+                ssl_certfile=args.tls_cert, ssl_keyfile=args.tls_key)
 
 
 if __name__ == "__main__":

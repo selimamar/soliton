@@ -8,19 +8,22 @@ import hmac
 import json
 import secrets
 import logging
+import threading
+import time
+from collections import deque
 from collections.abc import Callable, Iterable
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Annotated, Literal, Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Path, Query, WebSocket
+from fastapi import Depends, FastAPI, Header, HTTPException, Path, Query, Request, WebSocket
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from starlette.websockets import WebSocketDisconnect
 
 from . import __version__
-from .config import Settings, replace_private
+from .config import Settings, check_token, replace_private
 from .db import make_engine, make_sessionmaker
 from .live import Broadcaster
 from .notify import NtfyNotifier
@@ -29,6 +32,8 @@ from .store import (
     Change,
     DatasetNotFound,
     FieldNotFound,
+    RUN_KEY_REFUSED,
+    RunKeyRefused,
     RunNotFound,
     RunNotLive,
     Store,
@@ -39,6 +44,8 @@ log = logging.getLogger(__name__)
 
 RunId = Annotated[str, Path(pattern=RUN_ID_PATTERN)]
 MaxPoints = Annotated[int, Query(ge=4, le=20_000)]
+# The key a logger made for its run (see Store._check_writer).
+RunKey = Annotated[Optional[str], Header(alias="X-Run-Key", max_length=200)]
 
 JOB_TOKEN_KEY = "jobTokenHash"
 MAIN_TOKEN_KEY = "mainTokenHash"
@@ -48,7 +55,101 @@ JOB_TOKEN_REFUSED = (
     "Use the server's main token here."
 )
 
-_AUTH_TIMEOUT = 10  # Seconds a WebSocket client has to send its token.
+_AUTH_TIMEOUT = 5  # Seconds a WebSocket client has to send its token.
+
+# Wrong tokens allowed from one address per window; past that, everything
+# from it gets 429 until the window has passed (even a right token, so a
+# guesser can't tell when it found one).
+AUTH_FAILURES_ALLOWED = 20
+AUTH_FAILURE_WINDOW = 60.0
+
+
+class AuthFailures:
+    """Wrong tokens per client address, over the last [window] seconds."""
+
+    def __init__(self, allowed: int = AUTH_FAILURES_ALLOWED, window: float = AUTH_FAILURE_WINDOW,
+                 clock: Callable[[], float] = time.monotonic) -> None:
+        self._allowed, self._window, self._clock = allowed, window, clock
+        self._failures: dict[str, deque[float]] = {}
+        self._lock = threading.Lock()
+
+    def _recent(self, address: str, now: float) -> deque[float]:
+        times = self._failures.get(address)
+        if times is None:
+            return deque()
+        while times and times[0] <= now - self._window:
+            times.popleft()
+        if not times:
+            del self._failures[address]
+        return times
+
+    def blocked(self, address: str) -> bool:
+        with self._lock:
+            return len(self._recent(address, self._clock())) >= self._allowed
+
+    def record(self, address: str) -> None:
+        with self._lock:
+            now = self._clock()
+            times = self._recent(address, now)
+            if address not in self._failures:
+                if len(self._failures) > 10_000:  # Many addresses: forget the oldest.
+                    self._failures.pop(next(iter(self._failures)))
+                self._failures[address] = times
+            times.append(now)
+
+
+class BodyLimit:
+    """Refuses request bodies over [max_bytes] with 413: at once when the
+    client gives their size (Content-Length), else as soon as more arrives."""
+
+    def __init__(self, app, max_bytes: int) -> None:
+        self.app, self.max_bytes = app, max_bytes
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        headers = dict(scope.get("headers") or [])
+        length = headers.get(b"content-length")
+        if length is not None and (not length.isdigit() or int(length) > self.max_bytes):
+            return await JSONResponse(status_code=413, content={"detail": "Request too large"})(
+                scope, receive, send)
+        received = 0
+        exceeded = started = False
+
+        async def limited_receive():
+            nonlocal received, exceeded
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self.max_bytes:
+                    exceeded = True
+                    raise _TooLarge()
+            return message
+
+        async def tracking_send(message):
+            nonlocal started
+            if exceeded:  # FastAPI answers 400 for a body it couldn't read: ours instead.
+                return
+            if message["type"] == "http.response.start":
+                started = True
+            await send(message)
+
+        try:
+            await self.app(scope, limited_receive, tracking_send)
+        except _TooLarge:
+            pass
+        if exceeded and not started:
+            await JSONResponse(status_code=413, content={"detail": "Request too large"})(
+                scope, receive, send)
+
+
+class _TooLarge(Exception):
+    pass
+
+
+def _client_address(connection) -> str:
+    client = getattr(connection, "client", None)
+    return client.host if client is not None else "?"
 _PING_INTERVAL = 25  # Keeps idle connections open through proxies.
 
 
@@ -60,11 +161,13 @@ def create_app(
     stale_check_seconds: float = 30,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
+    check_token(settings.token)
     engine = make_engine(settings.database_url)
     store = Store(make_sessionmaker(engine), clock)
     broadcaster = Broadcaster()
     if notifier is None and settings.ntfy_url:
-        notifier = NtfyNotifier(settings.ntfy_url, settings.ntfy_token, settings.notify_on)
+        notifier = NtfyNotifier(settings.ntfy_url, settings.ntfy_token, settings.notify_on,
+                                details=settings.ntfy_details)
 
     def publish(changes: Iterable[Change]) -> None:
         for change in changes:
@@ -103,6 +206,10 @@ def create_app(
         allow_headers=["*"],
     )
 
+    app.add_middleware(BodyLimit, max_bytes=settings.max_body_bytes)
+
+    failures = AuthFailures()
+
     # The main token: the configured one (SOLITON_TOKEN or the token file),
     # unless it was rotated from the app since. Only hashes are kept: the
     # current one, and every token rotated away (never accepted again, even
@@ -119,7 +226,8 @@ def create_app(
     main_token = {"hash": rotated or configured, "generation": 0}
 
     def token_ok(candidate: object) -> bool:
-        return isinstance(candidate, str) and hmac.compare_digest(
+        # Never an empty token: it is what a request without one sends.
+        return isinstance(candidate, str) and bool(candidate) and hmac.compare_digest(
             _token_hash(candidate), main_token["hash"]
         )
 
@@ -127,14 +235,16 @@ def create_app(
     # jobs on clusters, it can do what a logger does (create and update
     # runs, send their events, describe datasets) and list queued jobs
     # (`soliton queue`): not read what was logged, change tags and notes,
-    # delete anything or follow live updates. It can still overwrite a run
-    # whose id it knows: loggers update their own runs, and the server can't
-    # tell whose a run is. Only its hash is kept.
+    # delete anything or follow live updates. A run that exists it can only
+    # change with that run's key (X-Run-Key), which the logger that started
+    # it made (Store._check_writer). Only its hash is kept.
     job_token = {"hash": store.setting(JOB_TOKEN_KEY)}
 
     def is_job_token(candidate: str) -> bool:
         expected = job_token["hash"]
-        return expected is not None and hmac.compare_digest(_token_hash(candidate), expected)
+        return bool(candidate) and expected is not None and hmac.compare_digest(
+            _token_hash(candidate), expected
+        )
 
     def bearer(authorization: Optional[str]) -> str:
         scheme, _, token = (authorization or "").partition(" ")
@@ -144,23 +254,39 @@ def create_app(
         return HTTPException(status_code=401, detail="Missing or wrong token",
                              headers={"WWW-Authenticate": "Bearer"})
 
-    def require_token(authorization: Annotated[Optional[str], Header()] = None) -> None:
+    def throttle(address: str) -> None:
+        if failures.blocked(address):
+            raise HTTPException(status_code=429, detail="Too many wrong tokens; try again in a minute",
+                                headers={"Retry-After": str(int(AUTH_FAILURE_WINDOW))})
+
+    def refuse(address: str, token: str) -> HTTPException:
+        if token:  # No token at all isn't a guess (e.g. a first visit).
+            failures.record(address)
+        return unauthorized()
+
+    def require_token(request: Request,
+                      authorization: Annotated[Optional[str], Header()] = None) -> None:
         """The server's main token (the app's)."""
+        address = _client_address(request)
+        throttle(address)
         token = bearer(authorization)
         if token_ok(token):
             return
         if token and is_job_token(token):
             raise HTTPException(status_code=403, detail=JOB_TOKEN_REFUSED)
-        raise unauthorized()
+        raise refuse(address, token)
 
-    def require_writer(authorization: Annotated[Optional[str], Header()] = None) -> str:
+    def require_writer(request: Request,
+                       authorization: Annotated[Optional[str], Header()] = None) -> str:
         """The main token or the job token: "main" or "job"."""
+        address = _client_address(request)
+        throttle(address)
         token = bearer(authorization)
         if token_ok(token):
             return "main"
         if token and is_job_token(token):
             return "job"
-        raise unauthorized()
+        raise refuse(address, token)
 
     auth = [Depends(require_token)]
     writers = [Depends(require_writer)]
@@ -168,6 +294,10 @@ def create_app(
     @app.exception_handler(RunNotFound)
     async def run_not_found(_, error: RunNotFound):
         return JSONResponse(status_code=404, content={"detail": f"No run with id '{error.args[0]}'"})
+
+    @app.exception_handler(RunKeyRefused)
+    async def run_key_refused(_, error: RunKeyRefused):
+        return JSONResponse(status_code=403, content={"detail": RUN_KEY_REFUSED})
 
     @app.exception_handler(DatasetNotFound)
     async def dataset_not_found(_, error: DatasetNotFound):
@@ -234,9 +364,11 @@ def create_app(
     def get_run(run_id: RunId):
         return store.get_run(run_id)
 
-    @app.put("/api/runs/{run_id}", dependencies=writers)
-    def put_run(run_id: RunId, body: RunIn):
-        run, changes = store.put_run(run_id, body)
+    @app.put("/api/runs/{run_id}")
+    def put_run(run_id: RunId, body: RunIn, role: str = Depends(require_writer),
+                x_run_key: RunKey = None):
+        """With the job token, an existing run only with its key (X-Run-Key)."""
+        run, changes = store.put_run(run_id, body, role, x_run_key)
         publish(changes)
         return run
 
@@ -263,9 +395,10 @@ def create_app(
         publish([store.delete_run(run_id)])
         return Response(status_code=204)
 
-    @app.post("/api/runs/{run_id}/events", dependencies=writers)
-    def post_events(run_id: RunId, body: EventsIn):
-        publish(store.ingest(run_id, body.events))
+    @app.post("/api/runs/{run_id}/events")
+    def post_events(run_id: RunId, body: EventsIn, role: str = Depends(require_writer),
+                    x_run_key: RunKey = None):
+        publish(store.ingest(run_id, body.events, role, x_run_key))
         # The logger's cue for run.should_stop().
         stop = store.stop_requested(run_id)
         return {"accepted": len(body.events), **({"stop": True} if stop else {})}
@@ -350,6 +483,10 @@ def create_app(
         "..."}: browsers can't set headers on WebSockets, and a token in the
         URL would end up in logs.
         """
+        address = _client_address(websocket)
+        if failures.blocked(address):
+            await websocket.close(code=4429)
+            return
         await websocket.accept()
         try:
             hello = await asyncio.wait_for(websocket.receive_json(), timeout=_AUTH_TIMEOUT)
@@ -357,6 +494,7 @@ def create_app(
             await websocket.close(code=4401)
             return
         if not (isinstance(hello, dict) and hello.get("type") == "auth" and token_ok(hello.get("token"))):
+            failures.record(address)
             await websocket.send_json({"type": "error", "message": "Missing or wrong token"})
             await websocket.close(code=4401)
             return

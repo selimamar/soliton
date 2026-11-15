@@ -87,6 +87,19 @@ def format_value(value: Any) -> str:
     return str(value)
 
 
+def private_dir(path: Path) -> None:
+    """Creates [path] (and its parent, e.g. soliton-runs/) readable by you
+    only: a run's files hold everything it logged and printed."""
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path.mkdir(mode=0o700, exist_ok=True)
+
+
+def open_private(path: Path, mode: str = "a"):
+    """Opens [path] for writing ("a" or "w"), creating it readable by you only."""
+    flags = os.O_WRONLY | os.O_CREAT | (os.O_APPEND if mode == "a" else os.O_TRUNC)
+    return os.fdopen(os.open(path, flags, 0o600), mode, encoding="utf-8")
+
+
 def flatten_config(config: Optional[Mapping[str, Any]], prefix: str = "") -> Dict[str, str]:
     """Nested settings as display strings: {"optim": {"lr": 3e-4}} becomes
     {"optim.lr": "0.0003"}. Also accepts argparse.Namespace."""

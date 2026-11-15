@@ -330,3 +330,28 @@ def test_the_apps_stop_button_reaches_the_training_loop(tmp_path, database_url):
         assert stored["status"] == "finished"
         assert stored["statusMessage"].startswith("Stopped from the app at step")
         assert stored["stopRequestedAt"] is None
+
+
+def test_a_run_s_key_lets_only_its_own_folder_continue_it_with_a_job_token(tmp_path, database_url):
+    """A leaked job token can't change a run; a job continuing the run from
+    its folder can (it finds the key there)."""
+    import stat
+
+    from soliton._upload import ApiClient, UploadError
+
+    with LiveServer(database_url) as server:
+        main = ApiClient(server.url, TOKEN)
+        job_token = main._request("POST", "/api/job-token")["token"]
+        run = soliton.init("keyed", id="keyed-run", server=server.url, token=job_token,
+                           dir=str(tmp_path / "runs"), system_metrics=False, capture_output=False)
+        run.log({"loss": 1.0}, step=0)
+        run.finish()
+        key_file = tmp_path / "runs" / "keyed-run" / "key"
+        assert stat.S_IMODE(key_file.stat().st_mode) == 0o600
+        with pytest.raises(UploadError, match="403"):
+            ApiClient(server.url, job_token).put_run("keyed-run", {"name": "hijacked"})
+        again = soliton.init("keyed", id="keyed-run", server=server.url, token=job_token,
+                             dir=str(tmp_path / "runs"), system_metrics=False, capture_output=False)
+        again.log({"loss": 0.5}, step=1)
+        again.finish()
+        assert server.get("/api/runs/keyed-run")["currentStep"] == 1

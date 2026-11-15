@@ -443,9 +443,24 @@ command): the git commit of the script's repository, its branch and remote,
 and which files had uncommitted changes (never the diff itself); the command
 line and working directory; the Slurm job script (`scontrol write
 batch_script`); and the installed Python packages. Values that look like
-secrets are replaced by `***`: options and job-script variables named like a
-token, password, secret or key, and credentials in a git remote's URL. Turn it
-off with `init(capture_code=False)` or `SOLITON_CAPTURE_CODE=0`.
+secrets are replaced by `***`: options and variables named like a token,
+password, secret or key (`HF_TOKEN=`, `--api-key x`, `OPENAI_KEY=`,
+`GITHUB_PAT=`, `SOLITON_NTFY_URL=`), credentials in URLs
+(`postgres://user:***@host`), and Authorization headers. It is a guess: a
+secret that looks like any other word gets through, so keep secrets in the
+environment, not in scripts. Turn it off with `init(capture_code=False)` or
+`SOLITON_CAPTURE_CODE=0`.
+
+## The run key
+
+When a run starts, the logger makes a random key for it, keeps it in the
+run's folder (`soliton-runs/<id>/key`, readable by you only) and sends it
+with every upload. With a job token (the app's Settings → Advanced
+security), the server lets only requests carrying it change that run, so a
+leaked job token can't touch runs it didn't start. A job continuing a run
+(`init(id=...)`) from the same folder finds the key there; from another
+directory or machine, copy that file, or set `SOLITON_RUN_KEY` to its
+contents. With the main token, the key isn't needed.
 
 ## Output
 
@@ -455,6 +470,7 @@ end of the output with the traceback, first thing. It still goes where it
 went too (the terminal, Slurm's `.out` file). The server keeps the last 1,000
 lines. Progress bars keep only their last frame, colours are removed, and a
 line is cut at 1,000 characters.
+Secret-looking values in it are hidden the same way as in the job script.
 
 Only Python's own output is seen: what a C library or a subprocess writes
 straight to the terminal isn't. Turn it off with `capture_output=False` or

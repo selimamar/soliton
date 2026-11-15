@@ -13,6 +13,8 @@ import sys
 import threading
 from typing import Callable, List, Optional, Tuple
 
+from ._repro import redact
+
 MAX_LINE = 1000  # Characters kept of one line.
 MAX_PENDING = 500  # Lines kept between two sends; older ones are dropped.
 
@@ -25,7 +27,7 @@ def _clean(line: str) -> str:
     progress bar redrawn in place), without escape codes."""
     segments = [s for s in line.split("\r") if s.strip()]
     line = segments[-1] if segments else ""
-    line = _ESCAPE.sub("", line).rstrip()
+    line = redact(_ESCAPE.sub("", line).rstrip())
     return line if len(line) <= MAX_LINE else line[:MAX_LINE] + " …"
 
 

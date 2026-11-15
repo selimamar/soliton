@@ -240,12 +240,27 @@ class ReproInfo {
 
   int get changedFiles => dirtyCount ?? dirty.length;
 
-  /// What to paste in a shell to run it again from where it ran.
+  /// What to paste in a shell to run it again from where it ran; null
+  /// when the command isn't [isPlainCommand].
   String? get rerun => switch ((cwd, command)) {
+    (_, final cmd?) when !isPlainCommand(cmd) => null,
     (final dir?, final cmd?) => 'cd ${_quote(dir)} && $cmd',
     (null, final cmd?) => cmd,
     _ => null,
   };
+
+  /// Whether [command] is only words, as the logger writes it (Python's
+  /// `shlex.join`): plain words, or words in single quotes. Nothing a shell
+  /// would run on its own (`;`, `&&`, `|`, `$(...)`, backticks, redirections,
+  /// a new line), so a command planted on the server can't be passed off as
+  /// the run's: the app doesn't offer it to copy.
+  static bool isPlainCommand(String command) => _plainCommand.hasMatch(command);
+
+  // shlex.quote keeps [\w@%+=:,./-] as they are, puts anything else in
+  // single quotes, and writes a quote inside as '"'"'.
+  static final _plainCommand = RegExp(
+    r"""^(?:[\w@%+=:,./-]|'[^']*'|"'")+(?: (?:[\w@%+=:,./-]|'[^']*'|"'")+)*$""",
+  );
 
   static String _quote(String path) =>
       RegExp(r'^[A-Za-z0-9_./~+-]+$').hasMatch(path) ? path : "'${path.replaceAll("'", r"'\''")}'";

@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 
 class NtfyNotifier:
     def __init__(self, topic_url: str, token: str | None = None,
-                 events=("finished", "crashed", "time-limit")):
+                 events=("finished", "crashed", "time-limit"), details: bool = True):
         parts = urlsplit(topic_url.rstrip("/"))
         base_path, _, topic = parts.path.rpartition("/")
         if not topic:
@@ -32,10 +32,15 @@ class NtfyNotifier:
         self._topic = topic
         self._token = token
         self._events = frozenset(events)
+        # Off (SOLITON_NTFY_DETAILS=0): no run name or error text leaves the
+        # server, for a topic on a public ntfy server.
+        self._details = details
 
     def message_for(self, change: Change) -> dict | None:
         if change.event not in self._events or not change.notify:
             return None
+        if not self._details:
+            return self._brief(change)
         if change.event == "finished":
             return {
                 "topic": self._topic,
@@ -60,6 +65,20 @@ class NtfyNotifier:
                 "priority": 4,
             }
         return None
+
+    def _brief(self, change: Change) -> dict | None:
+        """Says what happened, not to which run or why."""
+        brief = {
+            "finished": ("A run finished", "Open Soliton for details.", ["white_check_mark"], None),
+            "crashed": ("A run crashed", "Open Soliton for details.", ["rotating_light"], 4),
+            "time-limit": ("A run won't finish before its time limit",
+                           "Open Soliton for details.", ["hourglass_flowing_sand"], 4),
+        }.get(change.event)
+        if brief is None:
+            return None
+        title, message, tags, priority = brief
+        return {"topic": self._topic, "title": title, "message": message, "tags": tags,
+                **({"priority": priority} if priority else {})}
 
     def __call__(self, change: Change) -> None:
         message = self.message_for(change)

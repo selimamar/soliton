@@ -182,10 +182,14 @@ use it. Your phone can't reach it, and it stops at the job's time limit
    (readable by you only). The token itself is in `$HOME/soliton-server/token`
    and stays the same for every job.
 
-3. In training job scripts, use it instead of `~/.soliton_env` (with a job
-   token from Settings → Advanced security saved in
-   `$HOME/soliton-server/job-token`, readable by you only, `env.sh` gives
-   jobs that token instead of the main one):
+3. In training job scripts, use it instead of `~/.soliton_env`. It gives
+   jobs a job token, never the main one: the server job makes one in
+   `$HOME/soliton-server/job-token` (readable by you only) when there is
+   none the server accepts, so a job's token can add and update runs but
+   not read, delete or rotate anything. A job continuing a run
+   (`init(id=...)`) needs that run's key, kept in `soliton-runs/<id>/key`:
+   run it from the same directory (Slurm's default is where you submitted),
+   or set `SOLITON_RUN_KEY`:
 
    ```bash
    source $HOME/soliton-server/env.sh   # SOLITON_SERVER and SOLITON_TOKEN
@@ -211,8 +215,14 @@ The database lives on the node's local disk while the server runs (SQLite
 doesn't belong on a network filesystem) and is copied to
 `$SCRATCH/soliton-server` when the job ends, for the next job to pick up.
 A node failure loses what changed since that job started. Stop the server
-with `scancel <job id>` (it saves the database first). Inside Sherlock the
-token travels over plain HTTP on the cluster's network.
+with `scancel <job id>` (it saves the database first).
+
+Inside Sherlock the job token and the data travel over plain HTTP on the
+cluster's network, and other Sherlock users can reach the server's port
+(they still need a token). That is why jobs only get the job token, and the
+app's main token only travels through your SSH tunnel. For https, give the
+server a certificate (`SOLITON_TLS_CERT`, `SOLITON_TLS_KEY`; see
+server/README.md) and point jobs at it with `SSL_CERT_FILE`.
 
 ## When a job ends
 

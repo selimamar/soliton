@@ -61,6 +61,35 @@ def _small(value: Optional[dict]) -> Optional[dict]:
 
 SystemInfo = Annotated[Optional[dict], AfterValidator(_small)]
 
+HYPERPARAMETERS_KEPT = 1000
+HYPERPARAMETER_KEY_MAX = 200
+HYPERPARAMETER_VALUE_MAX = 10_000
+ARCHITECTURE_MAX = 2_000_000  # Characters of JSON: a very large model's tree.
+
+
+def _clip_hyperparameters(value: dict[str, str]) -> dict[str, str]:
+    """At most HYPERPARAMETERS_KEPT entries, each cut to its limits: cut
+    rather than refused, so a big config doesn't cost the run."""
+    clipped = {}
+    for key, text in value.items():
+        if len(clipped) >= HYPERPARAMETERS_KEPT:
+            break
+        if len(text) > HYPERPARAMETER_VALUE_MAX:
+            text = text[:HYPERPARAMETER_VALUE_MAX] + " …"
+        clipped.setdefault(key[:HYPERPARAMETER_KEY_MAX], text)
+    return clipped
+
+
+def _bounded_architecture(value: Optional[dict]) -> Optional[dict]:
+    """None (no diagram) for a tree too large to keep."""
+    if value is not None and len(json.dumps(value)) > ARCHITECTURE_MAX:
+        return None
+    return value
+
+
+Hyperparameters = Annotated[dict[str, str], AfterValidator(_clip_hyperparameters)]
+Architecture = Annotated[Optional[dict], AfterValidator(_bounded_architecture)]
+
 
 class _In(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -89,8 +118,8 @@ class RunIn(_In):
     startedAt: Time = None
     totalSteps: int = Field(default=0, ge=0)
     totalEpochs: int = Field(default=0, ge=0)
-    hyperparameters: dict[str, str] = Field(default_factory=dict)
-    architecture: Optional[dict] = None
+    hyperparameters: Hyperparameters = Field(default_factory=dict)
+    architecture: Architecture = None
     # Only used when the run is created: after that, they're edited in the app.
     tags: Tags = Field(default_factory=list)
     notes: Notes = ""

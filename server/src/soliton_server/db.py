@@ -259,6 +259,20 @@ class RunStopRow(Base):
     requested_at: Mapped[datetime] = mapped_column(UtcDateTime)
 
 
+class RunKeyRow(Base):
+    """The hash of a run's own key, made by the logger that started it: with
+    the job token, only a request carrying it may change the run (a leaked
+    job token can't touch runs it didn't start). A table of its own, so
+    older databases get it without a migration."""
+
+    __tablename__ = "run_keys"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    key_hash: Mapped[str] = mapped_column(String(64))
+
+
 class RunJobRow(Base):
     """Each process (usually a Slurm job) that ran a run, in order: a run
     continued from a checkpoint in later jobs has several. A table of its

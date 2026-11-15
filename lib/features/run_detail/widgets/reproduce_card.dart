@@ -54,6 +54,15 @@ class ReproduceCard extends StatelessWidget {
             Text('Command', style: muted),
             const SizedBox(height: 2),
             SelectableText(command, style: mono),
+            if (rerun == null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Not offered to copy: it has shell operators (such as ; | \$( ) the logger never '
+                  'writes, so it may not be what the run ran. Read it before running any of it.',
+                  style: theme.textTheme.bodySmall?.copyWith(color: scheme.error),
+                ),
+              ),
           ],
           const SizedBox(height: 8),
           Wrap(

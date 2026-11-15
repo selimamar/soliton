@@ -52,10 +52,10 @@ class FakeServer:
         assert status == "queued", "a job token may only list queued runs"
         return self.runs
 
-    def put_run(self, run_id, body):
+    def put_run(self, run_id, body, run_key=None):
         self.puts.append((run_id, body))
 
-    def post_events(self, run_id, events):
+    def post_events(self, run_id, events, run_key=None):
         self.events.append((run_id, events))
 
 
@@ -120,10 +120,15 @@ def test_sbatch_submits_then_shows_the_job_as_queued():
     assert body["host"] == "Sherlock", "as the job's logger names it, not the login node"
 
 
-def test_sbatch_with_a_run_id_queues_that_run():
+def test_sbatch_with_a_run_id_queues_that_run(tmp_path, monkeypatch):
+    monkeypatch.setenv("SOLITON_DIR", str(tmp_path))
     server = FakeServer()
+    sent = []
+    server.put_run = lambda run_id, body, run_key=None: sent.append((run_id, run_key))
     sbatch_main(args(id="fno-hires-a1b2c3"), server, FakeSlurm(), lambda _: None)
-    assert server.puts[0][0] == "fno-hires-a1b2c3"
+    # With the key the job's logger will find in the run's folder.
+    key = (tmp_path / "fno-hires-a1b2c3" / "key").read_text().strip()
+    assert sent == [("fno-hires-a1b2c3", key)] and len(key) >= 30
 
 
 def test_a_refused_job_reports_nothing_and_a_missing_server_still_submits(capsys):
@@ -219,7 +224,7 @@ def test_only_the_first_task_of_an_array_refreshes_and_it_can_be_turned_off():
 
 def test_a_queued_run_that_was_replaced_meanwhile_is_skipped():
     class Replaced(FakeServer):
-        def put_run(self, run_id, body):
+        def put_run(self, run_id, body, run_key=None):
             raise LookupError("gone")
 
     server = Replaced([queued("waiting", "52340117"), queued("cancelled", "52339999")])

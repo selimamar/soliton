@@ -574,3 +574,17 @@ def test_a_script_that_never_checks_should_stop_is_stopped_as_by_scancel(tmp_pat
     assert len(killed) == 1, "once"
     run.finish("crashed", run_module.STOPPED_BY_SIGTERM_FROM_APP)
     assert records(run)[-1]["message"].startswith("Stopped from the app.")
+
+
+def test_a_runs_files_are_readable_by_their_owner_only(tmp_path):
+    import os
+    import stat
+
+    os.umask(0o022)
+    run = soliton.init("private", mode="offline", dir=str(tmp_path / "runs"), system_metrics=False)
+    run.log({"loss": 1.0}, step=0)
+    run.finish()
+    assert stat.S_IMODE((tmp_path / "runs").stat().st_mode) == 0o700
+    assert stat.S_IMODE(run.directory.stat().st_mode) == 0o700
+    for path in run.directory.iterdir():
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600, path.name

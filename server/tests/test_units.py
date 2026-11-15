@@ -73,13 +73,13 @@ def test_a_private_file_is_never_readable_by_others(tmp_path, monkeypatch):
 def test_settings_from_env(tmp_path):
     settings = Settings.from_env({
         "SOLITON_DATA_DIR": str(tmp_path),
-        "SOLITON_TOKEN": "abc",
+        "SOLITON_TOKEN": "  abcdefghijklmnop-qrstuvwxyz \n",
         "SOLITON_STALE_MINUTES": "2.5",
         "SOLITON_CORS_ORIGINS": "https://a.example, https://b.example",
         "SOLITON_NOTIFY_ON": "crashed",
     })
     assert settings.database_url == f"sqlite:///{(tmp_path / 'soliton.db').resolve()}"
-    assert settings.token == "abc"
+    assert settings.token == "abcdefghijklmnop-qrstuvwxyz"
     assert settings.stale_after.total_seconds() == 150
     assert settings.cors_origins == ("https://a.example", "https://b.example")
     assert settings.notify_on == {"crashed"}
@@ -119,3 +119,71 @@ def test_self_hosted_ntfy_under_a_path():
     notifier = NtfyNotifier("https://example.com/ntfy/topic")
     assert notifier._endpoint == "https://example.com/ntfy"
     assert notifier.message_for(Change("r", "n", "crashed", "crashed"))["topic"] == "topic"
+
+
+def test_an_empty_token_file_is_replaced_not_used(tmp_path):
+    """An empty token would match requests that send none."""
+    (tmp_path / "token").write_text("\n")
+    token = load_or_create_token(tmp_path)
+    assert len(token) >= 30
+    assert (tmp_path / "token").read_text().strip() == token
+    assert stat.S_IMODE((tmp_path / "token").stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize("token", ["", "   ", "short-token"])
+def test_empty_or_short_tokens_are_refused(tmp_path, token):
+    from soliton_server.config import TokenTooWeak
+
+    with pytest.raises(TokenTooWeak):
+        Settings(database_url="sqlite://", token=token)
+    (tmp_path / "token").write_text(token + "\n")
+    with pytest.raises(TokenTooWeak):
+        Settings.from_env({"SOLITON_DATA_DIR": str(tmp_path), "SOLITON_TOKEN": "short-token"})
+
+
+def test_the_data_folder_is_made_private(tmp_path):
+    from soliton_server.config import secure_data_dir
+
+    data = tmp_path / "data"
+    Settings.from_env({"SOLITON_DATA_DIR": str(data)})
+    assert stat.S_IMODE(data.stat().st_mode) == 0o700
+    (data / "soliton.db").write_text("")
+    os.chmod(data / "soliton.db", 0o644)
+    os.chmod(data, 0o755)
+    secure_data_dir(data)
+    assert stat.S_IMODE(data.stat().st_mode) == 0o700
+    assert stat.S_IMODE((data / "soliton.db").stat().st_mode) == 0o600
+
+
+def test_brief_ntfy_messages_name_no_run_and_quote_no_error():
+    notifier = NtfyNotifier("https://ntfy.sh/my-topic", details=False)
+    crashed = notifier.message_for(Change("r", "secret-project", "crashed", "crashed",
+                                          message="KeyError: /home/me/patients.csv"))
+    assert crashed["title"] == "A run crashed"
+    assert "secret" not in str(crashed) and "patients" not in str(crashed)
+    assert crashed["priority"] == 4
+    assert notifier.message_for(Change("r", "x", "updated", "live")) is None
+
+
+def test_auth_failures_block_an_address_for_a_window():
+    from soliton_server.app import AuthFailures
+
+    now = [0.0]
+    failures = AuthFailures(allowed=3, window=60, clock=lambda: now[0])
+    for _ in range(3):
+        assert not failures.blocked("1.2.3.4")
+        failures.record("1.2.3.4")
+    assert failures.blocked("1.2.3.4")
+    assert not failures.blocked("5.6.7.8"), "per address"
+    now[0] = 61
+    assert not failures.blocked("1.2.3.4")
+
+
+def test_big_hyperparameters_and_architectures_are_cut_not_refused():
+    from soliton_server.schemas import ARCHITECTURE_MAX, HYPERPARAMETERS_KEPT, RunIn
+
+    run = RunIn(name="x", hyperparameters={f"k{i}": "v" * 20_000 for i in range(2000)},
+                architecture={"name": "m", "children": ["x" * (ARCHITECTURE_MAX + 1)]})
+    assert len(run.hyperparameters) == HYPERPARAMETERS_KEPT
+    assert all(len(v) < 10_010 for v in run.hyperparameters.values())
+    assert run.architecture is None

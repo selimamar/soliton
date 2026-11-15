@@ -16,8 +16,10 @@ soliton-server --show-token     # the token for the logger and the app
 ```
 
 Without `SOLITON_TOKEN`, the server makes a random token on first start and
-keeps it in `$SOLITON_DATA_DIR/token` (readable by you only). The database
-is `$SOLITON_DATA_DIR/soliton.db` (SQLite). With `env.sh`, that folder is
+keeps it in `$SOLITON_DATA_DIR/token` (an empty one is replaced). A token
+shorter than 16 characters is refused. The database is
+`$SOLITON_DATA_DIR/soliton.db` (SQLite). The folder and everything the
+server writes there are readable by you only. With `env.sh`, that folder is
 `.data/` in the project.
 
 To use the app on a phone on the same network, listen on all addresses and
@@ -41,6 +43,9 @@ All from environment variables:
 | `SOLITON_CORS_ORIGINS` | `*` | Web origins allowed to call the API (comma-separated) |
 | `SOLITON_NTFY_URL` | off | Push notifications, e.g. `https://ntfy.sh/<long-random-topic>` |
 | `SOLITON_NTFY_TOKEN` | none | Access token for a protected ntfy topic |
+| `SOLITON_NTFY_DETAILS` | `1` | `0`: notifications don't name the run or quote its error ("A run crashed"), for a topic others may read |
+| `SOLITON_TLS_CERT`, `SOLITON_TLS_KEY` | off | Serve https with this certificate and key (PEM; also `--tls-cert`, `--tls-key`) |
+| `SOLITON_MAX_BODY_MB` | `128` | Larger requests are refused (413) |
 | `SOLITON_NOTIFY_ON` | `finished,crashed,time-limit` | Which events send a push notification (`time-limit`: a live run that, at its pace, won't finish before its Slurm time limit; once per job) |
 
 ## Push notifications (ntfy)
@@ -89,9 +94,22 @@ the app, for jobs: it can create and update runs, send their events,
 describe datasets and list queued jobs (`soliton queue`), and nothing else.
 It can't read what was logged, change tags and notes, delete anything or
 follow live updates. What it can do is what a logger does, so someone with a
-leaked cluster file could still add runs, or overwrite a run's description
-or mark it ended if they know its id (ids end in a random part), but not read
-or delete your history. Put it in
+leaked cluster file could still add runs, but not read, change or delete
+the ones there.
+
+With the job token, a run that exists can only be changed with its **run
+key** (`X-Run-Key` on `PUT /api/runs/{id}` and its events): a random key the
+logger makes when the run starts, keeps in the run's folder
+(`soliton-runs/<id>/key`, readable by you only) and sends with every
+request. The server keeps its SHA-256 hash. A job continuing the run from
+the same folder (`init(id=...)`) finds it; from elsewhere, copy that file or
+set `SOLITON_RUN_KEY`. `soliton sbatch --id` makes it where the job will
+look. Without the key, a job token gets 403. Exceptions: `soliton queue` may
+update what Slurm says of a queued job, and end one that left the queue;
+a run logged before keys (no key stored) may be changed while it is queued
+or live, and the first key sent becomes its key; a new run that started in
+a queued run's Slurm job takes its place. The main token may change any
+run. Put it in
 place of `SOLITON_TOKEN` on your clusters and keep the main token on your
 own devices. The server keeps only its SHA-256 hash (in the database, so
 it survives restarts); "New job token" replaces it, and turning the setting
@@ -110,6 +128,10 @@ came from `SOLITON_TOKEN`, that variable is now stale: set it to the new
 token (a different value you set on purpose replaces the rotated one).
 
 ## API
+
+After 20 wrong tokens in a minute from one address, every request from it
+gets 429 for the rest of that minute (a request without a token doesn't
+count).
 
 Every endpoint except `/api/health` needs `Authorization: Bearer <token>`:
 the main token, or, where marked, the job token (refused with 403

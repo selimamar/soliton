@@ -18,7 +18,7 @@ from soliton_server.app import create_app
 from soliton_server.config import Settings, normalize_database_url
 from soliton_server.db import Base
 
-TOKEN = "test-token"
+TOKEN = "test-token-0123456789"
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
 
 

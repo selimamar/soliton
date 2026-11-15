@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 
-from ._util import RUN_ID, detect_host, dumps, encode_floats, slugify, to_float
+from ._util import RUN_ID, detect_host, dumps, encode_floats, open_private, private_dir, slugify, to_float
 
 # File formats read for their contents, by suffix.
 FORMATS = {
@@ -335,8 +335,9 @@ def upload(dataset: Dataset, server: Optional[str], token: Optional[str],
             print(f"soliton: server unreachable ({error}); saving dataset {dataset.id}",
                   file=sys.stderr)
     folder = Path(directory or os.environ.get("SOLITON_DIR") or "soliton-runs") / "datasets"
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / f"{dataset.id}.json").write_text(dumps(dataset.description))
+    private_dir(folder)
+    with open_private(folder / f"{dataset.id}.json", "w") as file:
+        file.write(dumps(dataset.description))
     print(f"soliton: saved dataset {dataset.id} to {folder}; upload it with `soliton sync`",
           file=sys.stderr)
     return False

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import threading
 import time
 import urllib.error
@@ -17,10 +18,12 @@ import urllib.request
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
-from ._util import dumps
+from ._util import dumps, open_private, private_dir
 
 EVENTS_FILE = "events.jsonl"
 STATE_FILE = "upload.json"
+# The run's own key (see RunFiles.run_key): readable by you only.
+KEY_FILE = "key"
 _BATCH_EVENTS = 500
 _BATCH_BYTES = 2_000_000
 
@@ -39,16 +42,19 @@ class ApiClient:
         self._token = token
         self._timeout = timeout
 
-    def put_run(self, run_id: str, body: dict) -> None:
-        self._request("PUT", f"/api/runs/{run_id}", body)
+    def put_run(self, run_id: str, body: dict, run_key: Optional[str] = None) -> None:
+        """[run_key]: the run's key, which the server asks for when a job
+        token changes a run that exists."""
+        self._request("PUT", f"/api/runs/{run_id}", body, run_key)
 
     def put_dataset(self, dataset_id: str, body: dict) -> None:
         self._request("PUT", f"/api/datasets/{dataset_id}", body)
 
-    def post_events(self, run_id: str, events: List[dict]) -> Optional[dict]:
+    def post_events(self, run_id: str, events: List[dict],
+                    run_key: Optional[str] = None) -> Optional[dict]:
         """Sends events; returns the server's reply (e.g. {"stop": true}
         when the run was asked from the app to stop)."""
-        reply = self._request("POST", f"/api/runs/{run_id}/events", {"events": events})
+        reply = self._request("POST", f"/api/runs/{run_id}/events", {"events": events}, run_key)
         return reply if isinstance(reply, dict) else None
 
     def get_runs(self, status: Optional[str] = None) -> list:
@@ -56,16 +62,20 @@ class ApiClient:
         list queued ones)."""
         return self._request("GET", "/api/runs" + (f"?status={status}" if status else ""))
 
-    def _request(self, method: str, path: str, body: Optional[dict] = None):
+    def _request(self, method: str, path: str, body: Optional[dict] = None,
+                 run_key: Optional[str] = None):
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self._token}",
+            "User-Agent": "soliton-logger",
+        }
+        if run_key:
+            headers["X-Run-Key"] = run_key
         request = urllib.request.Request(
             self.server + path,
             data=None if body is None else dumps(body).encode(),
             method=method,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self._token}",
-                "User-Agent": "soliton-logger",
-            },
+            headers=headers,
         )
         try:
             with urllib.request.urlopen(request, timeout=self._timeout) as response:
@@ -96,13 +106,38 @@ class RunFiles:
         self._state = directory / STATE_FILE
         self._lock = threading.Lock()
         self._file = None
+        self._key: Optional[str] = None
+
+    def run_key(self) -> str:
+        """The run's key: SOLITON_RUN_KEY if set, else the one kept in its
+        folder, else a new one, kept there. With a job token, the server
+        lets only requests carrying it change the run, so a leaked job token
+        can't touch it; a job continuing the run from this folder has it."""
+        with self._lock:
+            if self._key is None:
+                self._key = (os.environ.get("SOLITON_RUN_KEY") or "").strip() or self._saved_key()
+            return self._key
+
+    def _saved_key(self) -> str:
+        path = self.directory / KEY_FILE
+        try:
+            saved = path.read_text().strip()
+            if saved:
+                return saved
+        except FileNotFoundError:
+            pass
+        private_dir(self.directory)
+        key = secrets.token_urlsafe(32)
+        with open_private(path, "w") as file:
+            file.write(key + "\n")
+        return key
 
     def append(self, record: dict) -> None:
         line = dumps(record) + "\n"
         with self._lock:
             if self._file is None:
-                self.directory.mkdir(parents=True, exist_ok=True)
-                self._file = open(self.events, "a", encoding="utf-8")
+                private_dir(self.directory)
+                self._file = open_private(self.events, "a")
             self._file.write(line)
             self._file.flush()
 
@@ -128,7 +163,8 @@ class RunFiles:
 
     def set_uploaded(self, server: str, offset: int) -> None:
         temporary = self._state.with_suffix(".tmp")
-        temporary.write_text(json.dumps({"server": server, "offset": offset}))
+        with open_private(temporary, "w") as file:
+            file.write(json.dumps({"server": server, "offset": offset}))
         os.replace(temporary, self._state)
 
     def read_from(self, offset: int) -> List[Tuple[int, dict]]:
@@ -162,6 +198,7 @@ def upload_pending(files: RunFiles, client: ApiClient, warn: Callable[[str], Non
     first = files.read_from(0)[0][1] if offset > 0 else records[0][1]
     run_id = first["id"]
     run_body = _run_body(first)
+    key = files.run_key()
     sent = 0
     batch: List[dict] = []
     batch_bytes = 0
@@ -173,11 +210,11 @@ def upload_pending(files: RunFiles, client: ApiClient, warn: Callable[[str], Non
             return
         reply = None
         try:
-            reply = client.post_events(run_id, batch)
+            reply = client.post_events(run_id, batch, key)
         except LookupError:
             # The server doesn't know the run (e.g. it was deleted): recreate it.
-            client.put_run(run_id, run_body)
-            reply = client.post_events(run_id, batch)
+            client.put_run(run_id, run_body, key)
+            reply = client.post_events(run_id, batch, key)
         except UploadError as error:
             if "HTTP 422" not in str(error):
                 raise
@@ -193,12 +230,12 @@ def upload_pending(files: RunFiles, client: ApiClient, warn: Callable[[str], Non
             send_batch()
             run_body = _run_body(record)
             try:
-                client.put_run(run_id, run_body)
+                client.put_run(run_id, run_body, key)
             except UploadError as error:
                 if "HTTP 422" not in str(error):
                     raise
                 warn(f"the server rejected the run's description: {error}")
-                client.put_run(run_id, {"name": run_body.get("name") or run_id})
+                client.put_run(run_id, {"name": run_body.get("name") or run_id}, key)
             sent += 1
             files.set_uploaded(client.server, end)
             continue

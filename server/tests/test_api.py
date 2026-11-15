@@ -1009,8 +1009,8 @@ def test_a_token_the_admin_sets_on_purpose_replaces_a_rotated_one(app, client):
     from soliton_server.app import create_app
 
     rotated = client.post("/api/token/rotate").json()["token"]
-    chosen = create_app(with_fields(app.state.settings, token="set-by-hand"), stale_check_seconds=0)
-    with job_client(chosen, "set-by-hand") as by_hand, job_client(chosen, rotated) as old:
+    chosen = create_app(with_fields(app.state.settings, token="set-by-hand-0123456789"), stale_check_seconds=0)
+    with job_client(chosen, "set-by-hand-0123456789") as by_hand, job_client(chosen, rotated) as old:
         assert by_hand.get("/api/runs").status_code == 200
         assert old.get("/api/runs").status_code == 401
 
@@ -1117,3 +1117,91 @@ def test_a_run_gone_quiet_ends_its_job(app, client, clock):
     [job] = client.get("/api/runs/tiny-1").json()["jobs"]
     assert (job["status"], job["endStep"]) == ("crashed", 10)
     assert job["message"].startswith("Lost contact")
+
+
+def test_wrong_tokens_from_one_address_are_throttled(app):
+    from soliton_server.app import AUTH_FAILURES_ALLOWED
+
+    with TestClient(app) as anonymous:
+        assert anonymous.get("/api/runs").status_code == 401  # No token: not counted.
+        for _ in range(AUTH_FAILURES_ALLOWED):
+            wrong = anonymous.get("/api/runs", headers={"Authorization": "Bearer guess-0123456789"})
+            assert wrong.status_code == 401
+        # Then even the right token gets 429: a guesser can't tell it found one.
+        throttled = anonymous.get("/api/runs", headers=AUTH)
+        assert throttled.status_code == 429
+        assert throttled.headers["Retry-After"] == "60"
+        assert anonymous.get("/api/health").status_code == 200
+
+
+def test_an_empty_bearer_token_is_never_accepted(client):
+    assert client.get("/api/runs", headers={"Authorization": "Bearer "}).status_code == 401
+    assert client.get("/api/runs", headers={"Authorization": ""}).status_code == 401
+
+
+def test_oversized_bodies_are_refused(app):
+    from dataclasses import replace as with_fields
+
+    from soliton_server.app import create_app
+
+    small = create_app(with_fields(app.state.settings, max_body_bytes=1000), stale_check_seconds=0)
+    with TestClient(small, headers=AUTH) as c:
+        body = {"name": "x", "notes": "n" * 2000}
+        assert c.put("/api/runs/big", json=body).status_code == 413
+
+        def chunks():  # No Content-Length: cut off as it arrives.
+            yield b'{"name": "x", "notes": "'
+            for _ in range(10):
+                yield b"n" * 500
+            yield b'"}'
+
+        assert c.put("/api/runs/big", content=chunks(),
+                     headers={"Content-Type": "application/json"}).status_code == 413
+        assert c.put("/api/runs/small", json={"name": "x"}).status_code == 200
+
+
+def test_with_the_job_token_a_run_changes_only_with_its_key(app, client):
+    token = client.post("/api/job-token").json()["token"]
+    mine, theirs = {"X-Run-Key": "key-of-mine-0123456789"}, {"X-Run-Key": "someone-else-0123456789"}
+    body = {"name": "tiny"}
+    events = {"events": [metrics(1, train__loss=1.0)]}
+    with job_client(app, token) as job:
+        assert job.put("/api/runs/keyed", json=body, headers=mine).status_code == 200
+        assert job.post("/api/runs/keyed/events", json=events, headers=mine).status_code == 200
+        # A leaked job token, without the key or with another: refused, with why.
+        for headers in ({}, theirs):
+            refused = job.put("/api/runs/keyed", json={"name": "hijacked"}, headers=headers)
+            assert refused.status_code == 403 and "run key" in refused.json()["detail"]
+            assert job.post("/api/runs/keyed/events", json=events, headers=headers).status_code == 403
+    assert client.get("/api/runs/keyed").json()["name"] == "tiny"
+    # The main token may change any run.
+    assert client.put("/api/runs/keyed", json={"name": "renamed"}).status_code == 200
+
+
+def test_runs_from_before_keys_stay_writable_only_while_running(app, client):
+    token = client.post("/api/job-token").json()["token"]
+    create_run(client, "old-live")  # No key: an older logger.
+    create_run(client, "old-done")
+    send(client, [{"type": "status", "status": "finished"}], run_id="old-done")
+    key = {"X-Run-Key": "first-key-sent-0123456789"}
+    with job_client(app, token) as job:
+        # Still running: its (older) logger keeps going; a first key claims it.
+        assert job.post("/api/runs/old-live/events", json={"events": [metrics(1, train__loss=1.0)]}).status_code == 200
+        assert job.put("/api/runs/old-live", json={"name": "tiny"}, headers=key).status_code == 200
+        assert job.put("/api/runs/old-live", json={"name": "tiny"}).status_code == 403
+        # Ended: only the main token can change it.
+        assert job.put("/api/runs/old-done", json={"name": "x"}, headers=key).status_code == 403
+
+
+def test_soliton_queue_updates_queued_jobs_without_their_keys(app, client):
+    token = client.post("/api/job-token").json()["token"]
+    queued = {"name": "waiting", "queued": True, "system": {"slurm": {"jobId": "42"}}}
+    key = {"X-Run-Key": "sbatch-made-this-0123456789"}
+    with job_client(app, token) as job:
+        assert job.put("/api/runs/q", json=queued, headers=key).status_code == 200
+        refresh = {**queued, "updateOnly": True, "system": {"slurm": {"jobId": "42", "reason": "Priority"}}}
+        assert job.put("/api/runs/q", json=refresh).status_code == 200
+        cancelled = {"events": [{"type": "status", "status": "crashed", "message": "Cancelled"}]}
+        assert job.post("/api/runs/q/events", json=cancelled).status_code == 200
+        # But not the description itself, nor once it ended.
+        assert job.put("/api/runs/q", json={"name": "x"}).status_code == 403

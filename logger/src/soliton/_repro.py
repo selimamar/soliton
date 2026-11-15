@@ -3,9 +3,9 @@ code's git commit (and whether it had uncommitted changes), the command
 line, the working directory, the Slurm job script, and the Python packages.
 
 Standard library only. Values that look like secrets are replaced by "***"
-(command-line options and job-script variables named like a token,
-password, secret or key; credentials in a git remote's URL). The full diff
-of uncommitted changes is never sent: only which files changed. Turn it all
+(see `redact`): options and variables named like a token, password, secret
+or key, credentials in URLs, and Authorization headers. The full diff of
+uncommitted changes is never sent: only which files changed. Turn it all
 off with SOLITON_CAPTURE_CODE=0 (or `init(capture_code=False)`).
 """
 
@@ -29,7 +29,41 @@ MAX_SCRIPT = 6_000
 MAX_PACKAGES = 150
 MAX_DIRTY = 30
 
-_SECRET = re.compile(r"token|passw|secret|api[-_]?key|private[-_]?key|credential", re.IGNORECASE)
+# Names whose values are secrets: HF_TOKEN, --password, AWS_SECRET_ACCESS_KEY,
+# OPENAI_KEY, --api-key, GITHUB_PAT, SOLITON_NTFY_URL (the topic is the
+# secret), --auth...
+_SECRET = re.compile(
+    r"token|passw|secret|credential|cookie|bearer|private[-_]?key|access[-_]?key"
+    r"|api[-_]?key|(?:^|[-_])(?:key|pat|pw|auth|authorization|dsn)$|ntfy[-_]?(?:url|topic)",
+    re.IGNORECASE,
+)
+# NAME=value, in a script or on a command line.
+_ASSIGNMENT = re.compile(r"(?<![\w-])([A-Za-z_][\w-]*)=(\"[^\"]*\"|'[^']*'|[^\s;&|]+)")
+# --name value or --name=value (also across a line continuation).
+_OPTION = re.compile(r"(?<![\w-])(--?[A-Za-z][\w-]*)((?:[ \t]|\\\n)+|=)(\"[^\"]*\"|'[^']*'|[^\s\\;&|-][^\s;&|]*)")
+# user:password@ (or a token@) in any URL.
+_URL_CREDENTIALS = re.compile(r"([A-Za-z][A-Za-z0-9+.-]*://)[^/\s@]+@")
+# Authorization: Bearer xyz, Basic xyz, token xyz; or a bare "Bearer xyz".
+_AUTH_HEADER = re.compile(r"((?:authorization|x-api-key|api-key)\s*[:=]\s*(?:(?:bearer|basic|token)\s+)?|\bbearer\s+)[^\s\"']+",
+                          re.IGNORECASE)
+
+
+def secret_name(name: str) -> bool:
+    """Whether a variable or option named [name] holds a secret."""
+    return bool(_SECRET.search(name.lstrip("-")))
+
+
+def redact(text: str) -> str:
+    """[text] with what looks like a secret replaced by "***": values of
+    secret-looking variables and options, credentials in URLs, and
+    Authorization headers. A guess: it can't catch a secret that looks like
+    any other word."""
+    text = _URL_CREDENTIALS.sub(r"\1***@", text)
+    text = _AUTH_HEADER.sub(lambda m: m.group(1) + "***", text)
+    text = _ASSIGNMENT.sub(
+        lambda m: f"{m.group(1)}=***" if secret_name(m.group(1)) else m.group(0), text)
+    return _OPTION.sub(
+        lambda m: f"{m.group(1)}{m.group(2)}***" if secret_name(m.group(1)) else m.group(0), text)
 
 
 def capture_code(value: Optional[bool], env: Mapping[str, str] = os.environ) -> bool:
@@ -67,19 +101,19 @@ def command_line(argv: List[str]) -> str:
     words: List[str] = [Path(sys.executable).name or "python3"]
     hide_next = False
     for word in argv:
-        if hide_next:
+        if hide_next and not word.startswith("-"):
             words.append("***")
             hide_next = False
             continue
+        hide_next = False
         name, eq, _ = word.partition("=")
-        if word.startswith("-") and _SECRET.search(name):
-            if eq:
-                words.append(f"{name}=***")
-            else:
-                words.append(word)
-                hide_next = True
-            continue
-        words.append(word)
+        if eq and secret_name(name):
+            words.append(f"{name}=***")
+        elif word.startswith("-") and secret_name(name):
+            words.append(word)
+            hide_next = True
+        else:
+            words.append(redact(word))
     return shlex.join(words)
 
 
@@ -135,12 +169,10 @@ def job_script(env: Mapping[str, str], run: Runner = subprocess.run) -> str:
 
 
 def redact_script(text: str) -> str:
-    """Hides the values of secret-looking variables: `export SOLITON_TOKEN=x`
-    becomes `export SOLITON_TOKEN=***`."""
-    def hide(match: re.Match) -> str:
-        return f"{match.group(1)}=***" if _SECRET.search(match.group(1)) else match.group(0)
-
-    return re.sub(r"([A-Za-z_][A-Za-z0-9_]*)=(\"[^\"]*\"|'[^']*'|\S+)", hide, text)
+    """The script with its secrets hidden (see `redact`): `export
+    SOLITON_TOKEN=x` becomes `export SOLITON_TOKEN=***`, `--api-key x`
+    becomes `--api-key ***`."""
+    return redact(text)
 
 
 def installed_packages() -> List[str]:
@@ -168,8 +200,9 @@ def _script_dir(argv: List[str], cwd: str) -> str:
 
 
 def _without_credentials(url: str) -> str:
-    """"https://user:token@github.com/a/b" -> "https://github.com/a/b"."""
+    """"https://user:token@github.com/a/b?access_token=x" ->
+    "https://github.com/a/b": no credentials, no query."""
     parts = urlsplit(url)
-    if parts.scheme and "@" in parts.netloc:
-        return urlunsplit((parts.scheme, parts.netloc.rsplit("@", 1)[1], parts.path, parts.query, ""))
+    if parts.scheme:
+        return urlunsplit((parts.scheme, parts.netloc.rsplit("@", 1)[-1], parts.path, "", ""))
     return url

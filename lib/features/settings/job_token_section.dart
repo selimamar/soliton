@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
@@ -25,7 +26,8 @@ final jobTokenProvider = FutureProvider<bool?>((ref) async {
 /// and a separate token for jobs on clusters,
 /// which can only add and update runs and data (what a logger does), so a
 /// leaked job script or env file can't read, retag or delete what is on the
-/// server. It can still overwrite a run it knows the id of. Off by default: one
+/// server, nor change a run without that run's own key (kept in the run's
+/// folder by the logger that started it). Off by default: one
 /// token for everything. Only while connected to a server.
 class JobTokenSection extends ConsumerStatefulWidget {
   const JobTokenSection({super.key});
@@ -224,10 +226,36 @@ class _TokenDialog extends StatelessWidget {
         TextButton.icon(
           icon: const Icon(Icons.copy_outlined, size: 18),
           label: const Text('Copy'),
-          onPressed: () => Clipboard.setData(ClipboardData(text: token)),
+          onPressed: () => copySecret(context, token),
         ),
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
       ],
     );
   }
+}
+
+/// How long a copied token stays on the clipboard.
+const secretClipboardTime = Duration(minutes: 1);
+
+/// Copies [secret], then clears the clipboard after [secretClipboardTime]
+/// if it still holds it (the clipboard may sync to other devices, and other
+/// apps can read it). Not on iOS and macOS: reading the clipboard back there
+/// asks the user for permission to paste.
+Future<void> copySecret(BuildContext context, String secret) async {
+  await Clipboard.setData(ClipboardData(text: secret));
+  final clears = !kIsWeb &&
+      defaultTargetPlatform != TargetPlatform.iOS &&
+      defaultTargetPlatform != TargetPlatform.macOS;
+  if (context.mounted) {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(
+      content: Text(clears
+          ? 'Copied. It leaves the clipboard in a minute.'
+          : 'Copied. Copy something else once you have pasted it.'),
+    ));
+  }
+  if (!clears) return;
+  Future<void>.delayed(secretClipboardTime, () async {
+    final now = await Clipboard.getData(Clipboard.kTextPlain);
+    if (now?.text == secret) await Clipboard.setData(const ClipboardData(text: ''));
+  }).ignore();
 }

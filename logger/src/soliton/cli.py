@@ -31,7 +31,7 @@ def _run_folders(paths: List[str]) -> List[Path]:
 
 def _client(args) -> ApiClient:
     server = args.server or os.environ.get("SOLITON_SERVER")
-    token = args.token or os.environ.get("SOLITON_TOKEN")
+    token = _token(args)
     if not server or not token:
         sys.exit("soliton: set SOLITON_SERVER and SOLITON_TOKEN (or pass --server and --token)")
     return ApiClient(server, token)
@@ -72,7 +72,7 @@ def data(args) -> int:
     """Registers datasets: one path (`add`), or every data file and folder
     of data files in a folder (`scan`)."""
     server = args.server or os.environ.get("SOLITON_SERVER")
-    token = args.token or os.environ.get("SOLITON_TOKEN")
+    token = _token(args)
     if args.action == "add":
         targets = [Path(args.path)]
     else:
@@ -114,6 +114,16 @@ def _has_data(folder: Path) -> bool:
     return any(p.suffix.lower() in known for p in folder.rglob("*"))
 
 
+def _token(args) -> Optional[str]:
+    """--token, else SOLITON_TOKEN. A token on the command line shows in
+    `ps` to everyone on a shared login node, so --token gets a warning."""
+    if getattr(args, "token", None):
+        print("soliton: warning: --token is visible to other users (e.g. in `ps`); "
+              "prefer setting SOLITON_TOKEN", file=sys.stderr)
+        return args.token
+    return os.environ.get("SOLITON_TOKEN")
+
+
 def sbatch(argv: List[str]) -> int:
     """`soliton sbatch [--name N] [--project P] [--id ID] SBATCH_ARGS...`."""
     from ._queue import sbatch_main, split_sbatch_args
@@ -128,7 +138,7 @@ def sbatch(argv: List[str]) -> int:
     args = argparse.Namespace(sbatch_args=rest, name=own.get("name"), project=own.get("project"),
                               id=own.get("id"), server=own.get("server"), token=own.get("token"))
     server = args.server or os.environ.get("SOLITON_SERVER")
-    token = args.token or os.environ.get("SOLITON_TOKEN")
+    token = _token(args)
     client = ApiClient(server, token) if server and token else None
     return sbatch_main(args, client)
 
@@ -179,7 +189,7 @@ def main(argv: Optional[List[str]] = None) -> None:
         help="run folders, or folders containing them (default: $SOLITON_DIR or ./soliton-runs)",
     )
     sync_parser.add_argument("--server", help="default: $SOLITON_SERVER")
-    sync_parser.add_argument("--token", help="default: $SOLITON_TOKEN")
+    sync_parser.add_argument("--token", help="default: $SOLITON_TOKEN (preferred: --token shows in ps)")
     sync_parser.set_defaults(handler=sync)
 
     data_parser = commands.add_parser(
@@ -193,7 +203,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     data_parser.add_argument("--source", help='how it was obtained, e.g. "Simulated", "Experiment"')
     data_parser.add_argument("--description")
     data_parser.add_argument("--server", help="default: $SOLITON_SERVER")
-    data_parser.add_argument("--token", help="default: $SOLITON_TOKEN")
+    data_parser.add_argument("--token", help="default: $SOLITON_TOKEN (preferred: --token shows in ps)")
     data_parser.set_defaults(handler=data)
 
     demo_parser = commands.add_parser(
@@ -211,7 +221,7 @@ def main(argv: Optional[List[str]] = None) -> None:
         "queue", help="update what Slurm says of the jobs the app shows as queued (from soliton sbatch)"
     )
     queue_parser.add_argument("--server", help="default: $SOLITON_SERVER")
-    queue_parser.add_argument("--token", help="default: $SOLITON_TOKEN")
+    queue_parser.add_argument("--token", help="default: $SOLITON_TOKEN (preferred: --token shows in ps)")
     queue_parser.set_defaults(handler=queue)
     commands.add_parser(
         "sbatch", help="submit a Slurm job and show it in the app while it waits (soliton sbatch -h)",
