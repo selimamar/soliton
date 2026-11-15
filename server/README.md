@@ -15,6 +15,12 @@ soliton-server                  # http://127.0.0.1:8000, this computer only
 soliton-server --show-token     # the token for the logger and the app
 ```
 
+Paste that token into the app (Settings → Server). On each machine that runs
+jobs, `soliton setup --server <address>` (from the logger) asks for a token,
+checks it with this server and saves it in `~/.soliton_env`; for clusters,
+give it the app's job token (Settings → Advanced security) rather than this
+one.
+
 Without `SOLITON_TOKEN`, the server makes a random token on first start and
 keeps it in `$SOLITON_DATA_DIR/token` (an empty one is replaced). A token
 shorter than 16 characters is refused. The database is

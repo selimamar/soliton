@@ -78,6 +78,14 @@ logs. Without them the logger works offline: everything is saved under
 later (it sends only what the server doesn't have, so running it twice is
 harmless).
 
+If a machine has no `~/.soliton_env` yet, set it up with the user: run
+`python3 -m soliton setup --server <address>` in a terminal the user can type
+in (for a cluster, over their SSH session), and ask them to paste the token
+at its hidden prompt, from the app (Settings → Advanced security → Separate
+token for jobs; or the server's main token). Never ask for the token in the
+chat or put it on a command line. It checks the token and writes the file,
+readable by them only.
+
 Where the server is depends on the user's setup:
 
 - **A public server** (HTTPS, e.g. a small cloud VM): reachable from

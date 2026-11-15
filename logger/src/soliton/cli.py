@@ -1,5 +1,6 @@
-"""`soliton` command: upload saved runs, register datasets, submit Slurm jobs that
-show while queued, or run a demo training."""
+"""`soliton` command: save the server and token for jobs (setup), upload saved
+runs, register datasets, submit Slurm jobs that show while queued, or run a
+demo training."""
 
 from __future__ import annotations
 
@@ -158,6 +159,12 @@ one's place. `soliton queue` updates what Slurm says of queued jobs.
   --server, --token  default: $SOLITON_SERVER, $SOLITON_TOKEN"""
 
 
+def setup(args) -> int:
+    from ._setup import main as setup_main
+
+    return setup_main(args)
+
+
 def queue(args) -> int:
     from ._queue import refresh
 
@@ -216,6 +223,16 @@ def main(argv: Optional[List[str]] = None) -> None:
     )
     demo_parser.add_argument("--crash-at", type=int, help="make the loss NaN at this step, then crash")
     demo_parser.set_defaults(handler=demo)
+
+    setup_parser = commands.add_parser(
+        "setup",
+        help="save the server's address and a token in ~/.soliton_env for jobs (asks for the token)",
+    )
+    setup_parser.add_argument("--server", help="the server's address (asked if not given)")
+    setup_parser.add_argument("--file", default="~/.soliton_env", help="default: ~/.soliton_env")
+    setup_parser.add_argument("--no-check", action="store_true",
+                              help="save without checking the token with the server")
+    setup_parser.set_defaults(handler=setup)
 
     queue_parser = commands.add_parser(
         "queue", help="update what Slurm says of the jobs the app shows as queued (from soliton sbatch)"

@@ -187,6 +187,10 @@ What it does:
   Sherlock test server, a local one), each with its own token; tap one to
   show its runs, or **All servers** to see every server's runs together,
   live, each marked with its server's name.
+- **`soliton setup`**: once per machine or cluster, saves the server's address
+  and a token where jobs read them (`~/.soliton_env`), asking for the token
+  without showing it and checking it with the server first. Agents run it
+  for you and ask you to paste the token from the app.
 - **Advanced security** (Settings, optional): a separate token for jobs on
   clusters that can only add runs and update its own (each run has a key
   only its jobs hold), so a leaked job script or env file can't read your

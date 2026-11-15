@@ -101,12 +101,18 @@ project's `AGENTS.md`.
 
 Install the logger in the environment the computation uses
 (`pip install ./logger`, no dependencies), or put `logger/src` on
-`PYTHONPATH`. Set the server in the environment, never in code:
+`PYTHONPATH`. Then tell each machine where the server is, once:
 
 ```bash
-export SOLITON_SERVER=https://runs.example.com
-export SOLITON_TOKEN=...
+soliton setup --server https://runs.example.com    # or: python3 -m soliton setup ...
 ```
+
+It asks for the token without showing it, checks it with the server, and
+saves both in `~/.soliton_env` (readable by you only); job scripts then
+`source ~/.soliton_env`. Which token: the app has the server's main token
+(step 3); for a cluster, make a job token in the app (Settings → Advanced
+security → Separate token for jobs), copy it, and paste that. With the main
+token it works too, but it can do everything.
 
 **A training script:**
 

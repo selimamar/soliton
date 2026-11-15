@@ -19,6 +19,24 @@ pip install ./logger        # from a copy of this repository
 Once the repository is on GitHub, `pip install "git+https://github.com/<you>/<repo>.git#subdirectory=logger"`
 works too.
 
+## Setting up a machine: `soliton setup`
+
+Once per machine (a cluster's login node, your laptop):
+
+```bash
+soliton setup --server https://runs.example.com
+```
+
+It asks for the token without showing it, so it never lands on a command
+line or in shell history, checks it with the server (and says whether it's
+the main token or a job token), then writes `~/.soliton_env`, readable by
+you only, keeping any other lines in it. Job scripts `source ~/.soliton_env`.
+Nothing is saved if the server rejects the token or can't be reached
+(`--no-check` saves anyway, e.g. on a machine that can't reach the server
+but whose jobs can). A token piped in (`... | soliton setup`) is read from
+standard input instead. For clusters, use the app's job token (Settings →
+Advanced security).
+
 ## Use
 
 ```python

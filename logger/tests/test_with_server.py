@@ -355,3 +355,14 @@ def test_a_run_s_key_lets_only_its_own_folder_continue_it_with_a_job_token(tmp_p
         again.log({"loss": 0.5}, step=1)
         again.finish()
         assert server.get("/api/runs/keyed-run")["currentStep"] == 1
+
+
+def test_setup_tells_the_main_token_the_job_token_and_a_wrong_one_apart(database_url):
+    from soliton._setup import JOB, MAIN, WRONG, check_token
+
+    with LiveServer(database_url) as server:
+        job = httpx.post(f"{server.url}/api/job-token",
+                         headers={"Authorization": f"Bearer {TOKEN}"}).json()["token"]
+        assert check_token(server.url, TOKEN)[0] == MAIN
+        assert check_token(server.url, job)[0] == JOB
+        assert check_token(server.url, "not-the-token-at-all")[0] == WRONG

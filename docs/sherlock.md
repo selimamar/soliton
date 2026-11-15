@@ -31,14 +31,20 @@ pip install ./logger
 
 It has no dependencies of its own and needs Python 3.9 or newer.
 
-Keep the server address and token in a private file, not in your scripts:
+Keep the server address and token in a private file, not in your scripts.
+On a login node, once (with the logger on `PYTHONPATH`):
 
 ```bash
-cat > ~/.soliton_env <<'EOF'
+python3 -m soliton setup --server https://runs.example.com
+```
+
+It asks for the token without showing it (paste it from the app), checks it
+with the server, and writes `~/.soliton_env`, readable by you only. By hand,
+the file is just:
+
+```bash
 export SOLITON_SERVER=https://runs.example.com
-export SOLITON_TOKEN=paste-the-token-here
-EOF
-chmod 600 ~/.soliton_env
+export SOLITON_TOKEN=the-token
 ```
 
 For more safety, turn on Settings → Advanced security → **Separate token for

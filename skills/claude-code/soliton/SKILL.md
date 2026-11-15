@@ -276,6 +276,13 @@ missing, and the user has authorized Sherlock access, copy them from the
 repository:
 `rsync -a --exclude __pycache__ --exclude tests logger skills/claude-code/soliton/scripts/monitor_solver.py sherlock:soliton/`.
 
+The server's address and token live in `~/.soliton_env` on the cluster. If
+it's missing, set it up with the user: in a terminal they can type in (their
+SSH session), run `python3 -m soliton setup --server <address>` (logger on
+`PYTHONPATH`) and ask them to paste the token at its hidden prompt, from the
+app (Settings → Advanced security → Separate token for jobs). Never ask for
+the token in the chat. It checks the token, then writes the file privately.
+
 In the job script:
 
 ```bash

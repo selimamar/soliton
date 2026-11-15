@@ -19,7 +19,10 @@ computes.
    they're missing, the logger saves the run locally (offline): that's
    fine, don't work around it. `SOLITON_TOKEN` may be a job token that can
    add runs but not read them (403 on reads): fine too; never ask for the
-   main token to get around it. No secrets on the command line or in job
+   main token to get around it. If a cluster has no `~/.soliton_env`, have
+   the user run `python3 -m soliton setup --server <address>` in their own
+   terminal and paste the token at its hidden prompt, never in the chat
+   (see references/where-it-runs.md). No secrets on the command line or in job
    scripts either: the logger records both (and the git commit) for rerunning
    from the app, hiding only values named like a token, password or key.
 2. Don't change the science: same inputs, numerics and outputs. Don't catch
