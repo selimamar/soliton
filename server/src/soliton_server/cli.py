@@ -72,6 +72,9 @@ def main(argv: list[str] | None = None) -> None:
         print("  Warning:  plain http on a shared network: the token and the data travel "
               "unencrypted (see --tls-cert)", file=sys.stderr)
     print(f"  Database: {database}", file=sys.stderr)
+    warning = cors_warning()
+    if warning:
+        print(f"  Note:     {warning}", file=sys.stderr)
     if os.environ.get("SOLITON_TOKEN"):
         print("  Token:    from SOLITON_TOKEN", file=sys.stderr)
     else:
@@ -80,6 +83,18 @@ def main(argv: list[str] | None = None) -> None:
         print("  Push notifications: on (ntfy)", file=sys.stderr)
     uvicorn.run(create_app(settings), host=args.host, port=args.port, log_level="info",
                 ssl_certfile=args.tls_cert, ssl_keyfile=args.tls_key)
+
+
+def cors_warning(env=os.environ) -> str | None:
+    """A word at startup while any website may read the API's answers
+    (SOLITON_CORS_ORIGINS unset, so "*"). Not a hole: the token is a header
+    a browser never adds by itself. But only the web app needs CORS, from one
+    address. Setting the variable, even to "*", is a choice: no note then."""
+    if (env.get("SOLITON_CORS_ORIGINS") or "").strip():
+        return None
+    return ("any website may read this server's answers (CORS). Set SOLITON_CORS_ORIGINS "
+            "to the web app's address, e.g. https://soliton.example.com, or to "
+            "https://none.invalid if you only use the phone and desktop apps")
 
 
 def backup(destination: str) -> int:

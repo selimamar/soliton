@@ -47,7 +47,7 @@ All from environment variables:
 | `SOLITON_DATA_DIR` | `./soliton-data` | Where the SQLite database and token live |
 | `SOLITON_LISTEN_HOST`, `PORT` | `127.0.0.1`, `8000` | Address and port (also `--host`, `--port`) |
 | `SOLITON_STALE_MINUTES` | `10` | A live run silent this long is marked crashed ("lost contact"); one silent past its Slurm job's time limit is marked a minute after it ("Stopped by its Slurm time limit") |
-| `SOLITON_CORS_ORIGINS` | `*` | Web origins allowed to call the API (comma-separated) |
+| `SOLITON_CORS_ORIGINS` | `*` | Web pages allowed to read the API's answers in a browser (comma-separated); see [CORS](#cors) |
 | `SOLITON_NTFY_URL` | off | Push notifications, e.g. `https://ntfy.sh/<long-random-topic>` |
 | `SOLITON_NTFY_TOKEN` | none | Access token for a protected ntfy topic |
 | `SOLITON_NTFY_DETAILS` | `1` | `0`: notifications don't name the run or quote its error ("A run crashed"), for a topic others may read |
@@ -98,7 +98,8 @@ the database.
   (`GET /api/storage/backup`, main token only) sends the same copy: to the
   Downloads folder on a Mac, the share sheet on an iPhone (Save to Files,
   AirDrop), Android's "Save to…" screen (Downloads, Drive), a download in
-  a browser. The app's own temporary copy is removed once it is saved. The server makes it next to the
+  a browser. On a Mac or Linux the saved file is readable by you only. The
+  app's own temporary copy is removed once it is saved. The server makes it next to the
   database, refuses if the disk hasn't room for it, and removes it from the
   disk as it sends it, so nothing is left behind even if the download stops.
 
@@ -168,6 +169,26 @@ There are no migrations yet, so after an upgrade that changes an existing
 table, start from a fresh database. (New tables, like `run_notes` for tags
 and notes or `run_system` for what a run trains on, are added to an
 existing database on startup.)
+
+### CORS
+
+`SOLITON_CORS_ORIGINS` says which web pages may read the API's answers in
+a browser. Only the web build of the app needs it; the phone and desktop
+apps, the logger and `curl` ignore it. The default, `*`, lets any website
+read them. That isn't a hole (every answer but `/api/health` needs the
+token, which a browser never sends by itself), but any page you visit can
+see that a server is there, and its version. Narrow it, and the server
+stops printing a note about it at startup:
+
+- the address you open the web app from, exactly as in the address bar,
+  e.g. `SOLITON_CORS_ORIGINS=https://soliton.example.com` (for
+  `flutter run -d web-server`, fix the port with `--web-port 8080` and list
+  `http://localhost:8080`);
+- or, with no web app, an address nothing uses:
+  `SOLITON_CORS_ORIGINS=https://none.invalid`.
+
+Nothing changes in your browser. Setting it to `*` on purpose also
+silences the note.
 
 ## A separate token for jobs (optional)
 
@@ -293,6 +314,9 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
 
 `image` is a picture the script drew (`run.log_image`): a PNG or JPEG file,
 base64, up to 8 MB and 8192 pixels a side; anything else is refused (422).
+The size is read from the file's own header (what the app decodes), not
+taken from `width` and `height`, so a small, very compressible file can't
+pass off a huge picture that would run the app out of memory.
 
 `health` is a training problem the logger saw: `kind` is `nan` (a loss
 turned NaN or infinite), `divergence` (a training loss climbed back up) or
@@ -316,9 +340,6 @@ their own table, so older databases get them without a migration.
 description, unit, shape, dtype, min, max, mean, std) and up to 8
 `previews` (1D or 2D, at most 96 points per axis, encoded like field
 snapshots: `{"name", "shape", "min", "max", "data"}`). A run's description
-The size is read from the file's own header (what the app decodes), not
-taken from `width` and `height`, so a small, very compressible file can't
-pass off a huge picture that would run the app out of memory.
 may list `datasets` (ids) it trains on; they read back on the run, and on
 each dataset as `usedBy`. A run may name a dataset before it is registered.
 Dataset changes are pushed live as `{"type": "dataset", "event":

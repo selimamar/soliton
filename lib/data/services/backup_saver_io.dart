@@ -1,3 +1,5 @@
+import 'dart:convert' show Utf8Encoder;
+import 'dart:ffi';
 import 'dart:io';
 import 'dart:ui' show Rect;
 
@@ -29,6 +31,11 @@ class _IoBackupSaver extends BackupSaver {
     final target = _unused(downloads, fileName);
     final part = File('${downloads.path}/.${target.uri.pathSegments.last}.part');
     try {
+      // Readable by you only before any byte goes in, like the server's own
+      // backups: it holds everything the runs logged, and Downloads may be
+      // open to other accounts on the machine (often on Linux).
+      await part.create(exclusive: true);
+      makePrivate(part.path);
       await _write(part, bytes);
       await part.rename(target.path);
     } catch (_) {
@@ -114,5 +121,39 @@ class _IoBackupSaver extends BackupSaver {
       file = File('${folder.path}/$stem ($n)$extension');
     }
     return file;
+  }
+}
+
+/// Makes [path] readable and writable by you only (chmod 600) on macOS and
+/// Linux; Windows keeps files in your user folder to you already. Calls the
+/// system's chmod directly: Dart has no call for it, and the Mac app's
+/// sandbox may not let it start /bin/chmod. Throws if it fails, so a backup
+/// is never left readable by others.
+void makePrivate(String path) {
+  if (!(Platform.isMacOS || Platform.isLinux)) return;
+  final libc = DynamicLibrary.process();
+  final malloc = libc.lookupFunction<Pointer<Uint8> Function(IntPtr), Pointer<Uint8> Function(int)>(
+    'malloc',
+  );
+  final free = libc.lookupFunction<Void Function(Pointer<Uint8>), void Function(Pointer<Uint8>)>(
+    'free',
+  );
+  // mode_t is 16 bits on macOS, 32 on Linux: passed in a register either way.
+  final chmod = libc
+      .lookupFunction<Int32 Function(Pointer<Uint8>, Uint32), int Function(Pointer<Uint8>, int)>(
+        'chmod',
+      );
+  final bytes = const Utf8Encoder().convert(path);
+  final name = malloc(bytes.length + 1);
+  if (name.address == 0) throw FileSystemException("Couldn't make the backup private", path);
+  try {
+    name.asTypedList(bytes.length + 1)
+      ..setAll(0, bytes)
+      ..[bytes.length] = 0;
+    if (chmod(name, 384 /* 0600 */) != 0) {
+      throw FileSystemException("Couldn't make the backup private", path);
+    }
+  } finally {
+    free(name);
   }
 }

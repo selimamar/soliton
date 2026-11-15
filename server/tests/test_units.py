@@ -210,3 +210,12 @@ def test_big_hyperparameters_and_architectures_are_cut_not_refused():
     assert len(run.hyperparameters) == HYPERPARAMETERS_KEPT
     assert all(len(v) < 10_010 for v in run.hyperparameters.values())
     assert run.architecture is None
+
+
+def test_a_note_while_any_website_may_read_the_api():
+    from soliton_server.cli import cors_warning
+
+    assert "SOLITON_CORS_ORIGINS" in cors_warning({})
+    assert "SOLITON_CORS_ORIGINS" in cors_warning({"SOLITON_CORS_ORIGINS": " "})
+    assert cors_warning({"SOLITON_CORS_ORIGINS": "https://soliton.example.com"}) is None
+    assert cors_warning({"SOLITON_CORS_ORIGINS": "*"}) is None, "chosen on purpose"
