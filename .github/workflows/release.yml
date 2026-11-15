@@ -37,7 +37,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: version
         run: |
           version=$(sed -n 's/^version: *\([^+]*\).*/\1/p' pubspec.yaml)
@@ -52,7 +52,7 @@ jobs:
     needs: version
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -65,7 +65,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent \
             build/macos/Build/Products/Release/Soliton.app \
             "Soliton-${{ needs.version.outputs.version }}.zip"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mac
           path: Soliton-*.zip
@@ -87,9 +87,9 @@ jobs:
             echo "::notice::No Android release key in the repository secrets: no APK in this release."
           fi
       - if: steps.key.outputs.present == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - if: steps.key.outputs.present == 'true'
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
@@ -115,7 +115,7 @@ jobs:
           mv build/app/outputs/flutter-apk/app-release.apk \
             "Soliton-${{ needs.version.outputs.version }}.apk"
       - if: steps.key.outputs.present == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android
           path: Soliton-*.apk
@@ -130,7 +130,7 @@ jobs:
     outputs:
       sha256: ${{ steps.sha.outputs.sha256 }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
