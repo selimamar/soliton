@@ -6,7 +6,6 @@ import '../../app/constants.dart';
 import '../../app/routes.dart';
 import '../../app/theme.dart';
 import '../../data/providers.dart';
-import '../farm/farm_settings_section.dart';
 import '../../shared/widgets/spaced_list_view.dart';
 import 'job_token_section.dart';
 import 'settings_providers.dart';
@@ -53,8 +52,6 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
             for (final style in AppStyle.values) _StyleTile(style: style),
-            const _SectionHeader('Farm'),
-            const FarmSettingsSection(),
             const _SectionHeader('Data source'),
             ListTile(
               leading: Icon(

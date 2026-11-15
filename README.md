@@ -107,13 +107,14 @@ What it does:
 - **Farm** (the egg button on the runs list): the runs as a cartoon farm
   seen from above. Each finished run is an animal as big as its model,
   walking about: a duck, or a moose, goose, beaver or bear for the model
-  families set in Settings → Farm. Live runs are eggs in the nest that fill
-  a ring as they train and hatch when they finish; a crashed run is a
-  cracked egg. Tap one for its figures and the way to its full analysis.
-  The farm keeps the clock: it fades to night after sunset (the animals
-  sleep, the coop lamp comes on), and the season, from the date and
-  hemisphere, brings rain, summer sun, falling leaves or snow. It can stay
-  day or night instead, and stands still with reduced motion.
+  families set in the farm's own settings (the tune button at the top of
+  the farm). Live runs are eggs in the nest that fill a ring as they train
+  and hatch when they finish; a crashed run is a cracked egg. Tap one for
+  its figures and the way to its full analysis. The farm keeps the clock:
+  it fades to night after sunset (the animals sleep, the coop lamp comes
+  on), and the season, from the date and hemisphere, brings rain, summer
+  sun, falling leaves or snow. It can stay day or night instead (also in
+  its settings), and stands still with reduced motion.
 - **Reproduce** (on the System tab): the git commit the run used (and which
   files had uncommitted changes), its command line and directory, the Slurm
   job script and the Python packages, with "Copy command to rerun". Compare

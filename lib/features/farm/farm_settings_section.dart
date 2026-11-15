@@ -26,8 +26,8 @@ Future<void> showFarmSettings(BuildContext context) => showModalBottomSheet<void
 );
 
 /// The farm's settings: which animal each model family is, and how its
-/// light and seasons follow the clock. In Settings and in a sheet on the
-/// farm.
+/// light and seasons follow the clock. Only on the farm, in a sheet from
+/// its app bar (not in the app's Settings).
 class FarmSettingsSection extends ConsumerWidget {
   const FarmSettingsSection({super.key});
 

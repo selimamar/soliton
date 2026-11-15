@@ -137,53 +137,105 @@ void main() {
     });
   });
 
-  testWidgets('a family set to moose in Settings is a moose on the farm, asleep at night', (
-    tester,
-  ) async {
+  testWidgets('the farm settings are on the farm, not in Settings', (tester) async {
+    tester.view.physicalSize = const Size(400 * 3, 4000 * 3);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    await openApp(tester, '/settings');
+    expect(find.text('Data source'), findsOneWidget);
+    expect(find.text('Farm'), findsNothing);
+    expect(find.text('Farm animals'), findsNothing);
+    expect(find.text('Day and night'), findsNothing);
+    expect(find.text('Hemisphere, for the seasons'), findsNothing);
+  });
+
+  testWidgets(
+    'a family set to moose in the farm settings is a moose on the farm, asleep at night',
+    (tester) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
+        disableAnimations: true,
+      );
+      addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+      tester.view.physicalSize = const Size(400 * 3, 900 * 3);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      final semantics = tester.ensureSemantics();
+      final store = MemorySettingsStore();
+      await openApp(tester, '/farm', store);
+      // Midnight in summer.
+      containerOf(tester).read(clockProvider.notifier).state = DateTime(2026, 7, 1, 0, 30);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Summer, night'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Farm settings'));
+      await tester.pumpAndSettle();
+      final sheet = find.byType(BottomSheet);
+      final row = find.ancestor(
+        of: find.text('VisionTransformer'),
+        matching: find.byType(ListTile),
+      );
+      await tester.ensureVisible(row);
+      await tester.pumpAndSettle();
+      await tester.tap(find.descendant(of: row, matching: find.text('Duck')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Moose').last);
+      await tester.pumpAndSettle();
+      expect(store.getString('farmAnimals'), 'VisionTransformer=moose');
+      final south = find.descendant(of: sheet, matching: find.text('Southern'));
+      await tester.ensureVisible(south);
+      await tester.pumpAndSettle();
+      await tester.tap(south);
+      await tester.pumpAndSettle();
+      expect(store.getString('farmHemisphere'), 'south');
+      await tester.tapAt(const Offset(200, 40));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.semantics.byLabel(RegExp(r'^vit-small, moose')), findsOne);
+      // July is winter in the south.
+      expect(find.textContaining('Winter, night'), findsOneWidget);
+      expect(find.textContaining('VisionTransformer (moose)'), findsOneWidget);
+
+      // The same sheet makes it a duck again, and the farm always day.
+      await tester.tap(find.byTooltip('Farm settings'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Make them all ducks'));
+      await tester.pumpAndSettle();
+      expect(store.getString('farmAnimals'), isNull);
+      await tester.ensureVisible(find.text('Always day'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Always day'));
+      await tester.pumpAndSettle();
+      expect(store.getString('farmTimeOfDay'), 'day');
+      await tester.tapAt(const Offset(200, 40));
+      await tester.pumpAndSettle();
+      expect(find.semantics.byLabel(RegExp(r'^vit-small, duck')), findsOne);
+      expect(find.textContaining('Winter, day'), findsOneWidget);
+      semantics.dispose();
+    },
+  );
+
+  testWidgets('choices saved earlier show in the farm settings', (tester) async {
+    // Still ducks, so the farm settles.
     tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(
       disableAnimations: true,
     );
     addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
-    tester.view.physicalSize = const Size(400 * 3, 900 * 3);
-    tester.view.devicePixelRatio = 3;
-    addTearDown(tester.view.reset);
-    final semantics = tester.ensureSemantics();
-    final store = MemorySettingsStore();
-    await openApp(tester, '/settings', store);
-
-    await tester.scrollUntilVisible(find.text('VisionTransformer'), 200, scrollable: visibleList());
-    await tester.pumpAndSettle();
-    final row = find.ancestor(of: find.text('VisionTransformer'), matching: find.byType(ListTile));
-    await tester.tap(find.descendant(of: row, matching: find.text('Duck')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Moose').last);
-    await tester.pumpAndSettle();
-    expect(store.getString('farmAnimals'), 'VisionTransformer=moose');
-
-    // Midnight in summer.
-    containerOf(tester).read(clockProvider.notifier).state = DateTime(2026, 7, 1, 0, 30);
-    routerOf(tester).go('/farm');
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
-    expect(find.semantics.byLabel(RegExp(r'^vit-small, moose')), findsOne);
-    expect(find.textContaining('Summer, night'), findsOneWidget);
-    expect(find.textContaining('VisionTransformer (moose)'), findsOneWidget);
-
-    // The farm's own settings sheet can make it a duck again.
+    final store = MemorySettingsStore({
+      'farmAnimals': 'VisionTransformer=moose',
+      'farmTimeOfDay': 'night',
+      'farmHemisphere': 'south',
+    });
+    await openApp(tester, '/farm', store);
     await tester.tap(find.byTooltip('Farm settings'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Make them all ducks'));
-    await tester.pumpAndSettle();
-    expect(store.getString('farmAnimals'), isNull);
-    await tester.ensureVisible(find.text('Always day'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Always day'));
-    await tester.pumpAndSettle();
-    expect(store.getString('farmTimeOfDay'), 'day');
-    await tester.tapAt(const Offset(200, 40));
-    await tester.pumpAndSettle();
-    expect(find.semantics.byLabel(RegExp(r'^vit-small, duck')), findsOne);
-    expect(find.textContaining('Summer, day'), findsOneWidget);
-    semantics.dispose();
+    final row = find.ancestor(of: find.text('VisionTransformer'), matching: find.byType(ListTile));
+    expect(find.descendant(of: row, matching: find.text('Moose')), findsOneWidget);
+    bool selected<T>(T value) => tester
+        .widgetList<SegmentedButton<T>>(find.byType(SegmentedButton<T>))
+        .single
+        .selected
+        .contains(value);
+    expect(selected(FarmTimeOfDay.night), isTrue);
+    expect(selected(FarmHemisphere.south), isTrue);
   });
 }

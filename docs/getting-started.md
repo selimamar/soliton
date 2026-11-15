@@ -233,9 +233,10 @@ offline runs). The full logger API is in [logger/README.md](../logger/README.md)
 - **The farm**: the egg button on the runs list shows the runs as a farm,
   finished runs as animals as big as their models, live runs as eggs that
   hatch when they finish. Pick an animal for each model family (a moose for
-  your FNOs, say) in Settings → Farm, or from the farm's own settings
-  button. The farm follows the clock and the seasons; set your hemisphere
-  there, or keep it always day or always night.
+  your FNOs, say) from the farm's settings button (the tune icon at the
+  top of the farm; these settings are only there, not in Settings). The
+  farm follows the clock and the seasons; set your hemisphere there, or
+  keep it always day or always night.
 - **Sweeps**: the grid button on the runs list shows a project's runs over
   two hyperparameters, or one metric against another.
 - **Delete** runs, simulations or datasets from their page, or several at
