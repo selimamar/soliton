@@ -1,6 +1,6 @@
 ---
 name: soliton
-description: "Add Soliton monitoring to a computation so it can be followed live in the Soliton app: training scripts (PyTorch or not), Python simulations and solvers, and any other program (compiled solvers, community codes, MPI jobs, shell pipelines) run through Slurm on Sherlock or another cluster, on Modal, a cloud machine or locally. Use whenever writing, editing, wrapping or submitting such a computation or its job script, even if the user doesn't mention Soliton, unless they say not to."
+description: "Add Soliton monitoring to a computation so it can be followed live in the Soliton app: training scripts (PyTorch or not), Python simulations and solvers, and any other program (compiled solvers, community codes, MPI jobs, shell pipelines) run through Slurm on Sherlock or another cluster, on Modal, a cloud machine or locally. Use whenever writing, editing, wrapping or submitting such a computation or its job script, even if the user doesn't mention Soliton, unless they say not to. Also use to read monitored runs back for analysis, figures or results tables (soliton.runs())."
 ---
 
 # Soliton: make every computation show up in the app
@@ -381,3 +381,27 @@ Offline: `$SOLITON_DIR/<run id>/events.jsonl` grows, and ends with a
 for a job continuing a run, add `--id <run id>` before sbatch's options. Tell
 the user the run's name and which app section it appears in (Runs, Compute
 or Data).
+
+## 5. Reading results back
+
+Reading results back (analysis, figures, a results table, mean over seeds):
+use `soliton.runs()` in Python on the user's machine, not the HTTP API by
+hand and not screenshots of the app:
+
+```python
+import soliton                      # SOLITON_SERVER, and SOLITON_TOKEN = the main token
+
+runs = soliton.runs(project="operator-learning", tags=["final"])   # newest first
+for run in runs:
+    curve = run.metric("val/rel_l2")                # every point logged, not thinned out
+    plt.plot(curve.steps, curve.values, label=run.name)
+
+table = runs.table(["val/rel_l2", "perf/inference_s"])   # one row per run
+table.to_csv("results.csv")                              # or .to_pandas()
+```
+
+`run.config` holds the settings, `run.summary[name]` the first, final, min,
+max and best of a metric, `soliton.get_run(id)` one run. It needs the main
+token (the job token raises a `PermissionError` that says so): never put the
+main token in a job script or ask for it in the chat; if the shell has the
+job token, ask the user to run it where the main token is set.

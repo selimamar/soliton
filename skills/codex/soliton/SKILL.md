@@ -1,6 +1,6 @@
 ---
 name: soliton
-description: Add Soliton monitoring to computations so they can be followed live in the Soliton app. Use when writing, editing, wrapping or submitting a training script, a simulation or solver run, or a job script (Slurm/Sherlock, Modal, cloud, local), even if Soliton isn't mentioned. Not for unrelated code or analysis-only scripts.
+description: Add Soliton monitoring to computations so they can be followed live in the Soliton app, and read monitored runs back for analysis. Use when writing, editing, wrapping or submitting a training script, a simulation or solver run, or a job script (Slurm/Sherlock, Modal, cloud, local), even if Soliton isn't mentioned, and when analysing or plotting runs that are on a Soliton server. Not for unrelated code.
 ---
 
 # Soliton monitoring
@@ -44,6 +44,7 @@ computes.
    | A Python simulation or solver | `soliton.simulate(...)`, `sim.log(..., t=t)` | `references/recipes.md` |
    | Any other program (compiled solver, community code, MPI launch, shell pipeline) | launch it through `scripts/monitor_solver.py`, unchanged | `references/other-programs.md` |
    | Making or using a dataset | `soliton.register_dataset(path)` | `references/recipes.md` |
+   | Analysing runs already monitored (figures, tables) | `soliton.runs(...)`, `run.metric(name)`, `runs.table(...)`, with the main token | `references/recipes.md` |
 
    A sweep or job array is one run per task: parameters in the name and in
    `config`/`setup`, one `project`, a tag such as `sweep-<name>`.

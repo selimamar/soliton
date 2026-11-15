@@ -213,6 +213,11 @@ What it does:
   back up (diverges), or the gradient norm blows up. Each shows at the top of
   the run's Overview, with what usually helps, and sends an alert, once per
   job. `init(stop_on_divergence=True)` also ends a run whose loss turned NaN.
+- **Reading runs back** for your own analysis and figures: in Python,
+  `soliton.runs(project=..., tags=...)` gives the server's runs with their
+  settings, every logged point of any metric (`run.metric("val/loss")`), and
+  a table of each metric's final and best value per run (`runs.table(...)`,
+  to CSV or pandas). Needs the server's main token, not the job token.
 - **Alerts** while the app is open when a run finishes or crashes, when a
   live run, at its pace, won't finish before its Slurm time limit (once per
   job, while there's still time to save a checkpoint), when training goes
@@ -378,7 +383,8 @@ first start and deletes the old copy. Disconnecting deletes it everywhere.
     in Compare; Reproduce (code version, command, job script)~~
 11. ~~Training-health alerts (NaN or diverging loss, exploding gradients) and
     an alert when a queued job starts~~
-12. Next ideas: reading runs back into Python for paper figures
-    (`soliton.runs(project=...)` → metrics, settings, summaries), accounts for
+12. ~~Reading runs back into Python for analysis and figures
+    (`soliton.runs(...)`: settings, full-resolution metrics, summary tables)~~
+13. Next ideas: logging images (a figure the job draws itself), accounts for
     several people, native push (APNs/FCM), signing the Apple apps with a
     developer team

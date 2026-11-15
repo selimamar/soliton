@@ -420,6 +420,49 @@ soliton data scan $SCRATCH/data          # each data file or folder of them in t
 | `mode` | `SOLITON_MODE`, else `online` if a server is set | `online`, `offline` (save only) or `disabled` |
 | `dir` | `SOLITON_DIR`, else `./soliton-runs` | Where runs are saved |
 
+## Reading runs back: `soliton.runs()`
+
+For your own analysis and figures, read runs back from the server in Python
+(a notebook, a script on your computer):
+
+```python
+import soliton                      # SOLITON_SERVER, and SOLITON_TOKEN = the main token
+
+runs = soliton.runs(project="operator-learning", tags=["final"])   # newest first
+for run in runs:
+    curve = run.metric("val/rel_l2")                # every point logged, not thinned out
+    plt.plot(curve.steps, curve.values, label=run.name)
+
+table = runs.table(["val/rel_l2", "perf/inference_s"])   # one row per run
+table.to_csv("results.csv")                              # or .to_pandas()
+```
+
+- **`soliton.runs(project=None, *, tags=None, status=None, host=None,
+  name=None)`**: the server's runs and simulations, newest first. `tags`:
+  runs with all of them; `status`: one or several of `live`, `finished`,
+  `crashed`, `queued`; `name`: a pattern such as `"fno-*"`. Pick one with
+  `runs["fno-w32"]` (name or id). `soliton.get_run(id)` reads one by its id.
+- **A run** has `id`, `name`, `project`, `host`, `status`,
+  `status_message`, `started_at`, `ended_at` (datetimes), `current_step`,
+  `total_steps`, `config` (its settings, as the app shows them), `tags`,
+  `notes`, `system`, `jobs`, `health` and `simulation`.
+- **`run.metric(name)`**: every value logged, at full resolution (the app's
+  charts are thinned out to about 1,000 points), as a `Curve` with `steps`
+  and `values` (NaN and infinity as floats); `.to_pandas()` for a Series.
+  A simulation's simulated time is the metric `sim/t`.
+- **`run.summary`**: for each metric, `count`, `first`, `final`, `min`,
+  `max` (over finite values) with their steps, and `best`: the max for
+  accuracy-like names (accuracy, F1, AUC, PSNR, SSIM, IoU, reward), else the
+  min. `run.metrics` lists the names.
+- **`runs.table(metrics)`**: one row per run: what describes it, its
+  settings, and for each metric its final value, best and step of the best.
+  `.to_csv(path)` or `.to_pandas()` (pandas isn't required otherwise).
+
+It needs the server's **main token**, the one the app uses: the job token can
+only add runs, and gets a `PermissionError` saying so. Keep the main token
+on the machine you analyse on, never in job scripts. Metrics come a page of
+20,000 points at a time, so even long runs read back whole.
+
 ## Running elsewhere: Modal, cloud machines, containers
 
 The logger only needs Python and outgoing HTTPS to the server, so jobs on

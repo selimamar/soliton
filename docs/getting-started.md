@@ -230,6 +230,10 @@ offline runs). The full logger API is in [logger/README.md](../logger/README.md)
   script checks `run.should_stop()` (the agent skills add it), it saves a
   checkpoint and ends as "Stopped from the app"; otherwise it is stopped as
   by scancel. Continue it later in a new job with `soliton sbatch --id`.
+- **Analyse results, make figures**: in Python on your computer, with the
+  server's main token, `soliton.runs(...)` reads runs back: every point of
+  any metric, and a table of final and best values per run (see the
+  [logger README](../logger/README.md#reading-runs-back-solitonruns)).
 - **Offline runs** (no server, or it was unreachable) upload later:
   `soliton sync $SOLITON_DIR` (on Sherlock: `python3 -m soliton sync
   $SCRATCH/soliton-runs`, by hand on a login node).

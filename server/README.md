@@ -173,6 +173,8 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
 | `PUT /api/datasets/{id}` | Registers or updates a dataset (the logger does this). Job token too |
 | `DELETE /api/datasets/{id}` | Forgets a dataset (the files are not touched) |
 | `GET /api/metrics/latest?names=val/rel_l2,perf/inference_s` | For sweeps: `{run id: {metric: {latest, min}}}`, up to 20 names |
+| `GET /api/runs/{id}/metrics/points?name=train/loss&after=-1&limit=10000` | Every value of one metric, not downsampled, a page at a time (up to 50,000): `{name, steps, values, next}`; pass `next` as `after` for the next page (`null` on the last). For `soliton.runs()` |
+| `GET /api/runs/{id}/metrics/summary` | Each metric the run logged: `count`, `first`, `final` (with steps) and its finite `min` and `max` with their steps |
 | `WS /api/live` | Live updates (below) |
 
 **Events** (`POST .../events` with `{"events": [...]}`, up to 5000 per batch):

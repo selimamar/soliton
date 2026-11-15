@@ -44,6 +44,8 @@ log = logging.getLogger(__name__)
 
 RunId = Annotated[str, Path(pattern=RUN_ID_PATTERN)]
 MaxPoints = Annotated[int, Query(ge=4, le=20_000)]
+# Full-resolution reads (`soliton.runs()`), a page at a time.
+PageSize = Annotated[int, Query(ge=1, le=50_000)]
 # The key a logger made for its run (see Store._check_writer).
 RunKey = Annotated[Optional[str], Header(alias="X-Run-Key", max_length=200)]
 
@@ -406,6 +408,15 @@ def create_app(
     @app.get("/api/runs/{run_id}/metrics", dependencies=auth)
     def metrics(run_id: RunId, maxPoints: MaxPoints = 1000):
         return store.metrics(run_id, maxPoints)
+
+    @app.get("/api/runs/{run_id}/metrics/points", dependencies=auth)
+    def metric_points(run_id: RunId, name: Annotated[str, Query(min_length=1, max_length=200)],
+                      after: Annotated[int, Query(ge=-1)] = -1, limit: PageSize = 10_000):
+        return store.metric_points(run_id, name, after, limit)
+
+    @app.get("/api/runs/{run_id}/metrics/summary", dependencies=auth)
+    def metric_summary(run_id: RunId):
+        return store.metric_summary(run_id)
 
     @app.get("/api/runs/{run_id}/layers", dependencies=auth)
     def layers(run_id: RunId, maxPoints: MaxPoints = 500):

@@ -926,6 +926,60 @@ class Store:
                 by_name[name].append((step, from_columns(value, code)))
         return [_series(name, points, max_points) for name, points in by_name.items()]
 
+    def metric_points(self, run_id: str, name: str, after: int, limit: int) -> dict:
+        """Every value of one metric, not downsampled: up to [limit] points
+        with a step after [after]. "next" is where the next page starts
+        (null on the last one)."""
+        with self._sessions() as session:
+            self._find(session, run_id)
+            rows = session.execute(
+                select(MetricPointRow.step, MetricPointRow.value, MetricPointRow.code)
+                .where(MetricPointRow.run_id == run_id, MetricPointRow.name == name,
+                       MetricPointRow.step > after)
+                .order_by(MetricPointRow.step).limit(limit)
+            ).all()
+        steps = [step for step, _, _ in rows]
+        return {
+            "name": name,
+            "steps": steps,
+            "values": [encode_float(from_columns(value, code)) for _, value, code in rows],
+            "next": steps[-1] if len(rows) == limit else None,
+        }
+
+    def metric_summary(self, run_id: str) -> dict:
+        """For each metric the run logged: how many values, its first and
+        final value (by step), and its lowest and highest finite values with
+        their steps (null if it has none)."""
+        summary: dict[str, dict] = {}
+        with self._sessions() as session:
+            self._find(session, run_id)
+            rows = session.execute(
+                select(MetricPointRow.name, MetricPointRow.step,
+                       MetricPointRow.value, MetricPointRow.code)
+                .where(MetricPointRow.run_id == run_id)
+                .order_by(MetricPointRow.name, MetricPointRow.step)
+            )
+            for name, step, value, code in rows:
+                number = from_columns(value, code)
+                entry = summary.get(name)
+                if entry is None:
+                    entry = summary[name] = {"count": 0, "first": number, "firstStep": step,
+                                             "min": None, "minStep": None,
+                                             "max": None, "maxStep": None}
+                entry["count"] += 1
+                entry["final"], entry["finalStep"] = number, step
+                if math.isfinite(number):
+                    if entry["min"] is None or number < entry["min"]:
+                        entry["min"], entry["minStep"] = number, step
+                    if entry["max"] is None or number > entry["max"]:
+                        entry["max"], entry["maxStep"] = number, step
+        return {
+            name: {key: (encode_float(v) if key in ("first", "final", "min", "max") and v is not None
+                         else v)
+                   for key, v in entry.items()}
+            for name, entry in summary.items()
+        }
+
     def layers(self, run_id: str, max_points: int) -> list[dict]:
         with self._sessions() as session:
             self._find(session, run_id)

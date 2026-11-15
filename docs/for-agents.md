@@ -125,6 +125,31 @@ command line (`soliton --token` shows it in `ps`): use the environment.
 | `SOLITON_REFRESH_QUEUE` | `1` | `0`: a starting Slurm job doesn't refresh the user's other queued jobs |
 | `SOLITON_CAPTURE_CODE` | `1` | `0`: don't record the git commit, command line, job script and packages |
 
+## Reading results back
+
+For analysis or figures from runs already on the server (a results table,
+curves for a paper, mean over seeds), use `soliton.runs()` rather than
+scraping the app or calling the HTTP API by hand:
+
+```python
+import soliton                      # SOLITON_SERVER, and SOLITON_TOKEN = the main token
+
+runs = soliton.runs(project="operator-learning", tags=["final"])   # newest first
+for run in runs:
+    curve = run.metric("val/rel_l2")                # every point logged, not thinned out
+    plt.plot(curve.steps, curve.values, label=run.name)
+
+table = runs.table(["val/rel_l2", "perf/inference_s"])   # one row per run
+table.to_csv("results.csv")                              # or .to_pandas()
+```
+
+`run.config` has the settings, `run.summary[name]` a metric's count, first,
+final, min and max (with steps), `soliton.get_run(id)` one run. It needs the
+server's **main** token: the job token gets a `PermissionError` that says so.
+Run it on the user's machine, never in a job script, and never ask for the
+main token in the chat; if `SOLITON_TOKEN` there is the job token, ask the
+user to run the analysis in a shell that has the main one.
+
 ## Adding monitoring to a computation
 
 1. **Training in Python:** `soliton.init` before training, `run.log` in the

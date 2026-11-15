@@ -804,6 +804,38 @@ def test_only_the_latest_output_lines_are_kept(client):
     assert (got["lines"][0], got["lines"][-1]) == ("line 500", "line 1499")
 
 
+def test_every_point_of_a_metric_reads_back_a_page_at_a_time(client):
+    create_run(client)
+    send(client, [metrics(step, train__loss=1.0 / (step + 1)) for step in range(25)]
+         + [metrics(25, train__loss="NaN")])
+    first = client.get("/api/runs/tiny-1/metrics/points",
+                       params={"name": "train/loss", "limit": 10}).json()
+    assert first["steps"] == list(range(10)) and first["next"] == 9
+    assert first["values"][:2] == [1.0, 0.5]
+    steps, values, after = [], [], -1
+    while after is not None:
+        page = client.get("/api/runs/tiny-1/metrics/points",
+                          params={"name": "train/loss", "after": after, "limit": 10}).json()
+        steps += page["steps"]
+        values += page["values"]
+        after = page["next"]
+    assert steps == list(range(26)) and values[-1] == "NaN", "nothing thinned out"
+    empty = client.get("/api/runs/tiny-1/metrics/points", params={"name": "nope"}).json()
+    assert empty == {"name": "nope", "steps": [], "values": [], "next": None}
+    assert client.get("/api/runs/missing/metrics/points", params={"name": "x"}).status_code == 404
+
+
+def test_a_runs_metrics_summarised(client):
+    create_run(client)
+    send(client, [metrics(0, train__loss=2.0, val__accuracy=0.1), metrics(5, train__loss=0.5),
+                  metrics(9, train__loss=0.7, val__accuracy=0.9), metrics(10, train__loss="NaN")])
+    summary = client.get("/api/runs/tiny-1/metrics/summary").json()
+    assert summary["train/loss"] == {"count": 4, "first": 2.0, "firstStep": 0, "final": "NaN",
+                                     "finalStep": 10, "min": 0.5, "minStep": 5,
+                                     "max": 2.0, "maxStep": 0}
+    assert (summary["val/accuracy"]["max"], summary["val/accuracy"]["maxStep"]) == (0.9, 9)
+
+
 def test_deleting_a_run_deletes_its_output(client):
     create_run(client)
     send(client, [output(0, "old")])
@@ -972,6 +1004,8 @@ def test_a_job_token_can_only_add_runs_and_data(app, client):
         for method, path in [
             ("GET", "/api/runs"), ("GET", "/api/runs/other"), ("GET", "/api/runs/other/metrics"),
             ("GET", "/api/runs/other/output"), ("GET", "/api/datasets"),
+            ("GET", "/api/runs/other/metrics/points?name=train/loss"),
+            ("GET", "/api/runs/other/metrics/summary"),
             ("PATCH", "/api/runs/other"), ("DELETE", "/api/runs/other"),
             ("DELETE", "/api/datasets/ns2d"), ("GET", "/api/session"),
             ("POST", "/api/job-token"), ("DELETE", "/api/job-token"),

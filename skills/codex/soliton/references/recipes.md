@@ -99,3 +99,27 @@ run = soliton.init(..., datasets=[ds])        # or a path
 A run that writes data registers it with `run.register_dataset(path)` (or
 `sim.`), so the app shows what made it. From a shell:
 `python3 -m soliton data add PATH --version v1 --source Simulated`.
+
+## Reading results back
+
+Reading results back (analysis, figures, a results table, mean over seeds):
+use `soliton.runs()` in Python on the user's machine, not the HTTP API by
+hand and not screenshots of the app:
+
+```python
+import soliton                      # SOLITON_SERVER, and SOLITON_TOKEN = the main token
+
+runs = soliton.runs(project="operator-learning", tags=["final"])   # newest first
+for run in runs:
+    curve = run.metric("val/rel_l2")                # every point logged, not thinned out
+    plt.plot(curve.steps, curve.values, label=run.name)
+
+table = runs.table(["val/rel_l2", "perf/inference_s"])   # one row per run
+table.to_csv("results.csv")                              # or .to_pandas()
+```
+
+`run.config` holds the settings, `run.summary[name]` the first, final, min,
+max and best of a metric, `soliton.get_run(id)` one run. It needs the main
+token (the job token raises a `PermissionError` that says so): never put the
+main token in a job script or ask for it in the chat; if the shell has the
+job token, ask the user to run it where the main token is set.

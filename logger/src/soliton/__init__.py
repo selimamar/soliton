@@ -26,7 +26,16 @@ monitored the same way:
 
 The server and token come from SOLITON_SERVER and SOLITON_TOKEN. Without
 a server, runs are saved locally (offline) and uploaded later with
-`soliton sync`. See logger/README.md.
+`soliton sync`.
+
+Afterwards, read runs back for your own analysis and figures (with the
+server's main token):
+
+    runs = soliton.runs(project="image-classification", tags=["final"])
+    curve = runs[0].metric("val/accuracy")       # every point
+    runs.table(["val/accuracy"]).to_pandas()      # one row per run
+
+See logger/README.md.
 """
 
 from __future__ import annotations
@@ -38,10 +47,12 @@ import os
 from ._datasets import Dataset
 from ._datasets import describe as _describe_dataset
 from ._datasets import upload as _upload_dataset
+from ._read import Curve, Runs, StoredRun, Summary, Table, get_run, runs
 from ._run import Run
 from ._simulation import Diverged, Simulation
 
-__all__ = ["Dataset", "Diverged", "Run", "Simulation", "init", "register_dataset", "simulate"]
+__all__ = ["Curve", "Dataset", "Diverged", "Run", "Runs", "Simulation", "StoredRun", "Summary",
+           "Table", "get_run", "init", "register_dataset", "runs", "simulate"]
 __version__ = "0.1.0"
 
 
