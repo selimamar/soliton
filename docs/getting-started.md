@@ -220,6 +220,12 @@ offline runs). The full logger API is in [logger/README.md](../logger/README.md)
   differ", only the hyperparameters that changed between them.
 - **Organize**: tag runs and write notes on their Overview; group the list
   by project, model, dataset, tag or host; order it by a metric.
+- **The farm**: the egg button on the runs list shows the runs as a farm,
+  finished runs as animals as big as their models, live runs as eggs that
+  hatch when they finish. Pick an animal for each model family (a moose for
+  your FNOs, say) in Settings → Farm, or from the farm's own settings
+  button. The farm follows the clock and the seasons; set your hemisphere
+  there, or keep it always day or always night.
 - **Sweeps**: the grid button on the runs list shows a project's runs over
   two hyperparameters, or one metric against another.
 - **Delete** runs, simulations or datasets from their page, or several at

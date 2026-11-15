@@ -66,7 +66,7 @@ with soliton.init(
     total_steps=epochs * len(loader), total_epochs=epochs,   # progress and time left
     tags=["baseline"], notes="Why this run exists, in a sentence.",
 ) as run:
-    run.watch(model, every=100)             # PyTorch: layer statistics, network diagram
+    run.watch(model, every=100)             # PyTorch: layer statistics, network diagram, model family
     for epoch in range(epochs):
         for x, y in loader:
             loss = criterion(model(x), y)

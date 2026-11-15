@@ -46,6 +46,9 @@ computes.
    | Making or using a dataset | `soliton.register_dataset(path)` | `references/recipes.md` |
    | Analysing runs already monitored (figures, tables) | `soliton.runs(...)`, `run.metric(name)`, `runs.table(...)`, with the main token | `references/recipes.md` |
 
+   `run.watch(model)` also records the model's family (its class), which
+   the app groups runs by and shows as an animal on its farm.
+
    A sweep or job array is one run per task: parameters in the name and in
    `config`/`setup`, one `project`, a tag such as `sweep-<name>`.
 

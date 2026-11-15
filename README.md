@@ -100,9 +100,20 @@ What it does:
 
 - **Runs list** with status filters, live progress and a loss sparkline per run.
 - **Organizing**: group the list by project, model, dataset, tag or host
-  (folding groups away), tag runs (e.g. `baseline`, `best`) and leave a
-  note on each. Tags and notes are saved on the server, so every device
+  (folding groups away), order it by a metric such as validation loss, best
+  first (within each group, a small leaderboard), tag runs (e.g. `baseline`,
+  `best`) and leave a note on each. Tags and notes are saved on the server, so every device
   sees them; the logger can set the first ones.
+- **Farm** (the egg button on the runs list): the runs as a cartoon farm
+  seen from above. Each finished run is an animal as big as its model,
+  walking about: a duck, or a moose, goose, beaver or bear for the model
+  families set in Settings → Farm. Live runs are eggs in the nest that fill
+  a ring as they train and hatch when they finish; a crashed run is a
+  cracked egg. Tap one for its figures and the way to its full analysis.
+  The farm keeps the clock: it fades to night after sunset (the animals
+  sleep, the coop lamp comes on), and the season, from the date and
+  hemisphere, brings rain, summer sun, falling leaves or snow. It can stay
+  day or night instead, and stands still with reduced motion.
 - **Reproduce** (on the System tab): the git commit the run used (and which
   files had uncommitted changes), its command line and directory, the Slurm
   job script and the Python packages, with "Copy command to rerun". Compare
@@ -258,7 +269,8 @@ lib/
       settings_store.dart       saved settings (SharedPreferences) + Setting<T>
       token_store.dart          the server token, in secure storage
   features/                     one folder per screen
-    runs_list/                  home screen, run card, picking runs to compare
+    runs_list/                  home screen, run card, grouping and ordering, picking runs to compare
+    farm/                       the farm: its world, sky and seasons, animals, painters, settings
     run_detail/                 Overview, Metrics and Layers tabs + their widgets
     compare/                    runs side by side
     compute/                    simulations: list, Overview, Diagnostics

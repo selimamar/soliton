@@ -34,7 +34,7 @@ the computation + soliton logger  ──HTTP──►  soliton-server  ◄──
 | `soliton.init(name, project=, config=, train_samples=, val_samples=, loss=, total_steps=, total_epochs=, tags=, notes=)` | A card under **Runs**: name, project, host, tags, loss sparkline, progress. Overview: hyperparameters (samples and loss first), progress, time left, cost, tags and notes |
 | `run.should_stop()` in the loop | The **Stop** button on a live run's page: it turns `True` within seconds; save a checkpoint and leave the loop, and the run ends "Stopped from the app" |
 | `run.log({...}, step=, epoch=)` | **Metrics** tab: one chart per known name, the rest under "Other metrics"; log scale and step/epoch axis options |
-| `run.watch(model)` (PyTorch) | **Layers** tab (activation histograms, dead units, gradient norms per layer) and the network diagram on the Overview |
+| `run.watch(model)` (PyTorch) | **Layers** tab (activation histograms, dead units, gradient norms per layer) and the network diagram on the Overview; the model's class is its family, which the runs list groups by and the farm turns into an animal |
 | `run.log_field`, `log_rollout`, `capture_layers`, `log_eval`, `log_curve` | **Fields** tab: prediction, truth and error maps, rollouts, 3D views, worst validation samples, error against resolution or a parameter |
 | `soliton.simulate(name, t_end=, setup=, monitor=, cfl_limit=)`, `sim.log({...}, t=, dt=)` | A card under **Compute**: simulated time, progress, time left. Diagnostics tab: every value against t, drift of conserved quantities, log scale for "residual"/"error" names, `cfl` against its limit |
 | `sim.log_field(name, field)` | Fields tab, at the simulated time |
