@@ -9,7 +9,8 @@ Run withSettings(Run base, Map<String, String> settings) =>
     Run.fromJson({...base.toJson(), 'hyperparameters': settings});
 
 void main() {
-  final base = buildMockRuns(DateTime(2026, 11, 14)).first.run;
+  // A run whose logger recorded no code version (AWS: no demo one).
+  final base = buildMockRuns(DateTime(2026, 11, 14)).firstWhere((m) => m.run.host == 'AWS').run;
 
   test('only the settings that differ, a missing one counting as different', () {
     final a = withSettings(base, {'Optimizer': 'Adam', 'Width': '32', 'Modes': '8'});
@@ -30,6 +31,8 @@ void main() {
     expect(find.text('16 × 16'), findsOneWidget);
     expect(find.text('Width'), findsOneWidget);
     expect(find.text('Optimizer'), findsNothing, reason: 'the same in both: folded');
+    expect(find.text('Code version'), findsOneWidget, reason: 'a newer commit for m16-w64');
+    expect(find.text('9f3e2b7'), findsOneWidget);
     await tester.tap(find.textContaining('Show the'));
     await tester.pumpAndSettle();
     expect(find.text('Optimizer'), findsOneWidget);

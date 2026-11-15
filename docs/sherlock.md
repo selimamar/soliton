@@ -246,7 +246,10 @@ the logger itself: the node's name, its GPU and CPU models, software versions,
 the Slurm job's id, name, partition, submit and start times and time limit
 (and, from `soliton sbatch` and `soliton queue`, a queued job's state, pending
 reason, expected start and the CPUs, memory, GPUs and time it asked for), and
-GPU, memory and CPU use every 15 seconds (turn the sampling off with `system_metrics=False`). No training data
+GPU, memory and CPU use every 15 seconds, and what it takes to run it again (the
+git commit and the names of files with uncommitted changes, the command line,
+the job script and the Python packages, secret-looking values hidden; off with
+`SOLITON_CAPTURE_CODE=0`) (turn the sampling off with `system_metrics=False`). No training data
 or model weights. Run names and hyperparameters go to your server, so don't put
 anything sensitive in them. Sherlock is approved for low- and moderate-risk
 data only.

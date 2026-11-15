@@ -95,6 +95,13 @@ What it does:
   (folding groups away), tag runs (e.g. `baseline`, `best`) and leave a
   note on each. Tags and notes are saved on the server, so every device
   sees them; the logger can set the first ones.
+- **Reproduce** (on the System tab): the git commit the run used (and which
+  files had uncommitted changes), its command line and directory, the Slurm
+  job script and the Python packages, with "Copy command to rerun". Compare
+  shows the code version among the settings that differ.
+- **Continued runs**: a run continued over several jobs from checkpoints
+  shows each job (Slurm id, queue wait, run time, steps, how it ended) on its
+  Overview, and its charts mark where each later job took over.
 - **System**: each run's machine (GPUs, CPU, memory, software, Slurm job) and
   how busy it kept them: GPU use and memory per GPU, CPU, memory, GPU
   temperature and power, sampled by the logger every 15 seconds.

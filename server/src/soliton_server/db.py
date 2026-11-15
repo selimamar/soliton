@@ -259,6 +259,27 @@ class RunStopRow(Base):
     requested_at: Mapped[datetime] = mapped_column(UtcDateTime)
 
 
+class RunJobRow(Base):
+    """Each process (usually a Slurm job) that ran a run, in order: a run
+    continued from a checkpoint in later jobs has several. A table of its
+    own, so older databases get it without a migration."""
+
+    __tablename__ = "run_jobs"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    seq: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    ended_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    start_step: Mapped[int] = mapped_column(Integer)
+    end_step: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
 class SchemaVersionRow(Base):
     """Which migration the database is at (one row; see migrations.py)."""
 

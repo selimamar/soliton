@@ -25,7 +25,10 @@ class MetricsTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final gradNorms = ref.watch(layerGradNormsProvider(runId));
     final log = ref.watch(logScaleProvider);
-    final stepsPerEpoch = _stepsPerEpoch(ref.watch(runProvider(runId)).value);
+    final run = ref.watch(runProvider(runId)).value;
+    final stepsPerEpoch = _stepsPerEpoch(run);
+    // Where a later job took over (a run continued from a checkpoint).
+    final marks = run?.jobStarts ?? const <int>[];
     final xAxis = stepsPerEpoch != null && ref.watch(xAxisUnitProvider) == XAxisUnit.epochs
         ? ChartXAxis.epochs(stepsPerEpoch)
         : const ChartXAxis.steps();
@@ -64,6 +67,7 @@ class MetricsTab extends ConsumerWidget {
               title: 'Loss',
               logScale: log,
               xAxis: xAxis,
+              marks: marks,
               lines: [
                 if (trainLoss != null)
                   ChartLine(label: 'Train', color: ChartColors.train, series: trainLoss),
@@ -76,6 +80,7 @@ class MetricsTab extends ConsumerWidget {
                 title: 'Loss terms',
                 logScale: log,
                 xAxis: xAxis,
+                marks: marks,
                 showLatest: false,
                 lines: [
                   for (final (i, e) in lossTerms.indexed)
@@ -91,6 +96,7 @@ class MetricsTab extends ConsumerWidget {
                 title: relL2.length > 1 ? 'Relative L2 per variable' : 'Relative L2 (validation)',
                 logScale: log,
                 xAxis: xAxis,
+                marks: marks,
                 formatValue: formatRelativeError,
                 formatTick: (v, _) => formatRelativeError(v),
                 showLatest: relL2.length == 1,
@@ -109,6 +115,7 @@ class MetricsTab extends ConsumerWidget {
               LineChartCard(
                 title: 'Validation accuracy',
                 xAxis: xAxis,
+                marks: marks,
                 formatValue: formatPercent,
                 formatTick: formatPercentAxisTick,
                 lines: [
@@ -121,6 +128,7 @@ class MetricsTab extends ConsumerWidget {
                 height: 140,
                 logScale: log,
                 xAxis: xAxis,
+                marks: marks,
                 lines: [
                   ChartLine(
                     label: 'Learning rate',
@@ -135,6 +143,7 @@ class MetricsTab extends ConsumerWidget {
                 height: 140,
                 logScale: log,
                 xAxis: xAxis,
+                marks: marks,
                 lines: [
                   ChartLine(label: 'Grad norm', color: ChartColors.gradient, series: gradNorm),
                 ],
@@ -157,6 +166,7 @@ class MetricsTab extends ConsumerWidget {
                 title: entry.key,
                 height: 140,
                 xAxis: xAxis,
+                marks: marks,
                 lines: [ChartLine(label: entry.key, color: ChartColors.other, series: entry.value)],
               ),
           ],

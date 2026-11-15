@@ -19,6 +19,7 @@ import '../run_detail/widgets/job_times.dart';
 import '../run_detail/widgets/output_card.dart';
 import '../run_detail/widgets/queue_card.dart';
 import '../run_detail/widgets/resources_card.dart';
+import '../run_detail/widgets/jobs_card.dart';
 import '../run_detail/widgets/stop_button.dart';
 
 /// Where a simulation is (simulated time, or iterations for a steady
@@ -45,6 +46,7 @@ class SimulationOverviewTab extends StatelessWidget {
         _Timing(simulation: run),
         if (JobTimes.showsFor(run)) JobTimes(run: run),
         if (ResourcesCard.showsFor(run)) ResourcesCard(run: run),
+        if (JobsCard.showsFor(run)) JobsCard(run: run),
         if (HourlyPrice.of(run.system) case final price?) CostStrip(run: run, price: price),
         RunNotesCard(run: run),
         if (run.status != RunStatus.crashed) OutputCard(run: run),

@@ -4,15 +4,23 @@ import '../../app/theme.dart';
 import '../../models/run.dart';
 import '../../shared/widgets/section_card.dart';
 
-/// The hyperparameters of [runs] that differ (a setting some runs don't have
-/// counts as differing), in the order they first appear, and how many are the
-/// same in all of them.
+/// What Compare compares of a run: its hyperparameters, then its code
+/// version ("045e08c + changes") when the logger recorded it.
+Map<String, String> settingsOf(Run run) => {
+  ...run.hyperparameters,
+  'Code version': ?run.system?.repro?.codeVersion,
+};
+
+/// The settings of [runs] (see [settingsOf]) that differ (a setting some runs
+/// don't have counts as differing), in the order they first appear, and how
+/// many are the same in all of them.
 ({List<String> differ, List<String> same}) diffSettings(List<Run> runs) {
+  final settings = [for (final run in runs) settingsOf(run)];
   // Every setting once, in the order the runs first list them.
-  final keys = <String>{for (final run in runs) ...run.hyperparameters.keys}.toList();
+  final keys = <String>{for (final s in settings) ...s.keys}.toList();
   final differ = <String>[], same = <String>[];
   for (final key in keys) {
-    final values = {for (final run in runs) run.hyperparameters[key]};
+    final values = {for (final s in settings) s[key]};
     (values.length == 1 && values.single != null ? same : differ).add(key);
   }
   return (differ: differ, same: same);
@@ -55,7 +63,10 @@ class _SettingsDiffCardState extends State<SettingsDiffCard> {
     // Left-aligned at its own width, not stretched across the column.
     Widget cell(String text, {TextStyle? style}) => Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      child: Align(alignment: Alignment.centerLeft, child: Text(text, style: style)),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(text, style: style),
+      ),
     );
     return SectionCard(
       title: 'Settings that differ',
@@ -109,7 +120,7 @@ class _SettingsDiffCardState extends State<SettingsDiffCard> {
                         cell(key, style: differs ? theme.textTheme.bodyMedium : muted),
                         for (final run in widget.runs)
                           cell(
-                            run.hyperparameters[key] ?? '—',
+                            settingsOf(run)[key] ?? '—',
                             style: differs ? mono.copyWith(fontWeight: FontWeight.w600) : mono,
                           ),
                       ],

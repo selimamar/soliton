@@ -1,6 +1,7 @@
 import 'layer_info.dart';
 import 'model_flow.dart';
 import 'model_helpers.dart';
+import 'run_job.dart';
 import 'simulation_info.dart';
 import 'system_info.dart';
 
@@ -32,6 +33,7 @@ class Run {
     this.endedAt,
     this.statusMessage,
     this.stopRequestedAt,
+    this.jobs = const [],
     this.tags = const [],
     this.notes = '',
     this.system,
@@ -66,6 +68,11 @@ class Run {
       final String s => DateTime.parse(s),
       _ => null,
     },
+    // Older servers don't send it.
+    jobs: List.unmodifiable([
+      for (final job in (json['jobs'] as List?) ?? const [])
+        RunJob.fromJson(job as Map<String, Object?>),
+    ]),
     // Older servers don't send these.
     tags: List.unmodifiable([for (final tag in (json['tags'] as List?) ?? const []) tag as String]),
     notes: json['notes'] as String? ?? '',
@@ -118,6 +125,13 @@ class Run {
 
   /// Optional explanation, e.g. why the run crashed.
   final String? statusMessage;
+
+  /// Each process (Slurm job) that ran it, in order: several for a run
+  /// continued from checkpoints. Empty from an older server.
+  final List<RunJob> jobs;
+
+  /// The steps where a later job took over (marked on its charts).
+  List<int> get jobStarts => [for (final job in jobs.skip(1)) job.startStep];
 
   /// When it was asked to stop from the app (its Stop button), while it
   /// runs; its script stops at its next `run.should_stop()` check.
@@ -247,6 +261,7 @@ class Run {
     'lossPreview': [for (final v in lossPreview) encodeDouble(v)],
     'statusMessage': statusMessage,
     'stopRequestedAt': stopRequestedAt?.toIso8601String(),
+    'jobs': [for (final job in jobs) job.toJson()],
     'tags': tags,
     'notes': notes,
     'system': system?.toJson(),
@@ -275,6 +290,7 @@ class Run {
       sameDoubles(other.lossPreview, lossPreview) &&
       other.statusMessage == statusMessage &&
       other.stopRequestedAt == stopRequestedAt &&
+      deepListEquals(other.jobs, jobs) &&
       deepListEquals(other.tags, tags) &&
       other.notes == notes &&
       other.system == system &&
@@ -302,6 +318,7 @@ class Run {
     Object.hashAll(lossPreview.map(doubleHash)),
     statusMessage,
     stopRequestedAt,
+    Object.hashAll(jobs),
     Object.hashAll(tags),
     notes,
     system,

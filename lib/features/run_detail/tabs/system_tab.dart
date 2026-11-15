@@ -17,6 +17,7 @@ import '../../../shared/widgets/section_card.dart';
 import '../../../shared/widgets/spaced_list_view.dart';
 import '../../../shared/widgets/stat_tile.dart';
 import '../system_usage.dart';
+import '../widgets/reproduce_card.dart';
 
 /// What the run trains on (machine, GPUs, software, Slurm job) and how busy
 /// it keeps them: GPU use and memory, CPU, memory, GPU temperature and power.
@@ -43,6 +44,7 @@ class SystemTab extends ConsumerWidget {
         return SpacedListView(
           children: [
             if (info != null) _Machine(info: info, simulation: run.isSimulation),
+            if (info?.repro case final repro?) ReproduceCard(repro: repro),
             if (usage.isEmpty)
               const _Note("GPU, memory and CPU use weren't sampled (system_metrics=False).")
             else ...[

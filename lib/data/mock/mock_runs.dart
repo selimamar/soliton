@@ -352,7 +352,101 @@ List<MockRun> buildMockRuns(DateTime now) => [
   ),
   ..._sweepRuns(now),
   _queuedRun(now),
-];
+].map((m) => m.run.id == 'fno3d-turbulence' ? _continued(m) : _withRepro(m)).toList();
+
+/// [mock] with what its logger would have recorded to run it again, for the
+/// Sherlock runs: the sweep's last run on a newer commit, resnet50-cifar with
+/// uncommitted changes.
+MockRun _withRepro(MockRun mock) {
+  final run = mock.run;
+  final system = run.system;
+  if (system == null || run.host != 'Sherlock') return mock;
+  final sweep = run.id.startsWith('fno-ns-');
+  final repro = {
+    'cwd': '/home/users/me/${sweep ? 'fno-sweep' : run.project}',
+    'command': sweep
+        ? 'python3 train_fno.py --config configs/${run.id}.yaml'
+        : 'python3 train.py --model ${run.architecture.type.toLowerCase()} --epochs ${run.totalEpochs}',
+    'git': {
+      'commit': run.id == 'fno-ns-m16-w64'
+          ? '9f3e2b7c41d0a8e6f5b2c9d1e7a3f4b8c6d2e0a1'
+          : '4c1d8a2e9b7f3c6d5e0a1b2c3d4e5f6a7b8c9d0e',
+      'branch': 'main',
+      'remote': 'https://github.com/example-lab/${sweep ? 'neural-operators' : run.project}.git',
+      if (run.id == 'resnet50-cifar') 'dirty': ['train.py', 'configs/resnet50.yaml'],
+    },
+    'jobScript':
+        '#!/bin/bash\n#SBATCH --job-name=${run.name}\n#SBATCH --partition=gpu\n#SBATCH -G 1\n'
+        '#SBATCH --time=24:00:00\n#SBATCH --signal=B:TERM@60\n\nml python/3.12.1\n'
+        'source ~/.soliton_env\nexport SOLITON_DIR=\$SCRATCH/soliton-runs\nexec python3 train.py\n',
+    'packages': ['numpy==2.1.3', 'soliton==0.2.0', 'torch==2.4.1', 'torchvision==0.19.1'],
+  };
+  return MockRun(
+    run: Run.fromJson({
+      ...run.toJson(),
+      'system': {...system.toJson(), 'repro': repro},
+    }),
+    metrics: mock.metrics,
+    layerStats: mock.layerStats,
+    fields: mock.fields,
+    extras: mock.extras,
+  );
+}
+
+/// [mock] as a run continued from checkpoints over three Slurm jobs, the
+/// first two stopped by their time limit.
+MockRun _continued(MockRun mock) {
+  final run = mock.run;
+  final step = run.currentStep;
+  final start = run.startedAt;
+  String utc(DateTime t) => t.toUtc().toIso8601String();
+  Map<String, Object?> job(
+    String id,
+    Duration from,
+    Duration ran,
+    int a,
+    int? b, {
+    Duration wait = const Duration(minutes: 40),
+  }) => {
+    'jobId': id,
+    'submittedAt': utc(start.subtract(from + wait)),
+    'startedAt': utc(start.subtract(from)),
+    'endedAt': b == null ? null : utc(start.subtract(from).add(ran)),
+    'status': b == null ? null : 'crashed',
+    'message': b == null ? null : 'Stopped by its Slurm time limit (SIGTERM).',
+    'startStep': a,
+    'endStep': b,
+  };
+  return MockRun(
+    run: Run.fromJson({
+      ...run.toJson(),
+      'resumedAtStep': step * 2 ~/ 3,
+      'jobs': [
+        job('52101377', const Duration(hours: 50), const Duration(hours: 24), 0, step ~/ 3),
+        job(
+          '52203940',
+          const Duration(hours: 25),
+          const Duration(hours: 24),
+          step ~/ 3,
+          step * 2 ~/ 3,
+          wait: const Duration(minutes: 55),
+        ),
+        job(
+          '52298811',
+          Duration.zero,
+          Duration.zero,
+          step * 2 ~/ 3,
+          null,
+          wait: const Duration(minutes: 35),
+        ),
+      ],
+    }),
+    metrics: mock.metrics,
+    layerStats: mock.layerStats,
+    fields: mock.fields,
+    extras: mock.extras,
+  );
+}
 
 /// A job still waiting in Slurm's queue (submitted with `soliton sbatch`):
 /// nothing logged yet.

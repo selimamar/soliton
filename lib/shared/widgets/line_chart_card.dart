@@ -73,6 +73,7 @@ class LineChartCard extends StatelessWidget {
     this.yRange,
     this.showLatest = true,
     this.exportable = true,
+    this.marks = const [],
   });
 
   final String title;
@@ -102,6 +103,10 @@ class LineChartCard extends StatelessWidget {
 
   /// Shows a button that saves the chart as an image.
   final bool exportable;
+
+  /// Steps marked with a dashed line, e.g. where a later job took over a
+  /// run continued from a checkpoint (`Run.jobStarts`).
+  final List<int> marks;
 
   /// The value's height on the chart, or null if it can't be drawn.
   double? _plotY(double value) {
@@ -245,6 +250,24 @@ class LineChartCard extends StatelessWidget {
       minY: y.min,
       maxY: y.max,
       lineBarsData: bars,
+      extraLinesData: ExtraLinesData(
+        verticalLines: [
+          for (final (i, step) in marks.indexed)
+            if (xAxis.position(step) case final x when x > minX && x < maxX)
+              VerticalLine(
+                x: x,
+                color: scheme.onSurfaceVariant.withValues(alpha: 0.6),
+                strokeWidth: 1,
+                dashArray: [4, 4],
+                label: VerticalLineLabel(
+                  show: true,
+                  alignment: Alignment.topRight,
+                  style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant),
+                  labelResolver: (_) => 'job ${i + 2}',
+                ),
+              ),
+        ],
+      ),
       borderData: FlBorderData(show: false),
       gridData: FlGridData(
         drawVerticalLine: false,

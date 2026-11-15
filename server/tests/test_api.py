@@ -12,7 +12,7 @@ RUN_KEYS = {
     "id", "name", "project", "host", "status", "startedAt", "endedAt", "currentStep",
     "totalSteps", "currentEpoch", "totalEpochs", "hyperparameters", "architecture",
     "lossPreview", "statusMessage", "tags", "notes", "system", "simulation",
-    "datasets", "resumedAtStep", "stopRequestedAt",
+    "datasets", "resumedAtStep", "stopRequestedAt", "jobs",
 }
 LAYER_KEYS = {
     "layerName", "activationMean", "activationStd", "gradNorm", "activationHistogram",
@@ -1075,3 +1075,45 @@ def test_a_refresh_doesnt_bring_back_a_queued_job_that_started(client):
         "name": "x", "queued": True, "updateOnly": True, "system": {"slurm": {"jobId": "999"}},
     })
     assert response.status_code == 404
+
+
+# Runs continued over several jobs ----------------------------------------------
+
+def test_a_run_continued_over_jobs_keeps_each_jobs_history(client, clock):
+    create_run(client, system={"slurm": {"jobId": "101", "submitTime": "2026-11-12T08:40:00Z"}})
+    send(client, [metrics(500, train__loss=0.5),
+                  {"type": "status", "status": "crashed", "message": "Stopped by its Slurm time limit"}])
+    clock.advance(hours=2)
+    create_run(client, startedAt="2026-11-12T11:00:00Z",
+               system={"slurm": {"jobId": "102", "submitTime": "2026-11-12T10:30:00Z"}})
+    send(client, [metrics(800, train__loss=0.3), {"type": "status", "status": "finished"}])
+    jobs = client.get("/api/runs/tiny-1").json()["jobs"]
+    assert [(j["jobId"], j["startStep"], j["endStep"], j["status"]) for j in jobs] == [
+        ("101", 0, 500, "crashed"), ("102", 500, 800, "finished"),
+    ]
+    assert jobs[0]["message"] == "Stopped by its Slurm time limit"
+    assert (jobs[1]["submittedAt"], jobs[1]["startedAt"]) == ("2026-11-12T10:30:00Z", "2026-11-12T11:00:00Z")
+
+
+def test_a_job_that_died_without_a_word_is_closed_when_the_next_takes_over(client, clock):
+    create_run(client, system={"slurm": {"jobId": "201"}})
+    send(client, [metrics(100, train__loss=0.5)])
+    clock.advance(minutes=3)  # Killed, and continued before the server noticed.
+    create_run(client, startedAt="2026-11-12T09:03:00Z", system={"slurm": {"jobId": "202"}})
+    first, second = client.get("/api/runs/tiny-1").json()["jobs"]
+    assert (first["jobId"], first["status"], first["endStep"]) == ("201", "crashed", 100)
+    assert first["message"].startswith("Ended without a word")
+    assert (second["jobId"], second["startStep"], second["endedAt"]) == ("202", 100, None)
+    # The same process sending its description again isn't a new job.
+    create_run(client, startedAt="2026-11-12T09:03:00Z", system={"slurm": {"jobId": "202"}})
+    assert len(client.get("/api/runs/tiny-1").json()["jobs"]) == 2
+
+
+def test_a_run_gone_quiet_ends_its_job(app, client, clock):
+    create_run(client, system={"slurm": {"jobId": "301"}})
+    send(client, [metrics(10, train__loss=0.5)])
+    clock.advance(minutes=11)
+    app.state.store.mark_stale(app.state.settings.stale_after)
+    [job] = client.get("/api/runs/tiny-1").json()["jobs"]
+    assert (job["status"], job["endStep"]) == ("crashed", 10)
+    assert job["message"].startswith("Lost contact")

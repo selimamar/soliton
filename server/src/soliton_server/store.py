@@ -24,6 +24,7 @@ from .db import (
     LayerRow,
     MetricPointRow,
     RunItemRow,
+    RunJobRow,
     RunNotesRow,
     RunOutputRow,
     RunResumeRow,
@@ -282,6 +283,7 @@ class Store:
         changes: list[Change] = []
         with self._sessions.begin() as session:
             row = session.get(RunRow, run_id)
+            new_job = False
             if row is None and body.updateOnly:
                 raise RunNotFound(run_id)
             if row is not None and body.queued:
@@ -321,6 +323,11 @@ class Store:
                         row.last_seen_at = now
                         event = "revived"
                         self._mark_resume(session, row)
+                    elif row.status == "live" and _aware(restarted) > _aware(row.started_at):
+                        # A new process took over a run that never said it
+                        # ended (killed outright, before the server noticed).
+                        self._end_job(session, row, now, "Ended without a word: a new job took over")
+                        new_job = True
                     row.started_at = restarted
             row.name = body.name
             row.project = body.project
@@ -352,6 +359,8 @@ class Store:
                 session.add(RunNotesRow(run_id=run_id, tags=list(body.tags), notes=body.notes,
                                         updated_at=now))
             session.flush()
+            if (event in ("created", "started", "revived") and not body.queued) or new_job:
+                self._start_job(session, row, body.system)
             if event == "created" and not body.queued:
                 changes = self._take_over_queued(session, run_id, body.system)
             return self._run_json(session, row), [_change(row, event), *changes]
@@ -371,6 +380,36 @@ class Store:
     def stop_requested(self, run_id: str) -> bool:
         with self._sessions() as session:
             return session.get(RunStopRow, run_id) is not None
+
+    @staticmethod
+    def _start_job(session: Session, row: RunRow, system: dict | None) -> None:
+        """Records the process (Slurm job) that just started [row]."""
+        last = session.scalars(
+            select(RunJobRow).where(RunJobRow.run_id == row.id).order_by(RunJobRow.seq.desc())
+        ).first()
+        slurm = _slurm_of(system)
+        session.add(RunJobRow(
+            run_id=row.id,
+            seq=(last.seq + 1) if last is not None else 1,
+            job_id=str(slurm["jobId"])[:64] if slurm.get("jobId") else None,
+            submitted_at=_parse_time(slurm.get("submitTime")),
+            started_at=_aware(row.started_at),
+            start_step=row.current_step,
+        ))
+
+    @staticmethod
+    def _end_job(session: Session, row: RunRow, now: datetime, message: str | None = None) -> None:
+        """Closes [row]'s current job as the run ends (or is taken over)."""
+        job = session.scalars(
+            select(RunJobRow).where(RunJobRow.run_id == row.id, RunJobRow.ended_at.is_(None))
+            .order_by(RunJobRow.seq.desc())
+        ).first()
+        if job is None:
+            return
+        job.ended_at = _aware(row.ended_at or row.last_seen_at or now)
+        job.status = row.status if message is None else "crashed"
+        job.message = message if message is not None else row.status_message
+        job.end_step = row.current_step
 
     @classmethod
     def _mark_resume(cls, session: Session, row: RunRow) -> None:
@@ -519,7 +558,7 @@ class Store:
             change = _change(row, "deleted")
             for table in (MetricPointRow, LayerPointRow, LayerRow, FieldRow, RunItemRow,
                           RunNotesRow, RunSystemRow, RunSimulationRow, DatasetUseRow,
-                          RunOutputRow, RunResumeRow, RunStopRow):
+                          RunOutputRow, RunResumeRow, RunStopRow, RunJobRow):
                 session.execute(delete(table).where(table.run_id == run_id))
             session.delete(row)
             return change
@@ -550,6 +589,7 @@ class Store:
                         row.ended_at = time
                         row.lost_contact = False
                         session.execute(delete(RunStopRow).where(RunStopRow.run_id == run_id))
+                        self._end_job(session, row, now)
                         change = _change(row, event.status)
                         changes.append(change if event.notify else replace(change, notify=False))
                     if event.diverged and event.status == "crashed":
@@ -680,6 +720,7 @@ class Store:
                 row.lost_contact = True
                 row.ended_at = row.last_seen_at
                 row.status_message = message
+                self._end_job(session, row, now)
                 changes.append(_change(row, "crashed"))
         return changes
 
@@ -960,6 +1001,9 @@ class Store:
         system = session.get(RunSystemRow, row.id)
         resume = session.get(RunResumeRow, row.id)
         stop = session.get(RunStopRow, row.id)
+        jobs = session.scalars(
+            select(RunJobRow).where(RunJobRow.run_id == row.id).order_by(RunJobRow.seq)
+        ).all()
         return {
             "id": row.id,
             "name": row.name,
@@ -980,6 +1024,13 @@ class Store:
             "statusMessage": row.status_message,
             # Asked from the app to stop (until it ends).
             "stopRequestedAt": iso(stop.requested_at) if stop else None,
+            # Each process (Slurm job) that ran it, in order.
+            "jobs": [
+                {"jobId": j.job_id, "submittedAt": iso(j.submitted_at), "startedAt": iso(j.started_at),
+                 "endedAt": iso(j.ended_at), "status": j.status, "message": j.message,
+                 "startStep": j.start_step, "endStep": j.end_step}
+                for j in jobs
+            ],
             "tags": list(notes.tags) if notes else [],
             "notes": notes.notes if notes else "",
             "system": system.info if system else None,

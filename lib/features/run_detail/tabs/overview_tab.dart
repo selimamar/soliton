@@ -21,6 +21,7 @@ import '../widgets/architecture_tree.dart';
 import '../widgets/network_diagram.dart';
 import '../widgets/run_notes_card.dart';
 import '../widgets/job_times.dart';
+import '../widgets/jobs_card.dart';
 import '../widgets/output_card.dart';
 import '../widgets/queue_card.dart';
 import '../widgets/resources_card.dart';
@@ -58,6 +59,7 @@ class OverviewTab extends StatelessWidget {
           _ProgressStrip(run: run),
         if (JobTimes.showsFor(run)) JobTimes(run: run),
         if (ResourcesCard.showsFor(run)) ResourcesCard(run: run),
+        if (JobsCard.showsFor(run)) JobsCard(run: run),
         _SpeedStrip(runId: run.id),
         if (HourlyPrice.of(run.system) case final price?) CostStrip(run: run, price: price),
         RunNotesCard(run: run),

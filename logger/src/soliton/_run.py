@@ -30,6 +30,8 @@ from ._datasets import Dataset
 from ._output import OutputCapture
 from ._datasets import describe as describe_dataset
 from ._datasets import upload as upload_dataset
+from ._repro import capture_code as _capture_code_setting
+from ._repro import reproducibility_info
 from ._system import SystemMonitor, framework_versions, system_info
 from ._upload import ApiClient, RunFiles, Uploader
 from ._util import (
@@ -77,6 +79,7 @@ class Run:
         system_metrics: bool = True,
         system_interval: float = 15,
         capture_output: Optional[bool] = None,
+        capture_code: Optional[bool] = None,
         price_per_hour: Optional[float] = None,
         total_steps: int = 0,
         total_epochs: int = 0,
@@ -120,7 +123,8 @@ class Run:
             "architecture": None,
             "tags": _clean_tags(tags),
             "notes": str(notes or "")[:10_000],
-            "system": _system_info(price) if mode != "disabled" else None,
+            "system": (_system_info(price, _capture_code_setting(capture_code))
+                       if mode != "disabled" else None),
         }
         if _simulation is not None:
             # What makes it a simulation (see _simulation.py).
@@ -576,13 +580,18 @@ def _field_name(name: Any) -> str:
     return text
 
 
-def _system_info(price_per_hour: Optional[float] = None) -> dict:
+def _system_info(price_per_hour: Optional[float] = None, code: bool = True) -> dict:
     try:
         info = system_info()
     except Exception:  # Never let this stop a run from starting.
         info = {}
     if price_per_hour is not None:
         info["pricePerHour"] = price_per_hour
+    if code:
+        try:
+            info["repro"] = reproducibility_info()
+        except Exception:
+            pass
     return info
 
 

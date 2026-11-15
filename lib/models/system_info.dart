@@ -18,6 +18,7 @@ class SystemInfo {
     this.cudnn,
     this.slurm = const {},
     this.pricePerHour,
+    this.repro,
   });
 
   factory SystemInfo.fromJson(Map<String, Object?> json) => SystemInfo(
@@ -40,6 +41,10 @@ class SystemInfo {
         key as String: '$value',
     }),
     pricePerHour: (json['pricePerHour'] as num?)?.toDouble(),
+    repro: switch (json['repro']) {
+      final Map<String, Object?> repro => ReproInfo.fromJson(repro),
+      _ => null,
+    },
   );
 
   /// The node, e.g. `sh03-12n07.int`.
@@ -112,6 +117,10 @@ class SystemInfo {
   /// estimate otherwise.
   final double? pricePerHour;
 
+  /// What it takes to run it again (code version, command, job script,
+  /// packages), if the logger recorded it.
+  final ReproInfo? repro;
+
   /// GPU memory across all the job's GPUs, if known.
   double? get gpuMemoryGb => gpus.isEmpty || gpus.any((g) => g.memoryGb <= 0)
       ? null
@@ -131,6 +140,7 @@ class SystemInfo {
     'cudnn': ?cudnn,
     if (slurm.isNotEmpty) 'slurm': slurm,
     'pricePerHour': ?pricePerHour,
+    'repro': ?repro?.toJson(),
   };
 
   @override
@@ -148,7 +158,8 @@ class SystemInfo {
       other.cuda == cuda &&
       other.cudnn == cudnn &&
       deepMapEquals(other.slurm, slurm) &&
-      other.pricePerHour == pricePerHour;
+      other.pricePerHour == pricePerHour &&
+      other.repro == repro;
 
   @override
   int get hashCode => Object.hash(
@@ -165,6 +176,119 @@ class SystemInfo {
     cudnn,
     Object.hashAllUnordered(slurm.entries.map((e) => Object.hash(e.key, e.value))),
     pricePerHour,
+    repro,
+  );
+}
+
+/// What the logger recorded to run a computation again: the working
+/// directory and command line, the git commit (with the files that had
+/// uncommitted changes), the Slurm job script and the Python packages.
+/// Secrets are hidden by the logger.
+class ReproInfo {
+  const ReproInfo({
+    this.cwd,
+    this.command,
+    this.commit,
+    this.branch,
+    this.remote,
+    this.dirty = const [],
+    this.dirtyCount,
+    this.jobScript,
+    this.packages = const [],
+  });
+
+  factory ReproInfo.fromJson(Map<String, Object?> json) {
+    final git = (json['git'] as Map?)?.cast<String, Object?>() ?? const {};
+    return ReproInfo(
+      cwd: json['cwd'] as String?,
+      command: json['command'] as String?,
+      commit: git['commit'] as String?,
+      branch: git['branch'] as String?,
+      remote: git['remote'] as String?,
+      dirty: List.unmodifiable([for (final f in (git['dirty'] as List?) ?? const []) f as String]),
+      dirtyCount: (git['dirtyCount'] as num?)?.toInt(),
+      jobScript: json['jobScript'] as String?,
+      packages: List.unmodifiable([
+        for (final p in (json['packages'] as List?) ?? const []) p as String,
+      ]),
+    );
+  }
+
+  final String? cwd;
+
+  /// E.g. `python3 train.py --lr 3e-4`.
+  final String? command;
+  final String? commit;
+  final String? branch;
+  final String? remote;
+
+  /// Files with uncommitted changes (the first ones; [dirtyCount] all).
+  final List<String> dirty;
+  final int? dirtyCount;
+
+  /// The Slurm job's batch script.
+  final String? jobScript;
+
+  /// E.g. `numpy==2.1.0`.
+  final List<String> packages;
+
+  /// "045e08c", or "045e08c + changes" when files weren't committed.
+  String? get codeVersion => switch (commit) {
+    final c? => '${c.length > 7 ? c.substring(0, 7) : c}${dirty.isEmpty ? '' : ' + changes'}',
+    null => null,
+  };
+
+  int get changedFiles => dirtyCount ?? dirty.length;
+
+  /// What to paste in a shell to run it again from where it ran.
+  String? get rerun => switch ((cwd, command)) {
+    (final dir?, final cmd?) => 'cd ${_quote(dir)} && $cmd',
+    (null, final cmd?) => cmd,
+    _ => null,
+  };
+
+  static String _quote(String path) =>
+      RegExp(r'^[A-Za-z0-9_./~+-]+$').hasMatch(path) ? path : "'${path.replaceAll("'", r"'\''")}'";
+
+  Map<String, Object?> toJson() => {
+    'cwd': ?cwd,
+    'command': ?command,
+    if (commit != null)
+      'git': {
+        'commit': commit,
+        'branch': ?branch,
+        'remote': ?remote,
+        if (dirty.isNotEmpty) 'dirty': dirty,
+        'dirtyCount': ?dirtyCount,
+      },
+    'jobScript': ?jobScript,
+    if (packages.isNotEmpty) 'packages': packages,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is ReproInfo &&
+      other.cwd == cwd &&
+      other.command == command &&
+      other.commit == commit &&
+      other.branch == branch &&
+      other.remote == remote &&
+      deepListEquals(other.dirty, dirty) &&
+      other.dirtyCount == dirtyCount &&
+      other.jobScript == jobScript &&
+      deepListEquals(other.packages, packages);
+
+  @override
+  int get hashCode => Object.hash(
+    cwd,
+    command,
+    commit,
+    branch,
+    remote,
+    Object.hashAll(dirty),
+    dirtyCount,
+    jobScript,
+    Object.hashAll(packages),
   );
 }
 

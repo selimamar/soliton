@@ -179,6 +179,12 @@ offline runs). The full logger API is in [logger/README.md](../logger/README.md)
   limit for Slurm jobs, cost estimate, hyperparameters, tags and notes, what
   it printed), Metrics, Layers, Fields and System (the machine and how busy
   it kept it).
+- **Continued runs** (several jobs, from checkpoints): a Jobs card on the
+  Overview lists each job (Slurm id, queue wait, run time, steps, how it
+  ended), and the Metrics charts mark where each later job took over.
+- **Reproduce**, on the System tab: the git commit, the files with
+  uncommitted changes, the command, the job script and the packages, with a
+  button that copies the command to rerun.
 - **Resources**, on an ended Slurm job's Overview: memory, CPUs, GPUs and
   time it used against what it asked for, and the sbatch options to ask for
   next time (e.g. `--mem=16G -c 4 --time=03:00:00`, with a copy button), or a

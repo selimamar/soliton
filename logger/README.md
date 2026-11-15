@@ -435,6 +435,18 @@ duplicates, so running it twice is harmless. With `SOLITON_MODE=offline`,
 nothing is uploaded during training. Use it where there's no internet, then
 `sync` from a machine that has it.
 
+## Reproducing a run
+
+When a run starts, the logger records what it takes to run it again, shown
+on the run's System tab under Reproduce (with a button that copies the
+command): the git commit of the script's repository, its branch and remote,
+and which files had uncommitted changes (never the diff itself); the command
+line and working directory; the Slurm job script (`scontrol write
+batch_script`); and the installed Python packages. Values that look like
+secrets are replaced by `***`: options and job-script variables named like a
+token, password, secret or key, and credentials in a git remote's URL. Turn it
+off with `init(capture_code=False)` or `SOLITON_CAPTURE_CODE=0`.
+
 ## Output
 
 What the script prints (`print`, logging, warnings, its errors) is sent with

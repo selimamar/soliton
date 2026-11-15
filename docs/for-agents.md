@@ -42,6 +42,8 @@ the computation + soliton logger  ──HTTP──►  soliton-server  ◄──
 | Automatic: the machine | **System** tab: CPU model and cores, memory limit, GPUs, software versions, host ("Sherlock", "Modal", ...), Slurm job (id, partition, node). Usage every 15 s: CPU %, memory against the job's limit, GPU use, memory, temperature, power |
 | Automatic: the Slurm job | Overview: queue wait, expected finish, time limit, and a warning when the limit comes first; an alert (and ntfy push) once per job when, at its pace, it won't finish in time. When it ends, **Resources**: memory, CPUs, GPUs and time used against what it asked for, with sbatch options for next time |
 | `soliton sbatch <sbatch's options> job.sbatch` (in place of `sbatch`) | A **Queued** card while the job waits: how long, why, expected start, what it asked for. The run the job's script starts takes its place (matched by Slurm job id); with `--id <run id>`, that run itself shows as queued. `soliton queue` updates what Slurm says, and ends jobs that left without starting |
+| Automatic: how to run it again | **System** tab, Reproduce: the git commit (and files with uncommitted changes), the command and directory, the Slurm job script, the packages; "Copy command to rerun". Secrets hidden. Compare shows the code version among the settings that differ |
+| A run continued over several jobs (`init(id=...)`) | Overview: a **Jobs** card (each job's Slurm id, queue wait, run time, steps, how it ended); the Metrics charts mark where each later job took over |
 | Automatic: what the script prints | **Output** on the Overview (last 1,000 lines), first thing on a crashed run, with the traceback |
 
 ### Metric names
@@ -105,6 +107,7 @@ work around it; check uploads as in "Checking that it works" below.
 | `SOLITON_PRICE_PER_HOUR` | estimated | `0` hides the cost estimate |
 | `SOLITON_HOST` | detected | The host shown in the app |
 | `SOLITON_REFRESH_QUEUE` | `1` | `0`: a starting Slurm job doesn't refresh the user's other queued jobs |
+| `SOLITON_CAPTURE_CODE` | `1` | `0`: don't record the git commit, command line, job script and packages |
 
 ## Adding monitoring to a computation
 
