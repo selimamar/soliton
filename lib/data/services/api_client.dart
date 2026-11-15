@@ -22,9 +22,12 @@ class ServerUnreachableException extends ApiException {
   String toString() => 'ServerUnreachableException: $address';
 }
 
-/// The server rejected the token.
+/// The server rejected the token; [jobToken] when it is the job token
+/// (Settings → Advanced security), which can only add and update runs and data.
 class UnauthorizedException extends ApiException {
-  const UnauthorizedException();
+  const UnauthorizedException({this.jobToken = false});
+
+  final bool jobToken;
 }
 
 /// The server has nothing at this address (e.g. a deleted run).
@@ -96,8 +99,12 @@ class ApiClient {
         }
       case 204:
         return null;
-      case 401 || 403:
+      case 401:
         throw const UnauthorizedException();
+      case 403:
+        throw UnauthorizedException(
+          jobToken: utf8.decode(response.bodyBytes).contains('job token'),
+        );
       case 404:
         throw const NotFoundException();
       default:
@@ -107,6 +114,25 @@ class ApiClient {
 
   /// Checks the address and token (the "Connect" button).
   Future<void> checkSession() => getJson('/session');
+
+  /// Whether the server has a job token (Settings → Advanced security);
+  /// null for a server too old to have them.
+  Future<bool?> jobTokenEnabled() async {
+    final session = await getJson('/session');
+    return session is Map && session['jobToken'] is bool ? session['jobToken'] as bool : null;
+  }
+
+  /// A new job token, replacing any earlier one. The server keeps only its
+  /// hash: this is the one time it can be read.
+  Future<String> createJobToken() async {
+    final body = await _send(() => _http.post(connection.api('/job-token'), headers: _headers));
+    if (body case {'token': final String token}) return token;
+    throw const ServerErrorException(200);
+  }
+
+  /// Removes the job token: jobs need the main token again.
+  Future<void> deleteJobToken() =>
+      _send(() => _http.delete(connection.api('/job-token'), headers: _headers));
 
   void close() => _http.close();
 }

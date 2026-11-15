@@ -232,6 +232,30 @@ class RunItemRow(Base):
     data: Mapped[dict] = mapped_column(JSON)
 
 
+class RunResumeRow(Base):
+    """Where a run stood when its latest process started: a job continuing
+    it from a checkpoint (or a queued job starting). Its pace counts from
+    here, not from step 0. A table of its own, so older databases get it
+    without a migration; runs without a row started at step 0."""
+
+    __tablename__ = "run_resume"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    step: Mapped[int] = mapped_column(Integer)
+    sim_time: Mapped[float | None] = mapped_column(Double, nullable=True)
+
+
+class ServerSettingRow(Base):
+    """Settings made from the app, e.g. the job token's hash. New tables are
+    created on start, so existing databases get this one too."""
+
+    __tablename__ = "server_settings"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+
+
 def make_engine(url: str) -> Engine:
     if url.startswith("sqlite"):
         engine = create_engine(url, connect_args={"check_same_thread": False, "timeout": 30})

@@ -28,17 +28,23 @@ class MetricPoint {
 /// A time series of one scalar metric (e.g. `train/loss`).
 class MetricSeries {
   /// Pass an unmodifiable (e.g. `const`) list: the series never changes.
-  const MetricSeries({required this.name, required this.points});
+  const MetricSeries({required this.name, required this.points, this.mean});
 
   factory MetricSeries.fromJson(Map<String, Object?> json) => MetricSeries(
     name: json['name']! as String,
     points: List.unmodifiable([
       for (final p in json['points']! as List) MetricPoint.fromJson(p as Map<String, Object?>),
     ]),
+    mean: (json['mean'] as num?)?.toDouble(),
   );
 
   final String name;
   final List<MetricPoint> points;
+
+  /// The mean of every finite value logged, as the server worked it out
+  /// before downsampling (null from an older server, or when made here).
+  /// The points' own mean leans toward each bucket's (min + max) / 2.
+  final double? mean;
 
   bool get isEmpty => points.isEmpty;
 
@@ -47,6 +53,7 @@ class MetricSeries {
   Map<String, Object?> toJson() => {
     'name': name,
     'points': [for (final p in points) p.toJson()],
+    'mean': ?mean,
   };
 
   /// Returns at most [maxPoints] points that keep the shape of the curve,
@@ -58,8 +65,18 @@ class MetricSeries {
   /// last points are always kept.
   MetricSeries downsampled(int maxPoints) {
     if (points.length <= maxPoints) return this;
+    final finite = [
+      for (final p in points)
+        if (p.value.isFinite) p.value,
+    ];
+    final mean =
+        this.mean ?? (finite.isEmpty ? null : finite.reduce((a, b) => a + b) / finite.length);
     if (maxPoints < 4) {
-      return MetricSeries(name: name, points: [if (maxPoints >= 2) points.first, points.last]);
+      return MetricSeries(
+        name: name,
+        points: [if (maxPoints >= 2) points.first, points.last],
+        mean: mean,
+      );
     }
 
     final inner = points.length - 2; // Points between the first and the last.
@@ -82,7 +99,7 @@ class MetricSeries {
       sampled.add(points[low < high ? high : low]);
     }
     sampled.add(points.last);
-    return MetricSeries(name: name, points: List.unmodifiable(sampled));
+    return MetricSeries(name: name, points: List.unmodifiable(sampled), mean: mean);
   }
 
   /// Orders values for [downsampled]: NaN sorts as the highest value, so it
@@ -91,10 +108,13 @@ class MetricSeries {
 
   @override
   bool operator ==(Object other) =>
-      other is MetricSeries && other.name == name && deepListEquals(other.points, points);
+      other is MetricSeries &&
+      other.name == name &&
+      deepListEquals(other.points, points) &&
+      other.mean == mean;
 
   @override
-  int get hashCode => Object.hash(name, Object.hashAll(points));
+  int get hashCode => Object.hash(name, Object.hashAll(points), mean);
 }
 
 /// Well-known metric names. The UI gives these dedicated charts; any other

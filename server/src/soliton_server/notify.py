@@ -21,7 +21,8 @@ log = logging.getLogger(__name__)
 
 
 class NtfyNotifier:
-    def __init__(self, topic_url: str, token: str | None = None, events=("finished", "crashed")):
+    def __init__(self, topic_url: str, token: str | None = None,
+                 events=("finished", "crashed", "time-limit")):
         parts = urlsplit(topic_url.rstrip("/"))
         base_path, _, topic = parts.path.rpartition("/")
         if not topic:
@@ -33,7 +34,7 @@ class NtfyNotifier:
         self._events = frozenset(events)
 
     def message_for(self, change: Change) -> dict | None:
-        if change.event not in self._events:
+        if change.event not in self._events or not change.notify:
             return None
         if change.event == "finished":
             return {
@@ -48,6 +49,14 @@ class NtfyNotifier:
                 "title": f"{change.name} crashed",
                 "message": change.message or f"Crashed at step {change.current_step:,}.",
                 "tags": ["rotating_light"],
+                "priority": 4,
+            }
+        if change.event == "time-limit":
+            return {
+                "topic": self._topic,
+                "title": f"{change.name} won't finish before its time limit",
+                "message": change.message or "At this pace, Slurm will stop it first.",
+                "tags": ["hourglass_flowing_sand"],
                 "priority": 4,
             }
         return None

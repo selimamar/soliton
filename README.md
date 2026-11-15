@@ -100,7 +100,19 @@ What it does:
   temperature and power, sampled by the logger every 15 seconds.
 - **Job times** on a run's or simulation's Overview: how long its Slurm job
   waited in the queue, when it should finish at its current pace, and its
-  time limit, with a warning when the limit comes first.
+  time limit, with a warning when the limit comes first (and an alert, see
+  Alerts).
+- **Queued jobs**: submit with `soliton sbatch ...` (sbatch's own options)
+  and the job shows as Queued while it waits: for how long, why (e.g.
+  Priority, Resources, in plain words), when Slurm expects to start it, and
+  what it asked for. When its script calls `soliton.init()`, the run takes
+  its place. `soliton queue` updates what Slurm says of queued jobs, and ends
+  those that left without starting (cancelled, failed).
+- **Resources** on an ended Slurm job's Overview: memory, CPUs, GPUs, GPU
+  memory and time it used against what it asked for, with the sbatch options
+  to ask for next time (e.g. `--mem=16G -c 4 --time=03:00:00`, to copy) when
+  it asked for far more than it needed, or a warning when it came close to a
+  limit. Smaller requests usually start sooner.
 - **Compute**: simulations (a PDE solve, or any computation stepping
   through time), monitored like runs from `soliton.simulate()`, in their
   own section (the bar at the bottom, or the side on a wide screen):
@@ -157,10 +169,16 @@ What it does:
   everything it logged from the server; a run that is still running comes
   back with what it logs next. Deleting a dataset only forgets its
   description: the files aren't touched.
+- **Advanced security** (Settings, optional): a separate token for jobs on
+  clusters that can only add and update runs and data, so a leaked job
+  script or env file can't read your runs, change tags and notes, or delete
+  anything; the main token stays on your devices. See the server README.
 - **Chart options**: log scale (loss, learning rate, gradient norm), and
   steps or epochs on the x-axis. Saved, like all settings.
-- **Alerts** while the app is open when a run finishes or crashes. For
-  notifications when it is closed, set up ntfy on the server.
+- **Alerts** while the app is open when a run finishes or crashes, or when a
+  live run, at its pace, won't finish before its Slurm time limit (once per
+  job, while there's still time to save a checkpoint). For notifications when
+  it is closed, set up ntfy on the server: it sends all three.
 
 Phones need `https://` for a server on the internet. Plain `http://` works for
 a server on your own network (debug builds on Android, any build on iOS,
@@ -192,6 +210,7 @@ lib/
       server_connection.dart    server address + token
       live_updates.dart         WebSocket: refreshes what changed, raises alerts
       settings_store.dart       saved settings (SharedPreferences) + Setting<T>
+      token_store.dart          the server token, in secure storage
   features/                     one folder per screen
     runs_list/                  home screen, run card, picking runs to compare
     run_detail/                 Overview, Metrics and Layers tabs + their widgets
@@ -272,7 +291,8 @@ flutter test test/server_contract_test.dart
 | `go_router` | Navigation |
 | `http` | Requests to the server |
 | `web_socket_channel` | Live updates |
-| `shared_preferences` | Saved settings and the server login |
+| `shared_preferences` | Saved settings and the server address |
+| `flutter_secure_storage` | The server token, in the Keychain or Keystore |
 
 Small visuals (sparklines, histograms) use plain `CustomPainter`s instead of a
 chart library, which keeps lists fast.
@@ -280,9 +300,24 @@ chart library, which keeps lists fast.
 The run detail tabs switch by tapping the tab bar, not by swiping: a swipe
 would otherwise win over dragging a chart to read its values.
 
-The server token is saved in the app's normal storage (not the iOS Keychain or
-Android Keystore). Anyone with access to the unlocked phone's app data could
-read it.
+The server token is kept apart from the other settings, in the platform's
+secure storage (`lib/data/services/token_store.dart`):
+
+- **iOS:** the Keychain, readable after the first unlock and on this device
+  only: not synced to iCloud, not restored to another device.
+- **Android:** encrypted with a key in the Android Keystore. Auto Backup
+  leaves the encrypted file out (`android/app/src/main/res/xml/`).
+- **macOS:** the login keychain. The app is ad-hoc signed without a team,
+  so it can't use the newer data-protection keychain. After a rebuild the app
+  has a new signature, and macOS may ask again to allow keychain access.
+- **Web: not secure.** Browsers have no secure store: the token is encrypted
+  with a key kept beside it in localStorage, so anything that can run script
+  on the page, or read the browser profile, can read it. It also only works
+  over HTTPS or on localhost; elsewhere the token isn't saved, and the app
+  asks for it again after a reload.
+
+Older versions kept the token in the plain settings; the app moves it on the
+first start and deletes the old copy. Disconnecting deletes it everywhere.
 
 ## Roadmap
 
@@ -292,5 +327,6 @@ read it.
 4. ~~`ApiRunRepository` in the app, live charts, login (server address + token)~~
 5. ~~Notifications: in-app alerts, and push through ntfy~~
 6. ~~Saved settings, log scale, step/epoch x-axis, compare runs~~
-7. Next ideas: the token in the Keychain/Keystore, native push (APNs/FCM),
+7. ~~The server token in the Keychain/Keystore~~
+8. Next ideas: native push (APNs/FCM),
    accounts for several people, database migrations, deleting runs from the app

@@ -41,7 +41,7 @@ All from environment variables:
 | `SOLITON_CORS_ORIGINS` | `*` | Web origins allowed to call the API (comma-separated) |
 | `SOLITON_NTFY_URL` | off | Push notifications, e.g. `https://ntfy.sh/<long-random-topic>` |
 | `SOLITON_NTFY_TOKEN` | none | Access token for a protected ntfy topic |
-| `SOLITON_NOTIFY_ON` | `finished,crashed` | Which events send a push notification |
+| `SOLITON_NOTIFY_ON` | `finished,crashed,time-limit` | Which events send a push notification (`time-limit`: a live run that, at its pace, won't finish before its Slurm time limit; once per job) |
 
 ## Push notifications (ntfy)
 
@@ -80,9 +80,28 @@ table, start from a fresh database. (New tables, like `run_notes` for tags
 and notes or `run_system` for what a run trains on, are added to an
 existing database on startup.)
 
+## A separate token for jobs (optional)
+
+By default one token does everything, and it ends up in job scripts and env
+files on clusters. Turn on **Settings → Advanced security → Separate token
+for jobs** in the app and the server makes a second token, shown once in
+the app, for jobs: it can create and update runs, send their events,
+describe datasets and list queued jobs (`soliton queue`), and nothing else.
+It can't read what was logged, change tags and notes, delete anything or
+follow live updates. What it can do is what a logger does, so someone with a
+leaked cluster file could still add runs, or overwrite a run's description
+or mark it ended if they know its id (ids end in a random part), but not read
+or delete your history. Put it in
+place of `SOLITON_TOKEN` on your clusters and keep the main token on your
+own devices. The server keeps only its SHA-256 hash (in the database, so
+it survives restarts); "New job token" replaces it, and turning the setting
+off makes jobs need the main token again.
+
 ## API
 
-Every endpoint except `/api/health` needs `Authorization: Bearer <token>`.
+Every endpoint except `/api/health` needs `Authorization: Bearer <token>`:
+the main token, or, where marked, the job token (refused with 403
+elsewhere).
 Field names and shapes are exactly what the app's models read (`fromJson` in
 `lib/models/`). Non-finite numbers travel as the strings `"NaN"`,
 `"Infinity"` and `"-Infinity"`.
@@ -90,13 +109,15 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
 | Method and path | What it does |
 |---|---|
 | `GET /api/health` | `{"status": "ok", "version": ...}`, public |
-| `GET /api/session` | Checks the token |
-| `GET /api/runs` | All runs, newest first, each with a 60-point loss preview |
+| `GET /api/session` | Checks the token; `jobToken`: whether a job token is set |
+| `POST /api/job-token` | Makes a new job token (replacing any), `{"token": ...}`, shown this once |
+| `DELETE /api/job-token` | Removes the job token |
+| `GET /api/runs?status=` | All runs (or those with that status), newest first, each with a 60-point loss preview. Job token: `status=queued` only |
 | `GET /api/runs/{id}` | One run (404 if unknown) |
-| `PUT /api/runs/{id}` | Creates or updates a run's description (the logger does this) |
+| `PUT /api/runs/{id}` | Creates or updates a run's description (the logger does this). Job token too |
 | `PATCH /api/runs/{id}` | Sets its `tags` and/or `notes` (the app does this; below) |
 | `DELETE /api/runs/{id}` | Deletes a run and its data |
-| `POST /api/runs/{id}/events` | A batch of events from the logger (below) |
+| `POST /api/runs/{id}/events` | A batch of events from the logger (below). Job token too |
 | `GET /api/runs/{id}/metrics?maxPoints=1000` | Every metric, downsampled keeping spikes and NaN |
 | `GET /api/runs/{id}/layers?maxPoints=500` | Per-layer statistics, in model order |
 | `GET /api/runs/{id}/grad-norms` | Each layer's latest gradient norm |
@@ -107,7 +128,7 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
 | `GET /api/runs/{id}/output` | The last 1,000 lines the script printed: `{"lines": [...], "total": 52341}` |
 | `GET /api/datasets` | Every dataset, most recently updated first, without previews |
 | `GET /api/datasets/{id}` | One dataset, with its previews, `madeBy` and `usedBy` |
-| `PUT /api/datasets/{id}` | Registers or updates a dataset (the logger does this) |
+| `PUT /api/datasets/{id}` | Registers or updates a dataset (the logger does this). Job token too |
 | `DELETE /api/datasets/{id}` | Forgets a dataset (the files are not touched) |
 | `GET /api/metrics/latest?names=val/rel_l2,perf/inference_s` | For sweeps: `{run id: {metric: {latest, min}}}`, up to 20 names |
 | `WS /api/live` | Live updates (below) |

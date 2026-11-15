@@ -9,25 +9,33 @@ import 'package:soliton/data/mock/mock_run_repository.dart';
 import 'package:soliton/data/providers.dart';
 import 'package:soliton/data/run_repository.dart';
 import 'package:soliton/data/services/settings_store.dart';
+import 'package:soliton/data/services/token_store.dart';
 
 /// The whole app on demo data without network delay (or on [repository]).
 ///
-/// Pass [store] for saved settings, and [overrides] to replace anything else
-/// (e.g. the HTTP client); with an [overrides] list, the repository isn't
-/// replaced, so the app picks demo data or the server as usual.
-Widget buildApp({RunRepository? repository, SettingsStore? store, List<Override>? overrides}) =>
-    ProviderScope(
-      overrides: [
-        settingsStoreProvider.overrideWithValue(store ?? MemorySettingsStore()),
-        if (overrides == null)
-          runRepositoryProvider.overrideWithValue(
-            repository ?? MockRunRepository(latency: Duration.zero),
-          )
-        else
-          ...overrides,
-      ],
-      child: const SolitonApp(),
-    );
+/// Pass [store] for saved settings, [tokens] for the saved server token
+/// (read at startup, as `main()` does), and [overrides] to replace anything
+/// else (e.g. the HTTP client); with an [overrides] list, the repository
+/// isn't replaced, so the app picks demo data or the server as usual.
+Widget buildApp({
+  RunRepository? repository,
+  SettingsStore? store,
+  MemoryTokenStore? tokens,
+  List<Override>? overrides,
+}) => ProviderScope(
+  overrides: [
+    settingsStoreProvider.overrideWithValue(store ?? MemorySettingsStore()),
+    tokenStoreProvider.overrideWithValue(tokens ?? MemoryTokenStore()),
+    savedTokenProvider.overrideWithValue(tokens?.token),
+    if (overrides == null)
+      runRepositoryProvider.overrideWithValue(
+        repository ?? MockRunRepository(latency: Duration.zero),
+      )
+    else
+      ...overrides,
+  ],
+  child: const SolitonApp(),
+);
 
 /// The Riverpod container of the app pumped with [buildApp].
 ProviderContainer containerOf(WidgetTester tester) =>

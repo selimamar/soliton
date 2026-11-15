@@ -491,6 +491,7 @@ abstract final class ChartColors {
 /// Colour and label for each [RunStatus].
 extension RunStatusStyle on RunStatus {
   String get label => switch (this) {
+    RunStatus.queued => 'Queued',
     RunStatus.live => 'Live',
     RunStatus.finished => 'Finished',
     RunStatus.crashed => 'Crashed',
@@ -500,6 +501,9 @@ extension RunStatusStyle on RunStatus {
   /// text keeps at least 4.5:1 contrast on its own tinted background
   /// (see `StatusChip`).
   Color color(ColorScheme scheme) => switch (this) {
+    // Amber: waiting, not yet going.
+    RunStatus.queued =>
+      scheme.brightness == Brightness.light ? const Color(0xFF8A5300) : const Color(0xFFF0B866),
     RunStatus.live =>
       scheme.brightness == Brightness.light ? const Color(0xFF0A6649) : const Color(0xFF6FDDB5),
     RunStatus.finished => scheme.onSurfaceVariant,

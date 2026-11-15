@@ -5,6 +5,7 @@ import '../../../app/theme.dart';
 import '../../../models/run.dart';
 import '../../../shared/clock.dart';
 import '../../../shared/formatters.dart';
+import '../../../shared/queue_text.dart';
 import '../../../shared/widgets/loss_change.dart';
 import '../../../shared/widgets/section_card.dart';
 import '../../../shared/widgets/sparkline.dart';
@@ -243,6 +244,7 @@ class _ProgressLabel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final now = ref.watch(clockProvider);
     final text = switch (run.status) {
+      RunStatus.queued => describeQueued(run, now),
       RunStatus.live =>
         '${switch (run.epochText) {
           final epoch? => 'Epoch $epoch',

@@ -6,6 +6,7 @@ import 'package:material_ui/material_ui.dart';
 
 import 'app/app.dart';
 import 'data/services/settings_store.dart';
+import 'data/services/token_store.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,11 +23,18 @@ Future<void> main() async {
     debugPrint('Could not load saved settings ($error); using defaults.');
     store = MemorySettingsStore();
   }
+  // The server token is kept apart, in the Keychain or Keystore.
+  const tokens = SecureTokenStore();
+  final token = await loadServerToken(tokens, store);
 
   // ProviderScope holds the state of every Riverpod provider in the app.
   runApp(
     ProviderScope(
-      overrides: [settingsStoreProvider.overrideWithValue(store)],
+      overrides: [
+        settingsStoreProvider.overrideWithValue(store),
+        tokenStoreProvider.overrideWithValue(tokens),
+        savedTokenProvider.overrideWithValue(token),
+      ],
       child: const SolitonApp(),
     ),
   );

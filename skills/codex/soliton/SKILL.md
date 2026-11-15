@@ -17,7 +17,9 @@ computes.
    configs, logs or your replies. Server and token come from the
    environment (`SOLITON_SERVER`, `SOLITON_TOKEN`), set by the user. If
    they're missing, the logger saves the run locally (offline): that's
-   fine, don't work around it.
+   fine, don't work around it. `SOLITON_TOKEN` may be a job token that can
+   add runs but not read them (403 on reads): fine too; never ask for the
+   main token to get around it.
 2. Don't change the science: same inputs, numerics and outputs. Don't catch
    exceptions to hide a crash. Don't replace NaN before logging it (the
    first NaN marks a simulation as diverged).
@@ -50,13 +52,15 @@ computes.
    `PYTHONPATH` or installed, `SOLITON_DIR` for the local copy, the
    server's environment. In Slurm job scripts: `#SBATCH --signal=B:TERM@60`
    and `exec python ...` when Python is the script's last command, so a
-   time limit is reported.
+   time limit is reported. Submit with `soliton sbatch` (sbatch's options)
+   so the job shows as Queued while it waits.
 
 4. **Check it works** with a short version first (a few hundred steps, a
    coarse grid, a short time limit): the run is listed by the server
-   (`curl -s -H "Authorization: Bearer $SOLITON_TOKEN" "$SOLITON_SERVER/api/runs"`),
-   or offline, `$SOLITON_DIR/<run id>/events.jsonl` grows and ends with a
-   `"status"` record.
+   (`curl -s -H "Authorization: Bearer $SOLITON_TOKEN" "$SOLITON_SERVER/api/runs"`;
+   a 403 means a job token: check `$SOLITON_DIR/<run id>/upload.json`
+   instead), or offline, `$SOLITON_DIR/<run id>/events.jsonl` grows and ends
+   with a `"status"` record.
 
 5. **Report back:** the run's name, where it reports (server or offline),
    and the app section it appears in (Runs, Compute or Data).

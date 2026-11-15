@@ -51,14 +51,22 @@ enum LiveStatus {
   rejected,
 }
 
-/// A run finished or crashed, for an in-app alert.
+/// A run finished or crashed, or won't finish before its Slurm time limit
+/// ([timeLimit], while still live), for an in-app alert.
 class RunAlert {
-  const RunAlert({required this.runId, required this.name, required this.status, this.message});
+  const RunAlert({
+    required this.runId,
+    required this.name,
+    required this.status,
+    this.message,
+    this.timeLimit = false,
+  });
 
   final String runId;
   final String name;
   final RunStatus status;
   final String? message;
+  final bool timeLimit;
 }
 
 /// The latest [RunAlert]. The app shows each one (see `RunAlertListener`).
@@ -181,9 +189,11 @@ class LiveUpdates extends Notifier<LiveStatus> {
     final status = switch (message['event']) {
       'finished' => RunStatus.finished,
       'crashed' => RunStatus.crashed,
+      'time-limit' => RunStatus.live,
       _ => null,
     };
-    if (status != null) {
+    // Nothing to alert about, e.g. a queued job you cancelled yourself.
+    if (status != null && message['notify'] != false) {
       ref
           .read(runAlertsProvider.notifier)
           .show(
@@ -192,6 +202,7 @@ class LiveUpdates extends Notifier<LiveStatus> {
               name: message['name'] as String? ?? runId,
               status: status,
               message: message['statusMessage'] as String?,
+              timeLimit: message['event'] == 'time-limit',
             ),
           );
     }

@@ -71,7 +71,27 @@ class SystemInfo {
   /// `jobId`, `jobName`, `partition`, `nodes`, `cluster`, `arrayJobId`,
   /// `arrayTaskId`: whichever Slurm set. Also `submitTime`, `startTime` and
   /// `timeLimitAt` (UTC, ISO 8601), from Slurm when the job started.
+  ///
+  /// For a queued job (`soliton sbatch`), what Slurm said of it in the
+  /// queue: `state`, `reason`, `expectedStart`, `queueCheckedAt` (when it
+  /// last looked), and what it asked for: `cpus`, `memory`, `gpus` and
+  /// `timeLimit` (as Slurm writes them, e.g. "32G", "1-00:00:00").
   final Map<String, String> slurm;
+
+  /// Why Slurm hasn't started a queued job, e.g. `Priority`, `Resources`.
+  String? get queueReason => switch (slurm['reason']) {
+    final reason? when reason.isNotEmpty && reason != 'None' => reason,
+    _ => null,
+  };
+
+  /// When Slurm expects to start a queued job, if it has worked that out.
+  DateTime? get expectedStartAt => _slurmTime('expectedStart');
+
+  /// When Slurm was last asked about a queued job.
+  DateTime? get queueCheckedAt => _slurmTime('queueCheckedAt');
+
+  /// The job has left the queue, but its script hasn't started a run yet.
+  bool get jobStarting => slurm['state'] == 'RUNNING';
 
   /// When the job was submitted to Slurm's queue.
   DateTime? get submittedAt => _slurmTime('submitTime');

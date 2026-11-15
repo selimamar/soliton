@@ -41,6 +41,11 @@ EOF
 chmod 600 ~/.soliton_env
 ```
 
+For more safety, turn on Settings → Advanced security → **Separate token for
+jobs** in the app and paste that job token here instead: it can only add and
+update runs and data, so if this file ever leaks, nobody can read or delete
+what is on your server with it.
+
 The app estimates what each run costs from typical cloud prices for its
 GPUs: what the run would cost on a cloud, since Sherlock doesn't bill by
 the hour. To hide the estimate for Sherlock runs, add
@@ -111,6 +116,22 @@ a newer one with
 `#SBATCH --constraint=GPU_CC:7.0|GPU_CC:7.5|GPU_CC:8.6|GPU_CC:8.9|GPU_CC:9.0`
 (`sh_node_feat -p gpu` lists the features).
 
+**To see it while it waits**, submit with `soliton sbatch` from a login node
+(with `SOLITON_SERVER` and `SOLITON_TOKEN` set), the same options as sbatch:
+
+```bash
+soliton sbatch train.sbatch          # or: soliton sbatch -p gpu -G 1 train.sbatch
+soliton queue                        # whenever you check: what Slurm says now
+```
+
+The app shows it as Queued: how long it has waited, why (Priority, Resources,
+a QOS limit...), when Slurm expects to start it if it says, and what it asked
+for. `soliton queue` is a single `squeue` call, not a service, so nothing
+polls Slurm from the login node. A live run that, at its pace, won't finish
+before its time limit sends an alert once (also through ntfy), and when a
+job ends its Overview compares what it used with what it asked for, with the
+`--mem`, `-c`, `-G` and `--time` to ask for next time.
+
 ## 5. If a job can't reach your server
 
 Run offline, then upload from a login node:
@@ -158,7 +179,10 @@ use it. Your phone can't reach it, and it stops at the job's time limit
    (readable by you only). The token itself is in `$HOME/soliton-server/token`
    and stays the same for every job.
 
-3. In training job scripts, use it instead of `~/.soliton_env`:
+3. In training job scripts, use it instead of `~/.soliton_env` (with a job
+   token from Settings → Advanced security saved in
+   `$HOME/soliton-server/job-token`, readable by you only, `env.sh` gives
+   jobs that token instead of the main one):
 
    ```bash
    source $HOME/soliton-server/env.sh   # SOLITON_SERVER and SOLITON_TOKEN
@@ -211,8 +235,10 @@ and parameter counts, and per-layer summary statistics. What the script
 prints (its output and errors, the last 1,000 lines kept); turn that off with
 `export SOLITON_CAPTURE_OUTPUT=0` if it prints anything sensitive. Plus, from
 the logger itself: the node's name, its GPU and CPU models, software versions,
-the Slurm job's id, name, partition, submit and start times and time limit, and GPU, memory and CPU use every 15
-seconds (turn the sampling off with `system_metrics=False`). No training data
+the Slurm job's id, name, partition, submit and start times and time limit
+(and, from `soliton sbatch` and `soliton queue`, a queued job's state, pending
+reason, expected start and the CPUs, memory, GPUs and time it asked for), and
+GPU, memory and CPU use every 15 seconds (turn the sampling off with `system_metrics=False`). No training data
 or model weights. Run names and hyperparameters go to your server, so don't put
 anything sensitive in them. Sherlock is approved for low- and moderate-risk
 data only.

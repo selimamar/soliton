@@ -7,9 +7,10 @@ or when `soliton sync` uploads a saved run), and points are keyed by
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, func, select
@@ -25,9 +26,11 @@ from .db import (
     RunItemRow,
     RunNotesRow,
     RunOutputRow,
+    RunResumeRow,
     RunRow,
     RunSimulationRow,
     RunSystemRow,
+    ServerSettingRow,
 )
 from .floats import decode_float, downsample, encode_float, from_columns, to_columns
 from .schemas import (
@@ -77,9 +80,12 @@ class Change:
     message: str | None = None
     current_step: int = 0
     total_steps: int = 0
+    # False: nothing to alert about (e.g. a queued job you cancelled yourself).
+    notify: bool = True
 
     def to_json(self) -> dict:
         return {
+            **({} if self.notify else {"notify": False}),
             "type": "run",
             "event": self.event,
             "runId": self.run_id,
@@ -130,9 +136,13 @@ def _upsert(session: Session, table, rows: list[dict], keys: Sequence[str]) -> N
 
 def _series(name: str, points: list[tuple[int, float]], max_points: int) -> dict:
     sampled = downsample(points, max_points, lambda p: p[1])
+    finite = [value for _, value in points if math.isfinite(value)]
     return {
         "name": name,
         "points": [{"step": step, "value": encode_float(value)} for step, value in sampled],
+        # Over every point: downsampling keeps each bucket's extremes, so the
+        # points' own mean leans toward (min + max) / 2.
+        "mean": sum(finite) / len(finite) if finite else None,
     }
 
 
@@ -204,11 +214,34 @@ def _aware(moment: datetime) -> datetime:
 # A run quiet for this long after its Slurm job's time limit was stopped by it.
 TIME_LIMIT_GRACE = timedelta(minutes=1)
 
+# Warn that a run won't finish before its time limit only once its pace is
+# worth trusting (past start-up: data loading, compiling), and only when
+# it misses the limit by more than a rounding error.
+PACE_AFTER = timedelta(minutes=10)
+PACE_AFTER_PROGRESS = 0.02
+TIME_LIMIT_MARGIN = timedelta(minutes=5)
+
+
+def format_span(span: timedelta) -> str:
+    """"3h 40m", "45m", "2d 4h": for messages."""
+    minutes = max(0, round(span.total_seconds() / 60))
+    days, minutes = divmod(minutes, 24 * 60)
+    hours, minutes = divmod(minutes, 60)
+    if days:
+        return f"{days}d {hours}h" if hours else f"{days}d"
+    if hours:
+        return f"{hours}h {minutes}m" if minutes else f"{hours}h"
+    return f"{minutes}m"
+
 
 def _slurm(system: RunSystemRow | None) -> dict:
     """The Slurm job the logger described (`system.slurm`), or {}."""
-    info = system.info if system is not None else None
-    slurm = info.get("slurm") if isinstance(info, dict) else None
+    return _slurm_of(system.info if system is not None else None)
+
+
+def _slurm_of(system: object) -> dict:
+    """`slurm` of a system description, or {}."""
+    slurm = system.get("slurm") if isinstance(system, dict) else None
     return slurm if isinstance(slurm, dict) else {}
 
 
@@ -227,20 +260,31 @@ class Store:
     def __init__(self, sessions: sessionmaker, clock: Callable[[], datetime] = utcnow):
         self._sessions = sessions
         self._clock = clock
+        # (run id, time limit) already warned about, so each job warns once.
+        # Kept in memory: after a restart a run may warn once more.
+        self._time_limit_warned: set[tuple[str, str]] = set()
 
     # Runs -----------------------------------------------------------------
 
-    def put_run(self, run_id: str, body: RunIn) -> tuple[dict, Change]:
-        """Creates the run, or updates its description if it exists."""
+    def put_run(self, run_id: str, body: RunIn) -> tuple[dict, list[Change]]:
+        """Creates the run, or updates its description if it exists.
+
+        With `queued` (from `soliton sbatch` and `soliton queue`), a Slurm job
+        still waiting to start. When it starts, its logger's description
+        turns it live: the same run (`soliton sbatch --id`), or a new one
+        that takes over from it (matched by Slurm job id)."""
         now = self._clock()
+        changes: list[Change] = []
         with self._sessions.begin() as session:
             row = session.get(RunRow, run_id)
+            if row is not None and body.queued:
+                return self._requeue(session, row, body, now)
             event = "updated"
             if row is None:
                 started = min(body.startedAt or now, now)
                 row = RunRow(
                     id=run_id,
-                    status="live",
+                    status="queued" if body.queued else "live",
                     lost_contact=False,
                     started_at=started,
                     last_seen_at=now,
@@ -249,6 +293,13 @@ class Store:
                 )
                 session.add(row)
                 event = "created"
+            elif row.status == "queued":
+                # Its job has started.
+                row.status, row.status_message, row.ended_at = "live", None, None
+                row.started_at = min(body.startedAt or now, now)
+                row.last_seen_at = now
+                event = "started"
+                self._mark_resume(session, row)
             else:
                 if body.startedAt is not None:
                     # A new process continuing a run that had ended (a job
@@ -262,6 +313,7 @@ class Store:
                         row.lost_contact = False
                         row.last_seen_at = now
                         event = "revived"
+                        self._mark_resume(session, row)
                     row.started_at = restarted
             row.name = body.name
             row.project = body.project
@@ -293,7 +345,76 @@ class Store:
                 session.add(RunNotesRow(run_id=run_id, tags=list(body.tags), notes=body.notes,
                                         updated_at=now))
             session.flush()
-            return self._run_json(session, row), _change(row, event)
+            if event == "created" and not body.queued:
+                changes = self._take_over_queued(session, run_id, body.system)
+            return self._run_json(session, row), [_change(row, event), *changes]
+
+    @classmethod
+    def _mark_resume(cls, session: Session, row: RunRow) -> None:
+        """Notes where [row] stands as a new process takes it over."""
+        resume = session.get(RunResumeRow, row.id)
+        if resume is None:
+            resume = RunResumeRow(run_id=row.id)
+            session.add(resume)
+        resume.step = row.current_step
+        resume.sim_time = cls._sim_time(session, row.id)
+
+    @staticmethod
+    def _sim_time(session: Session, run_id: str) -> float | None:
+        """A simulation's latest simulated time (finite), or None."""
+        values = session.execute(
+            select(MetricPointRow.value, MetricPointRow.code)
+            .where(MetricPointRow.run_id == run_id, MetricPointRow.name == SIM_TIME)
+            .order_by(MetricPointRow.step.desc())
+            .limit(1)
+        ).first()
+        time = None if values is None else from_columns(*values)
+        return time if time is not None and math.isfinite(time) else None
+
+    def _requeue(self, session: Session, row: RunRow, body: RunIn,
+                 now: datetime) -> tuple[dict, list[Change]]:
+        """A queued description for a run that exists: what Slurm now says of
+        a waiting job (`soliton queue`), or a job continuing an ended run
+        (`soliton sbatch --id`). Only its job changes: the description it
+        logged stays. A run that has started stays as it is."""
+        if row.status == "live":
+            return self._run_json(session, row), []
+        if row.status != "queued":
+            row.status, row.status_message, row.ended_at = "queued", None, None
+            row.lost_contact = False
+            row.started_at = min(body.startedAt or now, now)
+            row.last_seen_at = now
+        if body.system is not None:
+            system = session.get(RunSystemRow, row.id)
+            if system is None:
+                session.add(RunSystemRow(run_id=row.id, info=body.system))
+            elif row.current_step == 0:
+                system.info = body.system
+            else:  # Keep the machine it last ran on; the job is the new one.
+                system.info = {**system.info, "slurm": _slurm_of(body.system)}
+        session.flush()
+        return self._run_json(session, row), [_change(row, "updated")]
+
+    def _take_over_queued(self, session: Session, run_id: str,
+                          system: dict | None) -> list[Change]:
+        """Deletes the queued placeholders (`soliton sbatch`) of the Slurm job
+        a new run started in: the run takes their place."""
+        slurm = _slurm_of(system)
+        jobs = {str(slurm[key]) for key in ("jobId", "arrayJobId") if slurm.get(key)}
+        if not jobs:
+            return []
+        changes = []
+        for queued in session.scalars(select(RunRow).where(RunRow.status == "queued")).all():
+            theirs = _slurm(session.get(RunSystemRow, queued.id))
+            if queued.id == run_id or str(theirs.get("jobId")) not in jobs:
+                continue
+            if theirs.get("cluster") and slurm.get("cluster") and theirs["cluster"] != slurm["cluster"]:
+                continue
+            changes.append(_change(queued, "deleted"))
+            for table in (RunNotesRow, RunSystemRow, RunSimulationRow, DatasetUseRow):
+                session.execute(delete(table).where(table.run_id == queued.id))
+            session.delete(queued)
+        return changes
 
     def update_notes(self, run_id: str, body: RunNotesIn) -> tuple[dict, Change]:
         """Sets a run's tags and/or note (from the app)."""
@@ -311,10 +432,32 @@ class Store:
             session.flush()
             return self._run_json(session, row), _change(row, "updated")
 
-    def list_runs(self) -> list[dict]:
+    def list_runs(self, status: str | None = None) -> list[dict]:
+        """Every run, newest first; only those with [status] if given."""
         with self._sessions() as session:
-            rows = session.scalars(select(RunRow).order_by(RunRow.started_at.desc())).all()
-            return [self._run_json(session, row) for row in rows]
+            query = select(RunRow).order_by(RunRow.started_at.desc())
+            if status is not None:
+                query = query.where(RunRow.status == status)
+            return [self._run_json(session, row) for row in session.scalars(query).all()]
+
+    # Server settings -------------------------------------------------------
+
+    def setting(self, key: str) -> str | None:
+        with self._sessions() as session:
+            row = session.get(ServerSettingRow, key)
+            return None if row is None else row.value
+
+    def set_setting(self, key: str, value: str | None) -> None:
+        """Saves [value] under [key]; None removes it."""
+        with self._sessions.begin() as session:
+            row = session.get(ServerSettingRow, key)
+            if value is None:
+                if row is not None:
+                    session.delete(row)
+            elif row is None:
+                session.add(ServerSettingRow(key=key, value=value))
+            else:
+                row.value = value
 
     def get_run(self, run_id: str) -> dict:
         with self._sessions() as session:
@@ -351,7 +494,7 @@ class Store:
             change = _change(row, "deleted")
             for table in (MetricPointRow, LayerPointRow, LayerRow, FieldRow, RunItemRow,
                           RunNotesRow, RunSystemRow, RunSimulationRow, DatasetUseRow,
-                          RunOutputRow):
+                          RunOutputRow, RunResumeRow):
                 session.execute(delete(table).where(table.run_id == run_id))
             session.delete(row)
             return change
@@ -381,7 +524,8 @@ class Store:
                         row.status_message = event.message
                         row.ended_at = time
                         row.lost_contact = False
-                        changes.append(_change(row, event.status))
+                        change = _change(row, event.status)
+                        changes.append(change if event.notify else replace(change, notify=False))
                     if event.diverged and event.status == "crashed":
                         simulation = session.get(RunSimulationRow, run_id)
                         if simulation is not None and not simulation.info.get("diverged"):
@@ -512,6 +656,73 @@ class Store:
                 row.status_message = message
                 changes.append(_change(row, "crashed"))
         return changes
+
+    def warn_time_limits(self) -> list[Change]:
+        """A "time-limit" change, once per job, for each live run that at
+        its pace so far won't finish before its Slurm job's time limit:
+        while there is still time to save a checkpoint."""
+        now = self._clock()
+        changes = []
+        with self._sessions() as session:
+            live = session.execute(
+                select(RunRow, RunSystemRow)
+                .join(RunSystemRow, RunSystemRow.run_id == RunRow.id)
+                .where(RunRow.status == "live")
+            ).all()
+            for row, system in live:
+                slurm = _slurm(system)
+                limit = _parse_time(slurm.get("timeLimitAt"))
+                if limit is None or now >= limit:
+                    continue
+                key = (row.id, slurm["timeLimitAt"])
+                if key in self._time_limit_warned:
+                    continue
+                remaining = self._remaining(session, row, now)
+                if remaining is None or now + remaining <= limit + TIME_LIMIT_MARGIN:
+                    continue
+                self._time_limit_warned.add(key)
+                job = f" (job {slurm['jobId']})" if slurm.get("jobId") else ""
+                message = (
+                    f"At this pace it needs about {format_span(remaining)} more, but its Slurm "
+                    f"time limit{job} is in {format_span(limit - now)}. Save a checkpoint "
+                    "before then and continue in a new job, or it will be stopped."
+                )
+                changes.append(Change(
+                    run_id=row.id, name=row.name, event="time-limit", status=row.status,
+                    message=message, current_step=row.current_step, total_steps=row.total_steps,
+                ))
+        return changes
+
+    @classmethod
+    def _remaining(cls, session: Session, row: RunRow, now: datetime) -> timedelta | None:
+        """Time left at the pace of its latest process (steps, or a
+        simulation's simulated time, since it started or resumed), like the
+        app's estimate; None until the pace can be trusted."""
+        elapsed = now - _aware(row.started_at)
+        if elapsed < PACE_AFTER:
+            return None
+        resume = session.get(RunResumeRow, row.id)
+        simulation = session.get(RunSimulationRow, row.id)
+        t_end = simulation.info.get("tEnd") if simulation is not None else None
+        if t_end:
+            time = cls._sim_time(session, row.id)
+            start = (resume.sim_time if resume is not None else None) or 0.0
+            if time is None or time <= start:
+                return None
+            done, left, whole = time - start, t_end - time, t_end - start
+        elif row.total_steps > 0:
+            start = resume.step if resume is not None else 0
+            done = row.current_step - start
+            left, whole = row.total_steps - row.current_step, row.total_steps - start
+            if done <= 0:
+                return None
+        else:
+            return None
+        if whole <= 0 or done / whole < PACE_AFTER_PROGRESS:
+            return None
+        if left <= 0:
+            return timedelta(0)
+        return elapsed * (left / done)
 
     # Time series ----------------------------------------------------------
 
@@ -705,9 +916,13 @@ class Store:
         monitor = row.info.get("monitor")
         preview = (downsample(cls._values(session, run_id, monitor), LOSS_PREVIEW_POINTS,
                               lambda v: v) if monitor else [])
+        resume = session.get(RunResumeRow, run_id)
         return {
             **row.info,
             "time": None if latest is None else encode_float(from_columns(*latest)),
+            # Its simulated time when its latest process took over, for its pace.
+            **({"resumedAtTime": resume.sim_time}
+               if resume is not None and resume.sim_time is not None else {}),
             "preview": [encode_float(v) for v in preview],
         }
 
@@ -717,6 +932,7 @@ class Store:
         preview = downsample(losses, LOSS_PREVIEW_POINTS, lambda v: v)
         notes = session.get(RunNotesRow, row.id)
         system = session.get(RunSystemRow, row.id)
+        resume = session.get(RunResumeRow, row.id)
         return {
             "id": row.id,
             "name": row.name,
@@ -726,6 +942,8 @@ class Store:
             "startedAt": iso(row.started_at),
             "endedAt": iso(row.ended_at),
             "currentStep": row.current_step,
+            # Where its latest process took over (a continued run), for its pace.
+            "resumedAtStep": resume.step if resume else 0,
             "totalSteps": row.total_steps,
             "currentEpoch": row.current_epoch,
             "totalEpochs": row.total_epochs,

@@ -37,8 +37,8 @@ class MockRun {
   List<LoggedSeries<CurveStep>> get curves => extras?.curves ?? const [];
 }
 
-/// The demo runs: four live, one crashed, and five finished (four of them a
-/// small sweep over an FNO's modes and width).
+/// The demo runs: four live, one crashed, five finished (four of them a
+/// small sweep over an FNO's modes and width) and one queued.
 List<MockRun> buildMockRuns(DateTime now) => [
   _buildRun(
     id: 'resnet50-cifar',
@@ -351,7 +351,49 @@ List<MockRun> buildMockRuns(DateTime now) => [
     seed: 4,
   ),
   ..._sweepRuns(now),
+  _queuedRun(now),
 ];
+
+/// A job still waiting in Slurm's queue (submitted with `soliton sbatch`):
+/// nothing logged yet.
+MockRun _queuedRun(DateTime now) {
+  String utc(DateTime t) => t.toUtc().toIso8601String();
+  final submitted = now.subtract(const Duration(hours: 2, minutes: 13));
+  return MockRun(
+    run: Run(
+      id: 'queued-52340117',
+      name: 'fno-ns-hires',
+      project: 'neural-operators',
+      host: 'Sherlock',
+      status: RunStatus.queued,
+      startedAt: submitted,
+      currentStep: 0,
+      totalSteps: 0,
+      currentEpoch: 0,
+      totalEpochs: 0,
+      hyperparameters: const {},
+      architecture: const LayerInfo(name: 'fno-ns-hires', type: 'Model'), // The server's default.
+      lossPreview: const [],
+      system: SystemInfo(
+        slurm: {
+          'jobId': '52340117',
+          'jobName': 'fno-ns-hires',
+          'partition': 'gpu',
+          'state': 'PENDING',
+          'reason': 'Priority',
+          'submitTime': utc(submitted),
+          'queueCheckedAt': utc(now.subtract(const Duration(minutes: 4))),
+          'cpus': '8',
+          'memory': '64G',
+          'gpus': '1',
+          'timeLimit': '1-00:00:00',
+        },
+      ),
+    ),
+    metrics: const {},
+    layerStats: const [],
+  );
+}
 
 MockRun _buildRun({
   required String id,
@@ -504,10 +546,13 @@ List<MockRun> _sweepRuns(DateTime now) => [
         'Dataset': 'Navier–Stokes 2D (FNO benchmark)',
       },
       tags: const ['sweep'],
-      system: const SystemInfo(
+      queued: Duration(minutes: 20 + 15 * i),
+      timeLimit: const Duration(hours: 24),
+      system: SystemInfo(
         cpuCores: 8,
         memoryGb: 32,
-        gpus: [GpuInfo(name: 'NVIDIA A100-PCIE-40GB', memoryGb: 40)],
+        gpus: const [GpuInfo(name: 'NVIDIA A100-PCIE-40GB', memoryGb: 40)],
+        slurm: {'jobId': '${52101400 + i}', 'jobName': 'fno-ns-sweep', 'partition': 'gpu'},
       ),
       initialLoss: 0.95,
       finalLoss: 0.02 * (12 / modes) * (32 / width),

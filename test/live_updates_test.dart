@@ -6,6 +6,7 @@ import 'package:soliton/data/mock/mock_run_repository.dart';
 import 'package:soliton/data/providers.dart';
 import 'package:soliton/data/services/live_updates.dart';
 import 'package:soliton/data/services/settings_store.dart';
+import 'package:soliton/data/services/token_store.dart';
 import 'package:soliton/models/run.dart';
 
 import 'fake_server.dart';
@@ -29,10 +30,11 @@ void main() {
   late CountingRepository repository;
   final containers = <ProviderContainer>[];
 
-  ProviderContainer containerWith(SettingsStore store) {
+  ProviderContainer containerWith(SettingsStore store, {String? token}) {
     final container = ProviderContainer(
       overrides: [
         settingsStoreProvider.overrideWithValue(store),
+        savedTokenProvider.overrideWithValue(token),
         runRepositoryProvider.overrideWithValue(repository),
         liveSocketConnectorProvider.overrideWithValue(sockets.connect),
       ],
@@ -43,8 +45,11 @@ void main() {
     return container;
   }
 
-  MemorySettingsStore loggedIn() =>
-      MemorySettingsStore({'serverAddress': 'https://runs.example.com', 'serverToken': 'secret'});
+  /// A start with a saved login.
+  ProviderContainer loggedIn() => containerWith(
+    MemorySettingsStore({'serverAddress': 'https://runs.example.com'}),
+    token: 'secret',
+  );
 
   Map<String, Object?> change(String runId, String event) => {
     'type': 'run',
@@ -79,7 +84,7 @@ void main() {
   });
 
   testWidgets('sends the token first, then goes live', (tester) async {
-    final container = containerWith(loggedIn());
+    final container = loggedIn();
     expect(container.read(liveUpdatesProvider), LiveStatus.connecting);
     await tester.pump();
 
@@ -93,7 +98,7 @@ void main() {
   });
 
   testWidgets('changes refresh the list, at most once per moment', (tester) async {
-    containerWith(loggedIn());
+    loggedIn();
     await tester.pump();
     final socket = sockets.opened.single..push({'type': 'ready'});
     await tester.pump();
@@ -111,7 +116,7 @@ void main() {
   });
 
   testWidgets('finished and crashed runs raise an alert', (tester) async {
-    final container = containerWith(loggedIn());
+    final container = loggedIn();
     await tester.pump();
     final socket = sockets.opened.single..push({'type': 'ready'});
     socket.push(change('unet-seg', 'crashed'));
@@ -129,8 +134,24 @@ void main() {
     await done(tester);
   });
 
+  testWidgets('a time-limit warning alerts; a quiet end (a cancelled queued job) doesn\'t', (
+    tester,
+  ) async {
+    final container = loggedIn();
+    await tester.pump();
+    final socket = sockets.opened.single..push({'type': 'ready'});
+    socket.push({...change('resnet50-cifar', 'time-limit'), 'status': 'live'});
+    await tester.pump();
+    expect(container.read(runAlertsProvider)!.timeLimit, isTrue);
+    socket.push({...change('queued-1', 'crashed'), 'notify': false});
+    await tester.pump();
+    expect(container.read(runAlertsProvider)!.runId, 'resnet50-cifar');
+    await tester.pump(LiveUpdates.refreshDelay);
+    await done(tester);
+  });
+
   testWidgets('a dropped connection comes back, and catches up', (tester) async {
-    final container = containerWith(loggedIn());
+    final container = loggedIn();
     await tester.pump();
     sockets.opened.single.push({'type': 'ready'});
     await tester.pump();
@@ -152,7 +173,7 @@ void main() {
   });
 
   testWidgets('retries slow down while the server stays away', (tester) async {
-    containerWith(loggedIn());
+    loggedIn();
     await tester.pump();
     for (final wait in [1, 2, 4]) {
       await sockets.opened.last.drop();
@@ -167,7 +188,7 @@ void main() {
   });
 
   testWidgets('a rejected token stops reconnecting', (tester) async {
-    final container = containerWith(loggedIn());
+    final container = loggedIn();
     await tester.pump();
     sockets.opened.single.push({'type': 'error', 'message': 'Missing or wrong token'});
     await tester.pump();
@@ -179,7 +200,7 @@ void main() {
   });
 
   testWidgets('a new login closes the old connection', (tester) async {
-    final container = containerWith(loggedIn());
+    final container = loggedIn();
     await tester.pump();
     container.read(connectionProvider.notifier).disconnect();
     await tester.pump();

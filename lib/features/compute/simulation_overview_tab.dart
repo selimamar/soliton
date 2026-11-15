@@ -17,6 +17,8 @@ import '../run_detail/widgets/run_notes_card.dart';
 import 'simulation_text.dart';
 import '../run_detail/widgets/job_times.dart';
 import '../run_detail/widgets/output_card.dart';
+import '../run_detail/widgets/queue_card.dart';
+import '../run_detail/widgets/resources_card.dart';
 
 /// Where a simulation is (simulated time, or iterations for a steady
 /// solve), how long it has taken and has left, its cost, and its setup.
@@ -28,6 +30,9 @@ class SimulationOverviewTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final run = simulation;
+    if (run.status == RunStatus.queued) {
+      return SpacedListView(children: [QueueCard(run: run), RunNotesCard(run: run)]);
+    }
     return SpacedListView(
       children: [
         if (run.statusMessage case final message?)
@@ -36,6 +41,7 @@ class SimulationOverviewTab extends StatelessWidget {
         _Progress(simulation: run),
         _Timing(simulation: run),
         if (JobTimes.showsFor(run)) JobTimes(run: run),
+        if (ResourcesCard.showsFor(run)) ResourcesCard(run: run),
         if (HourlyPrice.of(run.system) case final price?) CostStrip(run: run, price: price),
         RunNotesCard(run: run),
         if (run.status != RunStatus.crashed) OutputCard(run: run),

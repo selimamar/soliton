@@ -7,6 +7,7 @@ import '../../app/routes.dart';
 import '../../app/theme.dart';
 import '../../data/providers.dart';
 import '../../shared/widgets/spaced_list_view.dart';
+import 'job_token_section.dart';
 import 'settings_providers.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -82,6 +83,13 @@ class SettingsScreen extends ConsumerWidget {
               value: ref.watch(notifyOnCrashProvider),
               onChanged: (v) => ref.read(notifyOnCrashProvider.notifier).set(v),
             ),
+            SwitchListTile(
+              secondary: const Icon(Icons.hourglass_bottom),
+              title: const Text('When a run won\'t finish in time'),
+              subtitle: const Text('At its pace, Slurm\'s time limit would stop it first.'),
+              value: ref.watch(notifyOnTimeLimitProvider),
+              onChanged: (v) => ref.read(notifyOnTimeLimitProvider.notifier).set(v),
+            ),
             const Padding(
               padding: EdgeInsets.fromLTRB(72, 0, 16, 8),
               child: Text(
@@ -89,6 +97,10 @@ class SettingsScreen extends ConsumerWidget {
                 'ntfy on the server (see the server README).',
               ),
             ),
+            if (connection != null) ...[
+              const _SectionHeader('Advanced security'),
+              const JobTokenSection(),
+            ],
             const _SectionHeader('About'),
             const ListTile(
               leading: Icon(Icons.info_outline),

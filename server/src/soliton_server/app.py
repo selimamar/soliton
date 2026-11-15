@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import hmac
+import secrets
 import logging
 from collections.abc import Callable, Iterable
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Path, Query, WebSocket
 from fastapi.concurrency import run_in_threadpool
@@ -28,6 +30,12 @@ log = logging.getLogger(__name__)
 
 RunId = Annotated[str, Path(pattern=RUN_ID_PATTERN)]
 MaxPoints = Annotated[int, Query(ge=4, le=20_000)]
+
+JOB_TOKEN_KEY = "jobTokenHash"
+JOB_TOKEN_REFUSED = (
+    "This is the job token: it can only add and update runs and data. "
+    "Use the server's main token here."
+)
 
 _AUTH_TIMEOUT = 10  # Seconds a WebSocket client has to send its token.
 _PING_INTERVAL = 25  # Keeps idle connections open through proxies.
@@ -61,6 +69,7 @@ def create_app(
             await asyncio.sleep(stale_check_seconds)
             try:
                 publish(await run_in_threadpool(store.mark_stale, settings.stale_after))
+                publish(await run_in_threadpool(store.warn_time_limits))
             except Exception:
                 log.exception("Checking for stale runs failed")
 
@@ -88,16 +97,47 @@ def create_app(
             candidate.encode(), settings.token.encode()
         )
 
-    def require_token(authorization: Annotated[Optional[str], Header()] = None) -> None:
+    # The optional job token (the app's Settings → Advanced security): for
+    # jobs on clusters, it can do what a logger does (create and update
+    # runs, send their events, describe datasets) and list queued jobs
+    # (`soliton queue`): not read what was logged, change tags and notes,
+    # delete anything or follow live updates. It can still overwrite a run
+    # whose id it knows: loggers update their own runs, and the server can't
+    # tell whose a run is. Only its hash is kept.
+    job_token = {"hash": store.setting(JOB_TOKEN_KEY)}
+
+    def is_job_token(candidate: str) -> bool:
+        expected = job_token["hash"]
+        return expected is not None and hmac.compare_digest(_token_hash(candidate), expected)
+
+    def bearer(authorization: Optional[str]) -> str:
         scheme, _, token = (authorization or "").partition(" ")
-        if scheme.lower() != "bearer" or not token_ok(token.strip()):
-            raise HTTPException(
-                status_code=401,
-                detail="Missing or wrong token",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+        return token.strip() if scheme.lower() == "bearer" else ""
+
+    def unauthorized() -> HTTPException:
+        return HTTPException(status_code=401, detail="Missing or wrong token",
+                             headers={"WWW-Authenticate": "Bearer"})
+
+    def require_token(authorization: Annotated[Optional[str], Header()] = None) -> None:
+        """The server's main token (the app's)."""
+        token = bearer(authorization)
+        if token_ok(token):
+            return
+        if token and is_job_token(token):
+            raise HTTPException(status_code=403, detail=JOB_TOKEN_REFUSED)
+        raise unauthorized()
+
+    def require_writer(authorization: Annotated[Optional[str], Header()] = None) -> str:
+        """The main token or the job token: "main" or "job"."""
+        token = bearer(authorization)
+        if token_ok(token):
+            return "main"
+        if token and is_job_token(token):
+            return "job"
+        raise unauthorized()
 
     auth = [Depends(require_token)]
+    writers = [Depends(require_writer)]
 
     @app.exception_handler(RunNotFound)
     async def run_not_found(_, error: RunNotFound):
@@ -119,21 +159,44 @@ def create_app(
 
     @app.get("/api/session", dependencies=auth)
     def session():
-        """Checks a token (the app's "Connect" button)."""
-        return {"ok": True, "version": __version__}
+        """Checks a token (the app's "Connect" button), and says whether a
+        job token is set."""
+        return {"ok": True, "version": __version__, "jobToken": job_token["hash"] is not None}
 
-    @app.get("/api/runs", dependencies=auth)
-    def list_runs():
-        return store.list_runs()
+    @app.post("/api/job-token", dependencies=auth)
+    def create_job_token():
+        """A new job token, replacing any earlier one: shown this once."""
+        token = secrets.token_urlsafe(32)
+        store.set_setting(JOB_TOKEN_KEY, _token_hash(token))
+        job_token["hash"] = _token_hash(token)
+        return {"token": token}
+
+    @app.delete("/api/job-token", dependencies=auth)
+    def delete_job_token():
+        """Jobs need the main token again."""
+        store.set_setting(JOB_TOKEN_KEY, None)
+        job_token["hash"] = None
+        return Response(status_code=204)
+
+    @app.get("/api/runs")
+    def list_runs(
+        status: Optional[Literal["queued", "live", "finished", "crashed"]] = None,
+        # A default, not Annotated: annotations are strings here, and a
+        # closure's name can't be resolved from one.
+        role: str = Depends(require_writer),
+    ):
+        if role == "job" and status != "queued":
+            raise HTTPException(status_code=403, detail=JOB_TOKEN_REFUSED)
+        return store.list_runs(status)
 
     @app.get("/api/runs/{run_id}", dependencies=auth)
     def get_run(run_id: RunId):
         return store.get_run(run_id)
 
-    @app.put("/api/runs/{run_id}", dependencies=auth)
+    @app.put("/api/runs/{run_id}", dependencies=writers)
     def put_run(run_id: RunId, body: RunIn):
-        run, change = store.put_run(run_id, body)
-        publish([change])
+        run, changes = store.put_run(run_id, body)
+        publish(changes)
         return run
 
     @app.patch("/api/runs/{run_id}", dependencies=auth)
@@ -148,7 +211,7 @@ def create_app(
         publish([store.delete_run(run_id)])
         return Response(status_code=204)
 
-    @app.post("/api/runs/{run_id}/events", dependencies=auth)
+    @app.post("/api/runs/{run_id}/events", dependencies=writers)
     def post_events(run_id: RunId, body: EventsIn):
         publish(store.ingest(run_id, body.events))
         return {"accepted": len(body.events)}
@@ -206,7 +269,7 @@ def create_app(
     def get_dataset(dataset_id: RunId):
         return store.get_dataset(dataset_id)
 
-    @app.put("/api/datasets/{dataset_id}", dependencies=auth)
+    @app.put("/api/datasets/{dataset_id}", dependencies=writers)
     def put_dataset(dataset_id: RunId, body: DatasetIn):
         dataset = store.put_dataset(dataset_id, body)
         dataset_changed(dataset_id, "updated")
@@ -274,3 +337,8 @@ async def _read_until_closed(websocket: WebSocket) -> None:
             await websocket.receive_text()
     except (WebSocketDisconnect, RuntimeError):
         return
+
+
+def _token_hash(token: str) -> str:
+    """SHA-256 of a long random token: enough, without a slow password hash."""
+    return hashlib.sha256(token.encode()).hexdigest()

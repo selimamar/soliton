@@ -53,7 +53,16 @@ its address. From your computer, open a tunnel while you use the app
 
 **Settings → Server** (or **Connect server** on the runs list): the
 server's address and its token. The app checks them, remembers them, and
-shows the server's runs from then on, updating live.
+shows the server's runs from then on, updating live. The token is kept in
+the Keychain (iPhone, iPad, Mac) or the Android Keystore, not with the other
+settings; in a browser there is no secure place for it. On a Mac, a newly
+built app may ask once to use the keychain.
+
+**Optional, for more safety:** Settings → **Advanced security** →
+**Separate token for jobs**. The server makes a second token, shown once,
+for your job scripts and cluster files: it can only add and update runs and
+data, not read your runs, change tags and notes or delete anything. Use it as
+`SOLITON_TOKEN` on clusters and keep the main token on your own devices.
 
 ## 4. Make your computations report
 
@@ -134,6 +143,15 @@ export SOLITON_DIR=$SCRATCH/soliton-runs   # the local copy, on scratch
 exec python3 train.py                      # exec, for the same reason
 ```
 
+Submit with `soliton sbatch` in place of `sbatch` (same options) to see the
+job while it waits in the queue, and `soliton queue` to update what Slurm
+says of waiting jobs:
+
+```bash
+python3 -m soliton sbatch -p gpu -G 1 train.sbatch
+python3 -m soliton queue
+```
+
 The [Sherlock guide](sherlock.md) has the rest (where the logger lives,
 offline runs). The full logger API is in [logger/README.md](../logger/README.md).
 
@@ -141,21 +159,31 @@ offline runs). The full logger API is in [logger/README.md](../logger/README.md)
 
 - **Runs** (training), **Compute** (simulations), **Data** (datasets): the
   bar at the bottom, or the side on a wide screen. Each list has search and
-  status filters (Live, Finished, Crashed).
+  status filters (Queued, while some are; Live, Finished, Crashed).
+- **A queued job** (from `soliton sbatch`): how long it has waited, why in
+  plain words (Priority, Resources, a limit), when Slurm expects to start it
+  ("Not estimated" until it's near the front), and what it asked for. It
+  turns into the run when its script starts logging.
 - **A run's page**: Overview (progress, time left, queue wait and time
   limit for Slurm jobs, cost estimate, hyperparameters, tags and notes, what
   it printed), Metrics, Layers, Fields and System (the machine and how busy
   it kept it).
+- **Resources**, on an ended Slurm job's Overview: memory, CPUs, GPUs and
+  time it used against what it asked for, and the sbatch options to ask for
+  next time (e.g. `--mem=16G -c 4 --time=03:00:00`, with a copy button), or a
+  warning when it came close to a limit. Smaller requests start sooner.
 - **A simulation's page**: simulated time and time left, Diagnostics (every
   value against simulated time, drift of conserved quantities, the CFL
   number with its limit), Fields, System. A blow-up is marked: "Diverged at
   t = ...".
-- **Statuses**: Live, Finished, Crashed (with the reason: the error,
-  "Diverged", "Stopped by its Slurm time limit", or "Lost contact" when a
-  job went silent for 10 minutes).
-- **Alerts** while the app is open, when a run finishes or crashes. Phone
-  notifications when it's closed need ntfy on the server
-  ([server README](../server/README.md)).
+- **Statuses**: Queued, Live, Finished, Crashed (with the reason: the
+  error, "Diverged", "Stopped by its Slurm time limit", "Lost contact" when
+  a job went silent for 10 minutes, or "Cancelled before it started").
+- **Alerts** while the app is open, when a run finishes or crashes, and
+  when a live run, at its pace, won't finish before its Slurm time limit
+  (once per job, while there's time to save a checkpoint). Each can be
+  turned off in Settings. Phone notifications when it's closed need ntfy on
+  the server ([server README](../server/README.md)).
 
 ## 6. Everyday things
 
@@ -167,6 +195,8 @@ offline runs). The full logger API is in [logger/README.md](../logger/README.md)
   two hyperparameters, or one metric against another.
 - **Delete** runs, simulations or datasets from their page, or several at
   once after picking them.
+- **Right-size the next job**: copy the options from an ended job's
+  Resources card into the next sbatch.
 - **Offline runs** (no server, or it was unreachable) upload later:
   `soliton sync $SOLITON_DIR` (on Sherlock: `python3 -m soliton sync
   $SCRATCH/soliton-runs`, by hand on a login node).
@@ -179,4 +209,8 @@ offline runs). The full logger API is in [logger/README.md](../logger/README.md)
 | "Lost contact" | The job stopped sending for 10 minutes: killed (out of memory, node failure) or lost its network. It turns live again if data arrives |
 | Crashed at the time limit with no message, or only after 10 minutes | The job script runs `python` without `exec`, or lacks `--signal=B:TERM@60` |
 | "The server rejected the token" | The token changed or was mistyped: Settings → Server |
+| "That's the job token" | The app needs the server's main token; the job token is for job scripts |
+| A queued job doesn't move on | What Slurm says is as of `soliton sbatch` or the last `soliton queue`: run `soliton queue`. The wait itself counts up by itself |
+| No time-limit alert | It comes once the run has gone 10 minutes and 2% of the way, and only if it would miss the limit by more than 5 minutes; it needs `total_steps` (or a simulation's `t_end`) |
+| The Mac app asks to use the keychain | Once after the app was rebuilt (it is signed without a developer team): Always Allow |
 | Nothing updates | The tunnel to the Sherlock test server is closed, or its job ended: start them again |

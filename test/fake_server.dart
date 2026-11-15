@@ -21,6 +21,11 @@ class FakeServer {
 
   /// Simulates a network failure for every request.
   var down = false;
+
+  /// Whether it has a job token (Settings → Advanced security); null: a
+  /// server too old to have them.
+  bool? jobToken = false;
+  var jobTokensMade = 0;
   var requests = 0;
 
   /// The bodies of the edits (PATCH requests) it received.
@@ -57,6 +62,16 @@ class FakeServer {
           )).toJson(),
         );
       }
+      if (path.sublist(1) case ['job-token'] when jobToken != null) {
+        if (request.method == 'POST') {
+          jobToken = true;
+          return _json({'token': 'job-token-${++jobTokensMade}'});
+        }
+        if (request.method == 'DELETE') {
+          jobToken = false;
+          return http.Response('', 204);
+        }
+      }
       if (request.method == 'DELETE' && path.length == 3) {
         deletes.add('${path[1]}/${path[2]}');
         if (path[1] == 'runs') await _run(path[2]);
@@ -64,7 +79,7 @@ class FakeServer {
         return http.Response('', 204);
       }
       return switch (path.sublist(1)) {
-        ['session'] => _json({'ok': true, 'version': '0.1.0'}),
+        ['session'] => _json({'ok': true, 'version': '0.1.0', 'jobToken': ?jobToken}),
         ['runs'] => _json([
           for (final run in await _data.fetchRuns())
             if (runIds.contains(run.id) && !_deleted.contains(run.id)) run.toJson(),

@@ -2,6 +2,7 @@ import '../../models/metric_series.dart';
 import '../../models/run.dart';
 import '../../models/simulation_info.dart';
 import '../../shared/formatters.dart';
+import '../../shared/queue_text.dart';
 
 /// "t = 6.4", "t = 0.83", "t = 1.5e-6".
 String formatSimulatedTime(double t) => 't = ${formatCoordinate(t)}';
@@ -26,6 +27,7 @@ String describeSimulation(Run run, DateTime now) {
       ? 'Iteration ${formatInt(run.currentStep)} of ${formatInt(run.totalSteps)}'
       : 'Iteration ${formatInt(run.currentStep)}';
   return switch (run.status) {
+    RunStatus.queued => describeQueued(run, now),
     RunStatus.live => [
       if (time != null)
         sim.tEnd == null

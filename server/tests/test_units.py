@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 import stat
 
 import pytest
@@ -58,6 +59,17 @@ def test_a_generated_token_is_saved_privately(tmp_path):
     assert stat.S_IMODE((tmp_path / "token").stat().st_mode) == 0o600
 
 
+def test_a_private_file_is_never_readable_by_others(tmp_path, monkeypatch):
+    """Created with mode 600, not chmodded after: no moment when others can read it."""
+    from soliton_server.config import write_private
+
+    os.umask(0o022)
+    write_private(tmp_path / "secret", "x")
+    assert stat.S_IMODE((tmp_path / "secret").stat().st_mode) == 0o600
+    with pytest.raises(FileExistsError):
+        write_private(tmp_path / "secret", "y")
+
+
 def test_settings_from_env(tmp_path):
     settings = Settings.from_env({
         "SOLITON_DATA_DIR": str(tmp_path),
@@ -85,6 +97,17 @@ def test_ntfy_messages():
     assert crashed["message"] == "CUDA OOM"
     assert crashed["priority"] == 4
     assert notifier.message_for(Change("r", "resnet", "updated", "live")) is None
+    assert notifier.message_for(Change("r", "resnet", "time-limit", "live")) is None, "not asked for"
+
+
+def test_ntfy_time_limit_messages_are_on_by_default():
+    notifier = NtfyNotifier("https://ntfy.sh/my-topic")
+    message = notifier.message_for(
+        Change("r", "resnet", "time-limit", "live", message="At this pace it needs about 3h more")
+    )
+    assert message["title"] == "resnet won't finish before its time limit"
+    assert message["message"].startswith("At this pace")
+    assert message["priority"] == 4
 
 
 def test_ntfy_needs_a_topic():

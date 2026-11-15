@@ -34,7 +34,9 @@ class Settings:
     ntfy_token: str | None = None
     """Access token, for a protected (e.g. self-hosted) ntfy topic."""
 
-    notify_on: frozenset[str] = field(default_factory=lambda: frozenset({"finished", "crashed"}))
+    notify_on: frozenset[str] = field(
+        default_factory=lambda: frozenset({"finished", "crashed", "time-limit"})
+    )
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = os.environ) -> Settings:
@@ -51,7 +53,7 @@ class Settings:
         )
         notify_on = frozenset(
             e.strip()
-            for e in env.get("SOLITON_NOTIFY_ON", "finished,crashed").split(",")
+            for e in env.get("SOLITON_NOTIFY_ON", "finished,crashed,time-limit").split(",")
             if e.strip()
         )
         return cls(
@@ -81,6 +83,17 @@ def load_or_create_token(data_dir: Path) -> str:
         return path.read_text().strip()
     data_dir.mkdir(parents=True, exist_ok=True)
     token = secrets.token_urlsafe(24)
-    path.write_text(token + "\n")
-    path.chmod(0o600)
+    try:
+        write_private(path, token + "\n")
+    except FileExistsError:  # Another server process made it just now.
+        return path.read_text().strip()
     return token
+
+
+def write_private(path: Path, text: str) -> None:
+    """Creates [path] (it mustn't exist) readable by its owner only from the
+    start: writing it, then restricting it, would leave it readable by others
+    in between."""
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w") as file:
+        file.write(text)

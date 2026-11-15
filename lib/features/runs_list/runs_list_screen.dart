@@ -426,10 +426,14 @@ class StatusFilterBar extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final style = AppTheme.styleOf(context);
-    final options = <RunStatus?>[null, ...RunStatus.values];
-
     int countOf(RunStatus? status) =>
         status == null ? runs.length : runs.where((r) => r.status == status).length;
+    // Queued only while some are (from `soliton sbatch`).
+    final options = <RunStatus?>[
+      null,
+      for (final status in RunStatus.values)
+        if (status != RunStatus.queued || selected == status || countOf(status) > 0) status,
+    ];
     String nameOf(RunStatus? status) => status?.label ?? 'All';
 
     Widget option(RunStatus? status) {
@@ -544,8 +548,10 @@ class _Abstract extends StatelessWidget {
     final improving = live.where((r) => (r.recentLossChange ?? 0) < 0).length;
     final total = runs.length;
 
+    final queued = count(RunStatus.queued);
     final summary =
-        '${_capital(_word(total))} ${total == 1 ? 'run' : 'runs'}: ${_word(live.length)} live, '
+        '${_capital(_word(total))} ${total == 1 ? 'run' : 'runs'}: '
+        '${queued > 0 ? '${_word(queued)} queued, ' : ''}${_word(live.length)} live, '
         '${_word(count(RunStatus.finished))} finished and ${_word(count(RunStatus.crashed))} '
         'crashed.';
     final trend = switch (live.length) {

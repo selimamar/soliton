@@ -46,6 +46,7 @@ class LabRunCard extends StatelessWidget {
         final epoch? => 'EP $epoch',
         null => 'STEP ${formatInt(run.currentStep)}',
       },
+      RunStatus.queued => 'QUEUED',
       RunStatus.finished => 'DONE',
       RunStatus.crashed => 'FAIL @${formatInt(run.currentStep)}',
     };
@@ -196,6 +197,7 @@ class JournalRunRow extends StatelessWidget {
         final epoch? => 'ep. $epoch',
         null => 'step ${formatInt(run.currentStep)}',
       },
+      RunStatus.queued => 'queued',
       RunStatus.finished => 'finished',
       RunStatus.crashed => 'crashed',
     };

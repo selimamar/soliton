@@ -464,6 +464,29 @@ leave the machine.
   marks the run as crashed: "Stopped by its Slurm time limit" a minute after
   the job's limit, otherwise "lost contact" after 10 minutes of silence.
 
+## Queued jobs: `soliton sbatch`, `soliton queue`
+
+Submit with `soliton sbatch` in place of `sbatch` (soliton's options first,
+then sbatch's, unchanged) and the job shows in the app as Queued while it
+waits, with how long, why, when Slurm expects to start it, and what it asked
+for:
+
+```bash
+soliton sbatch --name fno-hires -p gpu -G 1 --time=1-00:00:00 train.sbatch
+soliton queue      # later: update what Slurm says of every queued job
+```
+
+When the job starts and its script calls `soliton.init()`, the new run takes
+the queued one's place (the server matches the Slurm job id). For a job
+continuing a run (`init(id=...)`), pass that id: `soliton sbatch --id
+fno-hires-3fa9c1 ...` shows that run as queued until it goes on.
+
+`soliton queue` asks `squeue` once about all of your jobs, updates the queued
+ones, and ends those that left the queue without starting, with what `sacct`
+says (cancelled, failed). It doesn't keep running: run it when you check.
+Slurm often has no start estimate ("Not estimated") until a job nears the
+front of the queue.
+
 ## Try it
 
 `soliton demo` trains a small model on random data (needs PyTorch), so

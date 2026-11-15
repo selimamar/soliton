@@ -408,6 +408,10 @@ class _RunSheet extends ConsumerWidget {
           ('Steps', formatInt(run.currentStep)),
         ('Took', formatDuration(run.elapsedAt(now))),
       ],
+      RunStatus.queued => [
+        ('Waiting', formatRoughDuration(run.queuedFor(now) ?? Duration.zero)),
+        ('Reason', run.system?.queueReason ?? '—'),
+      ],
       RunStatus.live => [
         ('Parameters', params),
         ('Loss now', loss()),
@@ -431,6 +435,7 @@ class _RunSheet extends ConsumerWidget {
       ],
     };
     final (action, location) = switch (run.status) {
+      RunStatus.queued => ('See its place in the queue', AppRoutes.run(run.id)),
       RunStatus.finished => ('Open full analysis', AppRoutes.run(run.id)),
       RunStatus.live => ('Watch it train', '${AppRoutes.run(run.id)}?tab=metrics'),
       RunStatus.crashed => ('See what went wrong', AppRoutes.run(run.id)),
@@ -491,6 +496,7 @@ class _RunSheet extends ConsumerWidget {
                         if (style == AppStyle.ink)
                           Text(
                             switch (run.status) {
+                              RunStatus.queued => 'Run in the queue',
                               RunStatus.finished => 'Run ${label ?? ''}'.trim(),
                               RunStatus.live => 'Run in progress',
                               RunStatus.crashed => 'Run †',

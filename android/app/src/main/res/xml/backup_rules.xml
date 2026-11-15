@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Auto Backup on Android 11 and older. The server token is encrypted with
+     a key in the Android Keystore, which is never backed up, so a restored
+     copy couldn't be decrypted anyway: keep flutter_secure_storage's files
+     out (the encrypted values and the wrapped key). Everything else, such
+     as the theme and the server address, is backed up as usual. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="FlutterSecureStorage.xml"/>
+    <exclude domain="sharedpref" path="FlutterSecureKeyStorage.xml"/>
+</full-backup-content>

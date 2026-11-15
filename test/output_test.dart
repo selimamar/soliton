@@ -51,7 +51,10 @@ void main() {
       await tester.tap(button);
       await tester.pumpAndSettle();
       expect(find.text('Output · unet-seg'), findsOneWidget);
-      expect(find.byType(SelectableText), findsOneWidget);
+      expect(
+        find.descendant(of: find.byType(Dialog), matching: find.byType(SelectableText)),
+        findsOneWidget,
+      );
       await tester.tap(find.byTooltip('Copy all'));
       await tester.pump();
       expect(find.textContaining('Copied'), findsOneWidget);

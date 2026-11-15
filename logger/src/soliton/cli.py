@@ -1,4 +1,5 @@
-"""`soliton` command: upload saved runs, register datasets, or run a demo training."""
+"""`soliton` command: upload saved runs, register datasets, submit Slurm jobs that
+show while queued, or run a demo training."""
 
 from __future__ import annotations
 
@@ -113,6 +114,51 @@ def _has_data(folder: Path) -> bool:
     return any(p.suffix.lower() in known for p in folder.rglob("*"))
 
 
+def sbatch(argv: List[str]) -> int:
+    """`soliton sbatch [--name N] [--project P] [--id ID] SBATCH_ARGS...`."""
+    from ._queue import sbatch_main, split_sbatch_args
+
+    try:
+        own, rest = split_sbatch_args(argv)
+    except ValueError as error:
+        sys.exit(f"soliton sbatch: {error}")
+    if not rest or rest[0] in ("-h", "--help"):
+        print(SBATCH_HELP)
+        return 0 if rest else 2
+    args = argparse.Namespace(sbatch_args=rest, name=own.get("name"), project=own.get("project"),
+                              id=own.get("id"), server=own.get("server"), token=own.get("token"))
+    server = args.server or os.environ.get("SOLITON_SERVER")
+    token = args.token or os.environ.get("SOLITON_TOKEN")
+    client = ApiClient(server, token) if server and token else None
+    return sbatch_main(args, client)
+
+
+SBATCH_HELP = """usage: soliton sbatch [--name NAME] [--project PROJECT] [--id RUN_ID] SBATCH_ARGS...
+
+Submits a job with sbatch (everything after soliton's own options goes to
+sbatch, e.g. `soliton sbatch -p gpu -G 1 train.sbatch`) and shows it in the
+app as queued: how long it has waited, why, and when Slurm expects to start
+it. When the job's script calls soliton.init(), its run takes the queued
+one's place. `soliton queue` updates what Slurm says of queued jobs.
+
+  --name NAME        shown in the app (default: the job's name)
+  --project PROJECT  shown in the app
+  --id RUN_ID        the run id the job's script passes to soliton.init(id=...)
+                     (e.g. a job continuing a run): that run shows as queued
+  --server, --token  default: $SOLITON_SERVER, $SOLITON_TOKEN"""
+
+
+def queue(args) -> int:
+    from ._queue import refresh
+
+    try:
+        refresh(_client(args))
+    except (RetryLater, UploadError, OSError) as error:
+        print(f"soliton queue: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def demo(args) -> int:
     from ._demo import train
 
@@ -161,6 +207,21 @@ def main(argv: Optional[List[str]] = None) -> None:
     demo_parser.add_argument("--crash-at", type=int, help="make the loss NaN at this step, then crash")
     demo_parser.set_defaults(handler=demo)
 
+    queue_parser = commands.add_parser(
+        "queue", help="update what Slurm says of the jobs the app shows as queued (from soliton sbatch)"
+    )
+    queue_parser.add_argument("--server", help="default: $SOLITON_SERVER")
+    queue_parser.add_argument("--token", help="default: $SOLITON_TOKEN")
+    queue_parser.set_defaults(handler=queue)
+    commands.add_parser(
+        "sbatch", help="submit a Slurm job and show it in the app while it waits (soliton sbatch -h)",
+        add_help=False,
+    )
+
+    argv = sys.argv[1:] if argv is None else argv
+    # sbatch's own arguments aren't soliton's: pass them on untouched.
+    if argv[:1] == ["sbatch"]:
+        sys.exit(sbatch(argv[1:]))
     args = parser.parse_args(argv)
     sys.exit(args.handler(args))
 

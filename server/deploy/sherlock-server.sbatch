@@ -45,9 +45,13 @@ HOST=$(hostname)
 "$PYTHON" -c 'from soliton_server.cli import main; main()' --host 0.0.0.0 --port "$PORT" &
 SERVER=$!
 
-# Where training jobs send their data (holds the token: readable by you only).
+# Where training jobs send their data (holds a token: readable by you only).
+# With a job token (the app's Settings → Advanced security) saved in
+# $APP/job-token, jobs get that one instead of the main token.
+JOB_TOKEN="$SOLITON_TOKEN"
+if [ -s "$APP/job-token" ]; then JOB_TOKEN="$(cat "$APP/job-token")"; fi
 (umask 077; printf 'export SOLITON_SERVER=http://%s:%s\nexport SOLITON_TOKEN=%s\n' \
-    "$HOST" "$PORT" "$SOLITON_TOKEN" > "$APP/env.sh")
+    "$HOST" "$PORT" "$JOB_TOKEN" > "$APP/env.sh")
 echo "server on $HOST:$PORT (job $SLURM_JOB_ID); address in $APP/env.sh"
 
 save() {

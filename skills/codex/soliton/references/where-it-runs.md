@@ -40,6 +40,19 @@ exec python3 train.py                    # exec: Python must be the job script t
   read from its cgroup: nothing to add.
 - Job arrays: `name=f"sweep-{os.environ['SLURM_ARRAY_TASK_ID']}"` or the
   parameter values.
+- Submit with `soliton sbatch` in place of `sbatch`, from a login node
+  with `PYTHONPATH` set and the server's env sourced: soliton's options
+  first, then sbatch's, unchanged (`python3 -m soliton sbatch --name
+  fno-hires -p gpu -G 1 train.sbatch`). The job shows as Queued in the app
+  while it waits, and the run its script starts takes its place. A job
+  continuing a run passes that run's id first: `soliton sbatch --id <run
+  id> ...`. `python3 -m soliton queue` updates what Slurm says of queued
+  jobs: run it once when you check, never in a loop or `watch`.
+- Give `total_steps` (or a simulation's `t_end`): the app then warns the
+  user, once per job, when the run won't finish before its time limit.
+- When a job ends, the app's Resources card suggests `--mem`, `-c`, `-G`
+  and `--time` for next time. If the user passes those on, use them in the
+  next job script for the same computation.
 
 ## Modal, cloud machines, containers
 
@@ -72,6 +85,16 @@ real job with a short time limit) and check that the run arrived:
 curl -s -H "Authorization: Bearer $SOLITON_TOKEN" "$SOLITON_SERVER/api/runs" | python3 -m json.tool | grep '"name"'
 ```
 
+A 403 ("This is the job token") means `SOLITON_TOKEN` is the user's job
+token (the app's Advanced security), which can add runs but not read them.
+That's intended: don't ask for the main token. Check the upload instead: in
+`$SOLITON_DIR/<run id>/`, `upload.json`'s `offset` reaches the size of
+`events.jsonl`, and the job's output has no `soliton:` upload errors.
+
 Offline: `$SOLITON_DIR/<run id>/events.jsonl` grows, and ends with a
-`"status"` record. Then submit the real job. Tell the user the run's name
-and which app section it appears in (Runs, Compute or Data).
+`"status"` record. Then submit the real job, on a Slurm cluster with
+`soliton sbatch <sbatch's options> job.sbatch` (in place of `sbatch`, with
+`SOLITON_SERVER`/`SOLITON_TOKEN` set) so it shows as Queued while it waits;
+for a job continuing a run, add `--id <run id>` before sbatch's options. Tell
+the user the run's name and which app section it appears in (Runs, Compute
+or Data).

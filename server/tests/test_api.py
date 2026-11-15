@@ -12,7 +12,7 @@ RUN_KEYS = {
     "id", "name", "project", "host", "status", "startedAt", "endedAt", "currentStep",
     "totalSteps", "currentEpoch", "totalEpochs", "hyperparameters", "architecture",
     "lossPreview", "statusMessage", "tags", "notes", "system", "simulation",
-    "datasets",
+    "datasets", "resumedAtStep",
 }
 LAYER_KEYS = {
     "layerName", "activationMean", "activationStd", "gradNorm", "activationHistogram",
@@ -350,6 +350,35 @@ def test_a_run_quiet_after_its_slurm_time_limit_is_marked_stopped_by_it(app, cli
     assert run["endedAt"] == "2026-11-12T09:00:00Z"
     # Without a time limit: still the 10 minutes, as "lost contact".
     assert client.get("/api/runs/no-limit").json()["status"] == "live"
+
+
+def test_a_run_that_wont_finish_before_its_time_limit_warns_once(app, client, clock):
+    """While there's still time to save a checkpoint (see warn_time_limits)."""
+    slurm = {"jobId": "12345680", "timeLimitAt": "2026-11-12T11:00:00Z"}
+    create_run(client, system={"slurm": slurm})  # 1,000 steps, from 09:00.
+    store = app.state.store
+
+    clock.advance(minutes=5)
+    send(client, [metrics(100, train__loss=1.0)])
+    assert store.warn_time_limits() == [], "too early to trust its pace"
+
+    clock.advance(minutes=15)
+    send(client, [metrics(100, train__loss=0.9)])  # 10% in 20 minutes: 3 hours to go.
+    [change] = store.warn_time_limits()
+    assert (change.run_id, change.event, change.status) == ("tiny-1", "time-limit", "live")
+    assert change.message.startswith(
+        "At this pace it needs about 3h more, but its Slurm time limit (job 12345680) is in 1h 40m."
+    )
+    assert store.warn_time_limits() == [], "once per job"
+
+
+def test_a_run_on_pace_for_its_time_limit_doesnt_warn(app, client, clock):
+    create_run(client, system={"slurm": {"timeLimitAt": "2026-11-12T11:00:00Z"}})
+    create_run(client, "no-limit")
+    clock.advance(minutes=20)
+    send(client, [metrics(300, train__loss=0.9)])
+    send(client, [metrics(10, train__loss=0.9)], run_id="no-limit")
+    assert app.state.store.warn_time_limits() == []
 
 
 def test_a_run_still_logging_past_its_time_limit_stays_live(app, client, clock):
@@ -781,3 +810,175 @@ def test_deleting_a_run_deletes_its_output(client):
     client.delete("/api/runs/tiny-1")
     create_run(client)
     assert client.get("/api/runs/tiny-1/output").json()["lines"] == []
+
+
+# Queued Slurm jobs (`soliton sbatch`) ---------------------------------------------
+
+QUEUED_SLURM = {"jobId": "555", "jobName": "tiny", "state": "PENDING", "reason": "Priority",
+                "submitTime": "2026-11-12T08:30:00Z", "cpus": "4", "memory": "16G"}
+
+
+def queue_job(client, run_id="queued-555", **slurm):
+    response = client.put(f"/api/runs/{run_id}", json={
+        "name": "tiny", "project": "tests", "host": "Sherlock", "queued": True,
+        "startedAt": "2026-11-12T08:30:00Z", "system": {"slurm": {**QUEUED_SLURM, **slurm}},
+    })
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_a_queued_job_waits_without_going_stale(app, client, clock):
+    run = queue_job(client)
+    assert (run["status"], run["startedAt"], run["endedAt"]) == ("queued", "2026-11-12T08:30:00Z", None)
+    assert run["system"]["slurm"]["reason"] == "Priority"
+    clock.advance(hours=3)
+    assert app.state.store.mark_stale(app.state.settings.stale_after) == []
+    assert app.state.store.warn_time_limits() == []
+    assert client.get("/api/runs/queued-555").json()["status"] == "queued"
+
+
+def test_soliton_queue_updates_what_slurm_says_of_a_waiting_job(client):
+    queue_job(client)
+    run = queue_job(client, reason="Resources", expectedStart="2026-11-12T10:00:00Z")
+    assert run["status"] == "queued"
+    assert run["system"]["slurm"]["reason"] == "Resources"
+    assert run["system"]["slurm"]["expectedStart"] == "2026-11-12T10:00:00Z"
+
+
+def test_a_run_starting_in_a_queued_job_takes_its_place(client, notifications):
+    queue_job(client)
+    queue_job(client, "queued-556", jobId="556")
+    create_run(client, system={"slurm": {"jobId": "555", "submitTime": "2026-11-12T08:30:00Z"}})
+    assert client.get("/api/runs/queued-555").status_code == 404
+    assert client.get("/api/runs/queued-556").json()["status"] == "queued", "another job"
+    assert ("queued-555", "deleted") in [(c.run_id, c.event) for c in notifications]
+    assert client.get("/api/runs/tiny-1").json()["status"] == "live"
+
+
+def test_a_queued_job_with_the_runs_own_id_becomes_the_run(client, notifications):
+    """`soliton sbatch --id tiny-1` for a script that calls init(id="tiny-1")."""
+    queue_job(client, "tiny-1")
+    run = create_run(client, startedAt="2026-11-12T09:00:00Z", system={"slurm": {"jobId": "555"}})
+    assert (run["status"], run["startedAt"]) == ("live", "2026-11-12T09:00:00Z")
+    assert run["hyperparameters"] == HYPERPARAMETERS
+    assert "started" in [c.event for c in notifications]
+    assert queue_job(client, "tiny-1")["status"] == "live", "a late `soliton queue` changes nothing"
+
+
+def test_a_job_continuing_an_ended_run_queues_it_and_keeps_what_it_logged(client):
+    create_run(client)
+    send(client, [metrics(500, train__loss=0.5),
+                  {"type": "status", "status": "crashed", "message": "Time limit"}])
+    run = queue_job(client, "tiny-1", jobId="557")
+    assert (run["status"], run["statusMessage"], run["endedAt"]) == ("queued", None, None)
+    assert run["hyperparameters"] == HYPERPARAMETERS and run["currentStep"] == 500
+    assert run["system"]["slurm"]["jobId"] == "557"
+
+
+def test_a_job_that_leaves_the_queue_without_starting_ends(client):
+    queue_job(client)
+    send(client, [{"type": "status", "status": "crashed", "message": "Cancelled before it started"}],
+         run_id="queued-555")
+    run = client.get("/api/runs/queued-555").json()
+    assert (run["status"], run["statusMessage"]) == ("crashed", "Cancelled before it started")
+
+
+
+# The job token (Settings → Advanced security in the app) ----------------------
+
+def job_client(app, token):
+    return TestClient(app, headers={"Authorization": f"Bearer {token}"})
+
+
+def test_a_job_token_can_only_add_runs_and_data(app, client):
+    assert client.get("/api/session").json()["jobToken"] is False
+    token = client.post("/api/job-token").json()["token"]
+    assert client.get("/api/session").json()["jobToken"] is True
+    create_run(client, "other")
+    with job_client(app, token) as job:
+        # What a job's logger does, and `soliton queue`:
+        create_run(job)
+        send(job, [metrics(1, train__loss=1.0)])
+        assert job.put("/api/datasets/ns2d", json={"name": "ns2d"}).status_code == 200
+        assert job.get("/api/runs", params={"status": "queued"}).status_code == 200
+        # Everything else is refused, with why.
+        for method, path in [
+            ("GET", "/api/runs"), ("GET", "/api/runs/other"), ("GET", "/api/runs/other/metrics"),
+            ("GET", "/api/runs/other/output"), ("GET", "/api/datasets"),
+            ("PATCH", "/api/runs/other"), ("DELETE", "/api/runs/other"),
+            ("DELETE", "/api/datasets/ns2d"), ("GET", "/api/session"),
+            ("POST", "/api/job-token"), ("DELETE", "/api/job-token"),
+        ]:
+            response = job.request(method, path, json={"notes": "x"} if method == "PATCH" else None)
+            assert response.status_code == 403, (method, path, response.status_code)
+            assert "job token" in response.json()["detail"]
+        with pytest.raises(Exception):
+            with job.websocket_connect("/api/live") as ws:
+                ws.send_json({"type": "auth", "token": token})
+                assert ws.receive_json()["type"] == "error"
+                ws.receive_json()
+    assert client.get("/api/runs/tiny-1").json()["currentStep"] == 1
+
+
+def test_a_new_job_token_replaces_the_old_and_turning_it_off_refuses_it(app, client):
+    old = client.post("/api/job-token").json()["token"]
+    new = client.post("/api/job-token").json()["token"]
+    with job_client(app, old) as job:
+        assert job.put("/api/runs/x", json={"name": "x"}).status_code == 401
+    with job_client(app, new) as job:
+        assert job.put("/api/runs/x", json={"name": "x"}).status_code == 200
+    assert client.delete("/api/job-token").status_code == 204
+    assert client.get("/api/session").json()["jobToken"] is False
+    with job_client(app, new) as job:
+        assert job.put("/api/runs/y", json={"name": "y"}).status_code == 401
+
+
+def test_the_job_token_survives_a_restart_and_only_its_hash_is_kept(app, client):
+    from soliton_server.app import create_app
+
+    token = client.post("/api/job-token").json()["token"]
+    assert token not in str(app.state.store.setting("jobTokenHash"))
+    restarted = create_app(app.state.settings, stale_check_seconds=0)
+    with job_client(restarted, token) as job:
+        assert job.put("/api/runs/z", json={"name": "z"}).status_code == 200
+
+
+def test_runs_can_be_listed_by_status(client):
+    create_run(client)
+    queue_job(client)
+    assert [r["id"] for r in client.get("/api/runs", params={"status": "queued"}).json()] == ["queued-555"]
+    assert len(client.get("/api/runs").json()) == 2
+    assert client.get("/api/runs", params={"status": "nope"}).status_code == 422
+
+
+def test_a_continued_run_is_paced_from_where_it_resumed(app, client, clock):
+    """Steps from an earlier job don't make the new one look fast."""
+    create_run(client)  # 1,000 steps.
+    send(client, [metrics(500, train__loss=0.5),
+                  {"type": "status", "status": "crashed", "message": "Time limit"}])
+    clock.advance(hours=2)
+    restart = "2026-11-12T11:00:00Z"
+    run = create_run(client, startedAt=restart,
+                     system={"slurm": {"jobId": "9", "timeLimitAt": "2026-11-12T11:30:00Z"}})
+    assert (run["status"], run["resumedAtStep"]) == ("live", 500)
+    clock.advance(minutes=20)
+    send(client, [metrics(600, train__loss=0.4)])  # 100 steps in 20 minutes: 400 left, 80 minutes.
+    [change] = app.state.store.warn_time_limits()
+    assert change.message.startswith("At this pace it needs about 1h 20m more")
+
+
+def test_a_queued_job_you_cancelled_ends_without_an_alert(client, notifications):
+    queue_job(client)
+    send(client, [{"type": "status", "status": "crashed", "message": "Cancelled before it started.",
+                   "notify": False}], run_id="queued-555")
+    [change] = [c for c in notifications if c.event == "crashed"]
+    assert change.notify is False and change.to_json()["notify"] is False
+    from soliton_server.notify import NtfyNotifier
+    assert NtfyNotifier("https://ntfy.sh/topic").message_for(change) is None
+
+
+def test_each_series_has_its_mean_over_every_point(client):
+    create_run(client)
+    send(client, [metrics(step, system__cpu=10.0 if step % 10 else 90.0) for step in range(100)])
+    series = {s["name"]: s for s in client.get("/api/runs/tiny-1/metrics", params={"maxPoints": 10}).json()}
+    assert series["system/cpu"]["mean"] == pytest.approx(18.0), "not (10 + 90) / 2 as the points suggest"

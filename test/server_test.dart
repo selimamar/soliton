@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -11,6 +13,7 @@ import 'package:soliton/data/services/api_client.dart';
 import 'package:soliton/data/services/live_updates.dart';
 import 'package:soliton/data/services/server_connection.dart';
 import 'package:soliton/data/services/settings_store.dart';
+import 'package:soliton/data/services/token_store.dart';
 import 'package:soliton/models/run.dart';
 
 import 'fake_server.dart';
@@ -21,9 +24,9 @@ ServerConnection connection([
   String token = 'secret',
 ]) => ServerConnection.parse(address, token)!;
 
-/// Settings with a saved login.
-MemorySettingsStore loggedIn({String token = 'secret'}) =>
-    MemorySettingsStore({'serverAddress': 'https://runs.example.com', 'serverToken': token});
+/// Settings with a saved server address (its token is in a [MemoryTokenStore]).
+MemorySettingsStore loggedIn() =>
+    MemorySettingsStore({'serverAddress': 'https://runs.example.com'});
 
 void main() {
   group('ServerConnection', () {
@@ -156,8 +159,9 @@ void main() {
     late FakeServer server;
     late FakeLiveSockets sockets;
 
-    Widget app(SettingsStore store) => buildApp(
+    Widget app(SettingsStore store, [MemoryTokenStore? tokens]) => buildApp(
       store: store,
+      tokens: tokens,
       overrides: [
         apiClientFactoryProvider.overrideWithValue(server.clientFor),
         liveSocketConnectorProvider.overrideWithValue(sockets.connect),
@@ -178,9 +182,10 @@ void main() {
 
     testWidgets('shows the server\'s runs, and remembers the login', (tester) async {
       final store = MemorySettingsStore({'demoData': true});
-      await tester.pumpWidget(app(store));
+      final tokens = MemoryTokenStore();
+      await tester.pumpWidget(app(store, tokens));
       await tester.pumpAndSettle();
-      expect(find.text('All · 10'), findsOneWidget, reason: 'demo data first');
+      expect(find.text('All · 11'), findsOneWidget, reason: 'demo data first');
       expect(find.textContaining('Demo data.'), findsOneWidget);
 
       await tester.tap(find.widgetWithText(TextButton, 'Connect server'));
@@ -192,12 +197,13 @@ void main() {
       expect(find.text('All · 2'), findsOneWidget);
       expect(find.textContaining('Demo data.'), findsNothing);
       expect(store.getString('serverAddress'), 'https://runs.example.com');
-      expect(store.getString('serverToken'), 'secret');
+      expect(tokens.token, 'secret');
+      expect(store.getString('serverToken'), isNull, reason: 'the token is kept apart');
       expect(sockets.opened.single.uri.toString(), 'wss://runs.example.com/api/live');
 
       // A fresh start uses the saved login.
       await tester.pumpWidget(const SizedBox());
-      await tester.pumpWidget(app(store));
+      await tester.pumpWidget(app(store, tokens));
       await tester.pumpAndSettle();
       expect(find.text('All · 2'), findsOneWidget);
     });
@@ -230,7 +236,8 @@ void main() {
 
     testWidgets('disconnecting shows nothing, with demo data off', (tester) async {
       final store = loggedIn();
-      await tester.pumpWidget(app(store));
+      final tokens = MemoryTokenStore('secret');
+      await tester.pumpWidget(app(store, tokens));
       await tester.pumpAndSettle();
       expect(find.text('All · 2'), findsOneWidget);
 
@@ -247,12 +254,13 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('Not connected to a server.'), findsOneWidget, reason: section);
       }
-      expect(store.getString('serverToken'), isNull);
+      expect(store.getString('serverAddress'), isNull);
+      expect(tokens.token, isNull);
       expect(sockets.opened.single.closed, isTrue);
     });
 
     testWidgets('a run from the server opens with all its tabs', (tester) async {
-      await tester.pumpWidget(app(loggedIn()));
+      await tester.pumpWidget(app(loggedIn(), MemoryTokenStore('secret')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('resnet50-cifar'));
       await tester.pumpAndSettle();
@@ -267,7 +275,7 @@ void main() {
     });
 
     testWidgets('a revoked token shows plain words and no Retry', (tester) async {
-      await tester.pumpWidget(app(loggedIn(token: 'revoked')));
+      await tester.pumpWidget(app(loggedIn(), MemoryTokenStore('revoked')));
       await tester.pumpAndSettle();
       expect(find.text('Not allowed'), findsOneWidget);
       expect(find.textContaining('rejected the token'), findsOneWidget);
@@ -277,7 +285,7 @@ void main() {
 
     testWidgets('a server that goes down offers Retry, which recovers', (tester) async {
       server.down = true;
-      await tester.pumpWidget(app(loggedIn()));
+      await tester.pumpWidget(app(loggedIn(), MemoryTokenStore('secret')));
       await tester.pump(const Duration(seconds: 5)); // Through the automatic retries.
       await tester.pumpAndSettle();
       expect(find.text("Can't reach the server"), findsOneWidget);
@@ -288,4 +296,110 @@ void main() {
       expect(find.text('All · 2'), findsOneWidget);
     });
   });
+
+  group('the saved token', () {
+    test('the memory store reads, writes and deletes it', () async {
+      final tokens = MemoryTokenStore();
+      expect(await tokens.read(), isNull);
+      await tokens.write('secret');
+      expect(await tokens.read(), 'secret');
+      await tokens.delete();
+      expect(await tokens.read(), isNull);
+      expect(MemoryTokenStore('given').token, 'given');
+    });
+
+    test('is read from the token store at startup', () async {
+      final settings = MemorySettingsStore({'serverAddress': 'https://runs.example.com'});
+      expect(await loadServerToken(MemoryTokenStore('secret'), settings), 'secret');
+      expect(await loadServerToken(MemoryTokenStore(), settings), isNull);
+    });
+
+    test('an old one in the settings moves to the token store', () async {
+      final settings = MemorySettingsStore({
+        'serverAddress': 'https://runs.example.com',
+        'serverToken': 'old',
+      });
+      final tokens = MemoryTokenStore('older');
+      expect(await loadServerToken(tokens, settings), 'old');
+      expect(tokens.token, 'old');
+      expect(settings.getString('serverToken'), isNull);
+      expect(settings.getString('serverAddress'), 'https://runs.example.com');
+    });
+
+    test('stays in the settings if secure storage fails, and is still used', () async {
+      final settings = MemorySettingsStore({'serverToken': 'old'});
+      expect(await loadServerToken(_BrokenTokenStore(), settings), 'old');
+      expect(settings.getString('serverToken'), 'old', reason: 'moved on a later launch');
+      expect(await loadServerToken(_BrokenTokenStore(), MemorySettingsStore()), isNull);
+    });
+
+    test('connecting saves it apart; disconnecting deletes it everywhere', () async {
+      // As if moving an old token failed at startup: it's still in the settings.
+      final settings = MemorySettingsStore({'serverToken': 'old'});
+      final tokens = MemoryTokenStore();
+      final container = ProviderContainer(
+        overrides: [
+          settingsStoreProvider.overrideWithValue(settings),
+          tokenStoreProvider.overrideWithValue(tokens),
+        ],
+      );
+      addTearDown(container.dispose);
+      final notifier = container.read(connectionProvider.notifier);
+
+      notifier.connect(connection());
+      await pumpEventQueue();
+      expect(tokens.token, 'secret');
+      expect(settings.getString('serverToken'), isNull);
+      expect(settings.getString('serverAddress'), 'https://runs.example.com');
+
+      settings.setString('serverToken', 'old').ignore();
+      notifier.disconnect();
+      await pumpEventQueue();
+      expect(container.read(connectionProvider), isNull);
+      expect(tokens.token, isNull);
+      expect(settings.getString('serverToken'), isNull);
+      expect(settings.getString('serverAddress'), isNull);
+    });
+
+    test('a keyring that never answers gives up, so the app still starts', () async {
+      expect(
+        await loadServerToken(_HangingTokenStore(), MemorySettingsStore(), timeout: Duration.zero),
+        isNull,
+      );
+    });
+
+    test('a failed save keeps the connection for this session', () async {
+      final container = ProviderContainer(
+        overrides: [tokenStoreProvider.overrideWithValue(_BrokenTokenStore())],
+      );
+      addTearDown(container.dispose);
+      container.read(connectionProvider.notifier).connect(connection());
+      await pumpEventQueue();
+      expect(container.read(connectionProvider)?.token, 'secret');
+    });
+  });
+}
+
+/// Secure storage that fails, like a refused keychain prompt.
+class _BrokenTokenStore implements TokenStore {
+  @override
+  Future<String?> read() => Future.error(StateError('no keychain'));
+
+  @override
+  Future<void> write(String token) => Future.error(StateError('no keychain'));
+
+  @override
+  Future<void> delete() => Future.error(StateError('no keychain'));
+}
+
+/// Secure storage that never answers (a Linux desktop without a keyring).
+class _HangingTokenStore implements TokenStore {
+  @override
+  Future<String?> read() => Completer<String?>().future;
+
+  @override
+  Future<void> write(String token) => Completer<void>().future;
+
+  @override
+  Future<void> delete() => Completer<void>().future;
 }

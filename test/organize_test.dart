@@ -4,6 +4,7 @@ import 'package:soliton/data/mock/mock_runs.dart';
 import 'package:soliton/data/providers.dart';
 import 'package:soliton/data/services/live_updates.dart';
 import 'package:soliton/data/services/settings_store.dart';
+import 'package:soliton/data/services/token_store.dart';
 import 'package:soliton/data/tags.dart';
 import 'package:soliton/features/runs_list/run_groups.dart';
 import 'package:soliton/models/layer_info.dart';
@@ -64,6 +65,7 @@ void main() {
           'fno-ns-m8-w64',
           'fno-ns-m16-w32',
           'fno-ns-m16-w64',
+          'queued-52340117',
         ],
         'segmentation': ['unet-seg'],
       });
@@ -74,6 +76,7 @@ void main() {
         'ResNet',
         'UNet',
         'VisionTransformer',
+        'Model not logged', // The queued job.
       ]);
       expect(summary(groupRuns(runs, RunGrouping.dataset))['CIFAR-10'], [
         'resnet50-cifar',
@@ -201,10 +204,8 @@ void main() {
       late FakeServer server;
 
       Widget app() => buildApp(
-        store: MemorySettingsStore({
-          'serverAddress': 'https://runs.example.com',
-          'serverToken': 'secret',
-        }),
+        store: MemorySettingsStore({'serverAddress': 'https://runs.example.com'}),
+        tokens: MemoryTokenStore('secret'),
         overrides: [
           apiClientFactoryProvider.overrideWithValue((c) => server.clientFor(c)),
           liveSocketConnectorProvider.overrideWithValue(FakeLiveSockets().connect),

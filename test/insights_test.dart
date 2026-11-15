@@ -185,6 +185,6 @@ void main() {
     final groups = {for (final g in groupRuns(runs, RunGrouping.pde)) g.label: g.runs.length};
     expect(groups['Navier–Stokes 2D, vorticity form'], 5);
     expect(groups['Navier–Stokes 3D, periodic box'], 1);
-    expect(groups['No PDE logged'], 4);
+    expect(groups['No PDE logged'], 5); // The queued job too.
   });
 }

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/dataset.dart';
@@ -14,40 +15,49 @@ import 'run_repository.dart';
 import 'services/api_client.dart';
 import 'services/server_connection.dart';
 import 'services/settings_store.dart';
+import 'services/token_store.dart';
 
 /// The server the app is connected to, or null for demo data. Saved on the
-/// device (the token too, in plain app storage).
+/// device: the address in the settings, the token in secure storage
+/// ([SecureTokenStore]; not secure on the web).
 final connectionProvider = NotifierProvider<ConnectionSetting, ServerConnection?>(
   ConnectionSetting.new,
 );
 
 class ConnectionSetting extends Notifier<ServerConnection?> {
   static const _addressKey = 'serverAddress';
-  static const _tokenKey = 'serverToken';
 
   @override
   ServerConnection? build() {
-    final store = ref.watch(settingsStoreProvider);
-    final address = store.getString(_addressKey);
-    final token = store.getString(_tokenKey);
+    final address = ref.watch(settingsStoreProvider).getString(_addressKey);
+    final token = ref.watch(savedTokenProvider);
     if (address == null || token == null) return null;
     return ServerConnection.parse(address, token);
   }
 
   void connect(ServerConnection connection) {
     state = connection;
-    final store = ref.read(settingsStoreProvider);
-    store.setString(_addressKey, connection.address).ignore();
-    store.setString(_tokenKey, connection.token).ignore();
+    final settings = ref.read(settingsStoreProvider);
+    settings.setString(_addressKey, connection.address).ignore();
+    _save(ref.read(tokenStoreProvider).write(connection.token));
+    // In case moving an old token out of the settings failed at startup.
+    settings.setString(legacyTokenKey, null).ignore();
   }
 
   /// Back to demo data.
   void disconnect() {
     state = null;
-    final store = ref.read(settingsStoreProvider);
-    store.setString(_addressKey, null).ignore();
-    store.setString(_tokenKey, null).ignore();
+    final settings = ref.read(settingsStoreProvider);
+    settings.setString(_addressKey, null).ignore();
+    settings.setString(legacyTokenKey, null).ignore();
+    _save(ref.read(tokenStoreProvider).delete());
   }
+
+  /// Secure storage can fail (a keychain prompt was refused, say); the
+  /// connection still works until the app quits.
+  void _save(Future<void> saving) => saving.catchError((Object error) {
+    debugPrint('Could not save the server token ($error).');
+  }).ignore();
 }
 
 /// Makes the HTTP client for a connection (tests swap in a fake one).

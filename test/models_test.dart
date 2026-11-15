@@ -133,8 +133,9 @@ void main() {
       for (var i = 0; i < a.length; i++) {
         expect(a[i].run, b[i].run);
         expect(a[i].run.hashCode, b[i].run.hashCode);
-        expect(a[i].metrics.values.first, b[i].metrics.values.first);
-        expect(a[i].layerStats.first, b[i].layerStats.first);
+        // A queued run has logged nothing.
+        expect(a[i].metrics.values.firstOrNull, b[i].metrics.values.firstOrNull);
+        expect(a[i].layerStats.firstOrNull, b[i].layerStats.firstOrNull);
       }
     });
 

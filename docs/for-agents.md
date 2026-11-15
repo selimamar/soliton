@@ -39,7 +39,8 @@ the computation + soliton logger  ──HTTP──►  soliton-server  ◄──
 | `sim.log_field(name, field)` | Fields tab, at the simulated time |
 | `soliton.register_dataset(path)`, `init(datasets=[...])` | **Data**: size, samples, splits, arrays and ranges, previews, which run made it and which runs used it. Only the description is uploaded |
 | Automatic: the machine | **System** tab: CPU model and cores, memory limit, GPUs, software versions, host ("Sherlock", "Modal", ...), Slurm job (id, partition, node). Usage every 15 s: CPU %, memory against the job's limit, GPU use, memory, temperature, power |
-| Automatic: the Slurm job | Overview: queue wait, expected finish, time limit, and a warning when the limit comes first |
+| Automatic: the Slurm job | Overview: queue wait, expected finish, time limit, and a warning when the limit comes first; an alert (and ntfy push) once per job when, at its pace, it won't finish in time. When it ends, **Resources**: memory, CPUs, GPUs and time used against what it asked for, with sbatch options for next time |
+| `soliton sbatch <sbatch's options> job.sbatch` (in place of `sbatch`) | A **Queued** card while the job waits: how long, why, expected start, what it asked for. The run the job's script starts takes its place (matched by Slurm job id); with `--id <run id>`, that run itself shows as queued. `soliton queue` updates what Slurm says, and ends jobs that left without starting |
 | Automatic: what the script prints | **Output** on the Overview (last 1,000 lines), first thing on a crashed run, with the traceback |
 
 ### Metric names
@@ -61,7 +62,8 @@ and NaN or infinity (shown as such).
 | A simulation logs NaN or infinity | Crashed: "Diverged at t = ...: energy is NaN", marked on its charts |
 | SIGTERM (Slurm time limit, `scancel`) | Crashed: "Stopped by its Slurm time limit" (or "by SIGTERM"). In a job script Python must get the signal: `exec python ...` and `#SBATCH --signal=B:TERM@60` |
 | Killed outright (out of memory, node failure), or the signal never reached Python | Crashed by the server: "Stopped by its Slurm time limit" a minute after the limit, else "Lost contact" after 10 minutes of silence. It turns live again if data arrives |
-| A later job continues it (`init(id=...)`, the wrapper's `--id`), e.g. from a checkpoint | Live again, whatever the earlier job ended with |
+| A later job continues it (`init(id=...)`, the wrapper's `--id`), e.g. from a checkpoint | Live again, whatever the earlier job ended with; its pace (time left, the time-limit alert) counts from where it resumed |
+| A queued job (`soliton sbatch`) leaves the queue without starting | After `soliton queue`: crashed, with what `sacct` says ("Cancelled before it started.", no alert for a cancel; failed, out of memory...) |
 
 ## Where the data goes
 
@@ -84,6 +86,13 @@ Where the server is depends on the user's setup:
   tunnel.
 - **A local server**: `soliton-server` on the user's computer, for runs on
   that computer.
+
+`SOLITON_TOKEN` may be the server's main token or, if the user turned on
+**Advanced security** in the app, the **job token**: it can create and update
+runs, send their events, describe datasets and list queued jobs, and the
+server answers 403 to everything else (listing or reading runs, deleting,
+editing tags). That is by design: don't ask the user for the main token to
+work around it; check uploads as in "Checking that it works" below.
 
 | Variable | Default | |
 |---|---|---|
@@ -118,6 +127,13 @@ Where the server is depends on the user's setup:
 4. **Data:** `soliton.register_dataset(path, name=, version=, source=,
    splits=)`, passed to `init(datasets=[...])`; a run that writes data
    registers it with `run.register_dataset(path)`.
+5. **Submitting to Slurm:** `soliton sbatch` (`python3 -m soliton sbatch`
+   with the logger on `PYTHONPATH`) in place of `sbatch`: soliton's own
+   options first (`--name`, `--project`, `--id`), then sbatch's, unchanged.
+   It submits, prints sbatch's job id, and shows the job as Queued. A job
+   continuing a run passes that run's id: `soliton sbatch --id <run id> ...`.
+   `soliton queue` is one `squeue` call: run it when you check, never in a
+   loop (on Sherlock, no polling from login nodes).
 
 The [skill](../skills/claude-code/soliton/SKILL.md) has a code example for each, job
 script templates for Sherlock, Modal and cloud machines, and how to find
@@ -144,8 +160,13 @@ curl -s -H "Authorization: Bearer $SOLITON_TOKEN" "$SOLITON_SERVER/api/runs/<id>
 ```
 
 Other endpoints: `/api/runs/<id>/output`, `/fields`, `/layers`,
-`/api/datasets`, `/api/health` (no token). Offline: the run's
-`events.jsonl` grows and ends with a `"status"` record.
+`/api/datasets`, `/api/runs?status=queued`, `/api/health` (no token).
+Offline: the run's `events.jsonl` grows and ends with a `"status"` record.
+
+With the job token those reads answer 403. Check the upload instead: in
+`$SOLITON_DIR/<run id>/`, `upload.json`'s `offset` catches up with the size
+of `events.jsonl` (bytes the server has), and the job's output shows no
+`soliton:` upload errors. Then ask the user to look in the app.
 
 ## Block to copy into a project's AGENTS.md or CLAUDE.md
 
@@ -167,6 +188,9 @@ Codex: the `soliton` skill, from /path/to/soliton/skills). In short:
 - Server and token come from `SOLITON_SERVER`/`SOLITON_TOKEN`, which I set.
   Never write the token anywhere. Without them runs are saved offline.
 - Slurm job scripts: `#SBATCH --signal=B:TERM@60`, `SOLITON_DIR` on scratch,
-  and `exec python ...` so a time limit is reported.
+  and `exec python ...` so a time limit is reported. Submit with
+  `soliton sbatch` (sbatch's options) so the job shows while queued.
+- `SOLITON_TOKEN` may be a job token that can't read runs (403): that's
+  expected; check uploads in `$SOLITON_DIR/<run id>/upload.json`.
 - Don't change what the computation does; check with a short run first.
 ```

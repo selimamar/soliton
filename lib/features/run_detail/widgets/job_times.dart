@@ -31,7 +31,7 @@ class JobTimes extends ConsumerWidget {
 
     String clock(DateTime t) => formatClock(t, now: now, timeOfDay: (t) => timeOfDay(context, t));
     final stats = [
-      if (wait != null) ('Queue wait', formatQueueWait(wait)),
+      if (wait != null) ('Queue wait', formatRoughDuration(wait)),
       if (finish != null) ('Finishes', '~${clock(finish)}'),
       if (limit != null) ('Time limit', clock(limit)),
     ];
@@ -52,14 +52,6 @@ class JobTimes extends ConsumerWidget {
       ],
     );
   }
-}
-
-/// A queue wait: "42s" and "1m 48s" while short, then to the nearest
-/// minute ("45m", "3h 12m", "2d 4h"), where seconds are noise.
-String formatQueueWait(Duration d) {
-  if (d < const Duration(minutes: 10)) return formatDuration(d);
-  final minutes = (d.inSeconds / 60).round();
-  return minutes < 60 ? '${minutes}m' : formatDuration(Duration(minutes: minutes));
 }
 
 /// "18:40" or "6:40 PM", as the device writes times.

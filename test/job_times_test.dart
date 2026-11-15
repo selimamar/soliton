@@ -23,10 +23,10 @@ void main() {
   });
 
   test('a short queue wait keeps its seconds; a long one is rounded to the minute', () {
-    expect(formatQueueWait(const Duration(seconds: 42)), '42s');
-    expect(formatQueueWait(const Duration(minutes: 1, seconds: 48)), '1m 48s');
-    expect(formatQueueWait(const Duration(minutes: 44, seconds: 31)), '45m');
-    expect(formatQueueWait(const Duration(hours: 3, minutes: 11, seconds: 40)), '3h 12m');
+    expect(formatRoughDuration(const Duration(seconds: 42)), '42s');
+    expect(formatRoughDuration(const Duration(minutes: 1, seconds: 48)), '1m 48s');
+    expect(formatRoughDuration(const Duration(minutes: 44, seconds: 31)), '45m');
+    expect(formatRoughDuration(const Duration(hours: 3, minutes: 11, seconds: 40)), '3h 12m');
   });
 
   test('the queue wait is from submitting to Slurm starting the job', () {
@@ -42,6 +42,22 @@ void main() {
     expect(run.queueWait, const Duration(hours: 3, minutes: 12));
     expect(run.system!.timeLimitAt, DateTime.utc(2026, 11, 15, 6, 22));
     expect(withSlurm({'jobId': '1'}).queueWait, isNull, reason: 'an older logger');
+  });
+
+  test('a continued run is paced from where it resumed', () {
+    final now = DateTime.utc(2026, 11, 14, 12);
+    final run = Run.fromJson({
+      ...buildMockRuns(now).first.run.toJson(),
+      'status': 'live',
+      'startedAt': now.subtract(const Duration(minutes: 20)).toIso8601String(),
+      'endedAt': null,
+      'currentStep': 600,
+      'totalSteps': 1000,
+      'resumedAtStep': 500,
+    });
+    // 100 steps in 20 minutes since it resumed: 400 to go, 80 minutes.
+    expect(run.estimatedRemainingAt(now), const Duration(minutes: 80));
+    expect(Run.fromJson({...run.toJson()..remove('resumedAtStep')}).resumedAtStep, 0);
   });
 
   group('the Overview', () {

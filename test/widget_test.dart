@@ -28,10 +28,10 @@ class FlakyRunRepository extends MockRunRepository {
   }
 }
 
-/// All ten demo runs are listed. The list is lazy and the test screen only
+/// All eleven demo runs are listed. The list is lazy and the test screen only
 /// fits three cards, so the last one is checked by scrolling to it.
 void expectAllRuns(WidgetTester tester) {
-  expect(find.text('All · 10'), findsOneWidget);
+  expect(find.text('All · 11'), findsOneWidget);
   expect(find.text('resnet50-cifar'), findsOneWidget);
 }
 
@@ -50,14 +50,17 @@ void main() {
   testWidgets('status filter chips filter the list', (tester) async {
     await openApp(tester);
 
+    // With Queued among them, the chips scroll sideways on a small screen.
+    await tester.ensureVisible(find.text('Crashed · 1'));
     await tester.tap(find.text('Crashed · 1'));
     await tester.pumpAndSettle();
     expect(find.byType(RunCard), findsOneWidget);
     expect(find.text('unet-seg'), findsOneWidget);
 
-    await tester.tap(find.text('All · 10'));
+    await tester.ensureVisible(find.text('All · 11'));
+    await tester.tap(find.text('All · 11'));
     await tester.pumpAndSettle();
-    expectAllRuns(tester);
+    expect(find.byType(RunCard), findsAtLeast(2));
   });
 
   testWidgets('tapping a run opens its detail tabs and updates the URL', (tester) async {

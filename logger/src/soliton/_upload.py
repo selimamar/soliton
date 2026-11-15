@@ -48,10 +48,15 @@ class ApiClient:
     def post_events(self, run_id: str, events: List[dict]) -> None:
         self._request("POST", f"/api/runs/{run_id}/events", {"events": events})
 
-    def _request(self, method: str, path: str, body: dict) -> None:
+    def get_runs(self, status: Optional[str] = None) -> list:
+        """The server's runs; with [status], only those (a job token may only
+        list queued ones)."""
+        return self._request("GET", "/api/runs" + (f"?status={status}" if status else ""))
+
+    def _request(self, method: str, path: str, body: Optional[dict] = None):
         request = urllib.request.Request(
             self.server + path,
-            data=dumps(body).encode(),
+            data=None if body is None else dumps(body).encode(),
             method=method,
             headers={
                 "Content-Type": "application/json",
@@ -61,7 +66,8 @@ class ApiClient:
         )
         try:
             with urllib.request.urlopen(request, timeout=self._timeout) as response:
-                response.read()
+                data = response.read()
+            return json.loads(data) if method == "GET" else None
         except urllib.error.HTTPError as error:
             detail = error.read().decode(errors="replace")[:300]
             if error.code in (408, 425, 429) or error.code >= 500:

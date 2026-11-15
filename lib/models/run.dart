@@ -4,7 +4,8 @@ import 'model_helpers.dart';
 import 'simulation_info.dart';
 import 'system_info.dart';
 
-enum RunStatus { live, finished, crashed }
+/// [queued]: a Slurm job still waiting to start (from `soliton sbatch`).
+enum RunStatus { queued, live, finished, crashed }
 
 /// A training run: what is shown in the runs list and in the Overview tab.
 ///
@@ -20,6 +21,7 @@ class Run {
     required this.status,
     required this.startedAt,
     required this.currentStep,
+    this.resumedAtStep = 0,
     required this.totalSteps,
     required this.currentEpoch,
     required this.totalEpochs,
@@ -48,6 +50,7 @@ class Run {
       _ => null,
     },
     currentStep: (json['currentStep']! as num).toInt(),
+    resumedAtStep: (json['resumedAtStep'] as num?)?.toInt() ?? 0, // Older servers don't send it.
     totalSteps: (json['totalSteps']! as num).toInt(),
     currentEpoch: (json['currentEpoch']! as num).toInt(),
     totalEpochs: (json['totalEpochs']! as num).toInt(),
@@ -86,6 +89,11 @@ class Run {
   final DateTime? endedAt;
 
   final int currentStep;
+
+  /// Where its latest process took over (a job continuing it from a
+  /// checkpoint): its pace counts from here. 0 for a run that started there.
+  final int resumedAtStep;
+
   final int totalSteps;
   final int currentEpoch;
   final int totalEpochs;
@@ -166,20 +174,24 @@ class Run {
   Duration elapsedAt(DateTime now) => (endedAt ?? now).difference(startedAt);
 
   /// Naive estimate assuming a constant time per step (for a simulation
-  /// with an end time, a constant pace of simulated time). Null if not live.
+  /// with an end time, a constant pace of simulated time), at the pace of
+  /// its latest process: from where it resumed ([resumedAtStep]), since
+  /// [startedAt] is when that process started. Null if not live.
   Duration? estimatedRemainingAt(DateTime now) {
     if (status != RunStatus.live) return null;
+    final elapsed = elapsedAt(now).inMilliseconds;
     if (simulation case SimulationInfo(:final tEnd?, :final time?) when tEnd > 0) {
-      if (!time.isFinite || time <= 0) return null;
+      final done = time - (simulation!.resumedAtTime ?? 0);
+      if (!time.isFinite || done <= 0) return null;
       if (time >= tEnd) return Duration.zero;
-      return Duration(milliseconds: (elapsedAt(now).inMilliseconds * (tEnd - time) / time).round());
+      return Duration(milliseconds: (elapsed * (tEnd - time) / done).round());
     }
     // No total steps (training without total_steps, a steady solve without
     // a maximum number of iterations): unknown.
-    if (currentStep == 0 || totalSteps == 0) return null;
+    final done = currentStep - resumedAtStep;
+    if (done <= 0 || totalSteps == 0) return null;
     if (currentStep >= totalSteps) return Duration.zero;
-    final msPerStep = elapsedAt(now).inMilliseconds / currentStep;
-    return Duration(milliseconds: (msPerStep * (totalSteps - currentStep)).round());
+    return Duration(milliseconds: (elapsed / done * (totalSteps - currentStep)).round());
   }
 
   /// When it should finish, from [estimatedRemainingAt]. Null if not live.
@@ -197,6 +209,14 @@ class Run {
     return wait.isNegative ? null : wait;
   }
 
+  /// While it's queued: how long it has waited so far (from when it was
+  /// submitted, which is also its [startedAt] until it starts).
+  Duration? queuedFor(DateTime now) {
+    if (status != RunStatus.queued) return null;
+    final waited = now.difference(system?.submittedAt ?? startedAt);
+    return waited.isNegative ? Duration.zero : waited;
+  }
+
   /// Its Slurm time limit, while that can still stop it.
   DateTime? get liveTimeLimitAt => status == RunStatus.live ? system?.timeLimitAt : null;
 
@@ -209,6 +229,7 @@ class Run {
     'startedAt': startedAt.toIso8601String(),
     'endedAt': endedAt?.toIso8601String(),
     'currentStep': currentStep,
+    'resumedAtStep': resumedAtStep,
     'totalSteps': totalSteps,
     'currentEpoch': currentEpoch,
     'totalEpochs': totalEpochs,
@@ -234,6 +255,7 @@ class Run {
       other.startedAt == startedAt &&
       other.endedAt == endedAt &&
       other.currentStep == currentStep &&
+      other.resumedAtStep == resumedAtStep &&
       other.totalSteps == totalSteps &&
       other.currentEpoch == currentEpoch &&
       other.totalEpochs == totalEpochs &&
@@ -258,6 +280,7 @@ class Run {
     startedAt,
     endedAt,
     currentStep,
+    resumedAtStep,
     totalSteps,
     currentEpoch,
     totalEpochs,

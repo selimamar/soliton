@@ -26,6 +26,7 @@ String? farmLabel(AppStyle style, int index) => switch (style) {
 /// What a screen reader says for [run] on the farm.
 String farmSemanticsLabel(Run run) {
   final kind = switch (run.status) {
+    RunStatus.queued => 'egg not yet laid, queued',
     RunStatus.finished => 'duck',
     RunStatus.live => 'egg, ${(run.progress * 100).round()}% trained',
     RunStatus.crashed => 'cracked egg, crashed',

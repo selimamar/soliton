@@ -48,8 +48,11 @@ class _ServerScreenState extends ConsumerState<ServerScreen> {
     String? error;
     try {
       await client.checkSession();
-    } on UnauthorizedException {
-      error = 'The server rejected this token.';
+    } on UnauthorizedException catch (e) {
+      error = e.jobToken
+          ? "That's the job token, which can only add and update runs and data. Use the "
+                "server's main token here (soliton-server --show-token)."
+          : 'The server rejected this token.';
     } on ServerUnreachableException {
       error =
           "Can't reach ${connection.address}. Check the address, and that the server is running.";

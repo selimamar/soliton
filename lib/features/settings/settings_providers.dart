@@ -25,3 +25,9 @@ final notifyOnFinishProvider = NotifierProvider<Setting<bool>, bool>(
 final notifyOnCrashProvider = NotifierProvider<Setting<bool>, bool>(
   () => Setting.boolean('notifyOnCrash', true),
 );
+
+/// In-app alerts when a live run, at its pace, won't finish before its
+/// Slurm job's time limit (the server says so once per job).
+final notifyOnTimeLimitProvider = NotifierProvider<Setting<bool>, bool>(
+  () => Setting.boolean('notifyOnTimeLimit', true),
+);

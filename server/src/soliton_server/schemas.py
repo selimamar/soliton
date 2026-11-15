@@ -101,6 +101,9 @@ class RunIn(_In):
     # The datasets it trains or is evaluated on (their ids); None leaves
     # them as they are (an older logger).
     datasets: Optional[list[DatasetId]] = Field(default=None, max_length=20)
+    # A Slurm job still waiting in the queue (`soliton sbatch`): its system
+    # describes the job (startedAt is when it was submitted).
+    queued: bool = False
 
 
 class RunNotesIn(_In):
@@ -353,6 +356,8 @@ class StatusEvent(_In):
     time: Time = None
     # A simulation that crashed because a value turned NaN or infinite.
     diverged: bool = False
+    # False: no alert or push (e.g. a queued job you cancelled yourself).
+    notify: bool = True
 
 
 OUTPUT_KEPT = 1000  # Lines of a run's output the server keeps (the latest).

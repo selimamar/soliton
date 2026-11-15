@@ -22,6 +22,8 @@ import '../widgets/network_diagram.dart';
 import '../widgets/run_notes_card.dart';
 import '../widgets/job_times.dart';
 import '../widgets/output_card.dart';
+import '../widgets/queue_card.dart';
+import '../widgets/resources_card.dart';
 
 /// Key facts about a run: size, timing, progress, tags and notes,
 /// hyperparameters and architecture.
@@ -32,6 +34,15 @@ class OverviewTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Still waiting for Slurm: nothing has run yet.
+    if (run.status == RunStatus.queued) {
+      return SpacedListView(
+        children: [
+          QueueCard(run: run),
+          RunNotesCard(run: run),
+        ],
+      );
+    }
     return SpacedListView(
       children: [
         if (run.statusMessage case final message?)
@@ -43,6 +54,7 @@ class OverviewTab extends StatelessWidget {
         if (AppTheme.styleOf(context) != AppStyle.ink || run.latestLoss == null)
           _ProgressStrip(run: run),
         if (JobTimes.showsFor(run)) JobTimes(run: run),
+        if (ResourcesCard.showsFor(run)) ResourcesCard(run: run),
         _SpeedStrip(runId: run.id),
         if (HourlyPrice.of(run.system) case final price?) CostStrip(run: run, price: price),
         RunNotesCard(run: run),
@@ -288,6 +300,7 @@ class _LossSentence extends ConsumerWidget {
         : 'step ${formatInt(run.currentStep)}';
     final where = [?epoch, step].join(', ');
     final (before, after) = switch (run.status) {
+      RunStatus.queued => ('The loss is ', '.'), // Not shown: nothing has run yet.
       RunStatus.live => (
         'The loss is now ',
         '$trend. ${run.hasEnd ? 'Training is ${formatPercent(run.progress)} done ($where)' : 'Training is at $where'}'

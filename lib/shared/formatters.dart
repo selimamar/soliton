@@ -178,6 +178,15 @@ String formatDuration(Duration d) {
   return '${d.inSeconds}s';
 }
 
+/// A rough span (a queue wait, a time to ask for): "42s" and "1m 48s"
+/// while short, then to the nearest minute ("45m", "3h 12m", "2d 4h"),
+/// where seconds are noise.
+String formatRoughDuration(Duration d) {
+  if (d < const Duration(minutes: 10)) return formatDuration(d);
+  final minutes = (d.inSeconds / 60).round();
+  return minutes < 60 ? '${minutes}m' : formatDuration(Duration(minutes: minutes));
+}
+
 /// A moment soon after (or before) [now], as a clock reads it, local time:
 /// "18:40" today, "tomorrow 02:10", "Mon 14:20" within the week, else
 /// "Nov 20, 14:20". [timeOfDay] writes the hours and minutes (12- or

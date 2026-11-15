@@ -12,6 +12,7 @@ class SimulationInfo {
     this.monitor,
     this.preview = const [],
     this.diverged = false,
+    this.resumedAtTime,
   });
 
   factory SimulationInfo.fromJson(Map<String, Object?> json) => SimulationInfo(
@@ -23,6 +24,7 @@ class SimulationInfo {
       for (final v in (json['preview'] as List?) ?? const []) decodeDouble(v),
     ]),
     diverged: json['diverged'] as bool? ?? false,
+    resumedAtTime: (json['resumedAtTime'] as num?)?.toDouble(),
   );
 
   /// The metric holding the simulated time, and the time step.
@@ -46,6 +48,10 @@ class SimulationInfo {
   /// Crashed because a value turned NaN or infinite.
   final bool diverged;
 
+  /// Its simulated time when its latest process took over (a job
+  /// continuing it), so its pace counts from there; null: from the start.
+  final double? resumedAtTime;
+
   /// How far through [tEnd] it is (0–1), or null if that isn't known.
   double? get timeProgress {
     final (end, now) = (tEnd, time);
@@ -60,6 +66,7 @@ class SimulationInfo {
     'monitor': ?monitor,
     'preview': [for (final v in preview) encodeDouble(v)],
     if (diverged) 'diverged': true,
+    'resumedAtTime': ?resumedAtTime,
   };
 
   @override
@@ -70,7 +77,8 @@ class SimulationInfo {
       other.cflLimit == cflLimit &&
       other.monitor == monitor &&
       sameDoubles(other.preview, preview) &&
-      other.diverged == diverged;
+      other.diverged == diverged &&
+      other.resumedAtTime == resumedAtTime;
 
   @override
   int get hashCode => Object.hash(
@@ -80,5 +88,6 @@ class SimulationInfo {
     monitor,
     Object.hashAll(preview.map(doubleHash)),
     diverged,
+    resumedAtTime,
   );
 }

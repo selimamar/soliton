@@ -46,7 +46,10 @@ call it explicitly, type `$soliton`.
 
 Then give the agent what it needs at run time, never in code: the server's
 address and token in `SOLITON_SERVER` and `SOLITON_TOKEN` (in your shell,
-or on Sherlock in `~/.soliton_env`). See [docs/getting-started.md](../docs/getting-started.md).
+or on Sherlock in `~/.soliton_env`). For agents and job scripts, the job
+token (the app's Settings → Advanced security) is the safer choice: it can
+add runs but not read or delete them, and the skills know to expect that.
+See [docs/getting-started.md](../docs/getting-started.md).
 
 ## Changing them
 

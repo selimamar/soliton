@@ -80,6 +80,13 @@ class _ErrorView extends StatelessWidget {
     message: 'There is no run called "$runId". It may have been deleted, or the link is wrong.',
     canRetry: false,
   ),
+  UnauthorizedException(jobToken: true) => (
+    title: 'Not allowed',
+    message:
+        'The app has the job token, which can only add and update runs and data. Use the '
+        "server's main token in Settings → Server.",
+    canRetry: false,
+  ),
   UnauthorizedException() => (
     title: 'Not allowed',
     message: 'The server rejected the token. Check it in Settings → Server.',

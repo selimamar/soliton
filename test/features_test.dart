@@ -125,6 +125,34 @@ void main() {
       expect(find.byType(SnackBar), findsNothing);
     });
 
+    testWidgets('a run that won\'t finish in time shows an alert', (tester) async {
+      const alert = RunAlert(
+        runId: 'resnet50-cifar',
+        name: 'resnet50-cifar',
+        status: RunStatus.live,
+        message: 'At this pace it needs about 5h more',
+        timeLimit: true,
+      );
+      await openApp(tester);
+      containerOf(tester).read(runAlertsProvider.notifier).show(alert);
+      await tester.pumpAndSettle();
+      expect(find.text("resnet50-cifar won't finish before its Slurm time limit"), findsOneWidget);
+    });
+
+    testWidgets('the time-limit alert can be turned off', (tester) async {
+      await openApp(tester, '/', MemorySettingsStore({'notifyOnTimeLimit': false}));
+      containerOf(tester).read(runAlertsProvider.notifier).show(
+        const RunAlert(
+          runId: 'resnet50-cifar',
+          name: 'resnet50-cifar',
+          status: RunStatus.live,
+          timeLimit: true,
+        ),
+      );
+      await tester.pump();
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
     testWidgets('alerts that are turned off stay quiet', (tester) async {
       await openApp(tester, '/', MemorySettingsStore({'notifyOnCrash': false}));
       containerOf(tester).read(runAlertsProvider.notifier).show(crash());

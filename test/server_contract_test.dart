@@ -16,6 +16,7 @@ import 'package:soliton/data/services/api_client.dart';
 import 'package:soliton/data/services/live_updates.dart';
 import 'package:soliton/data/services/server_connection.dart';
 import 'package:soliton/data/services/settings_store.dart';
+import 'package:soliton/data/services/token_store.dart';
 
 void main() {
   final address = Platform.environment['SOLITON_TEST_SERVER'];
@@ -82,9 +83,8 @@ void main() {
     final c = connection();
     final container = ProviderContainer(
       overrides: [
-        settingsStoreProvider.overrideWithValue(
-          MemorySettingsStore({'serverAddress': c.address, 'serverToken': c.token}),
-        ),
+        settingsStoreProvider.overrideWithValue(MemorySettingsStore({'serverAddress': c.address})),
+        savedTokenProvider.overrideWithValue(c.token),
       ],
     );
     addTearDown(container.dispose);

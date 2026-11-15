@@ -7,8 +7,9 @@ import '../models/run.dart';
 import 'router.dart';
 import 'routes.dart';
 
-/// Shows an alert when a run finishes or crashes (if that alert is turned
-/// on in Settings), and keeps the live-updates connection running.
+/// Shows an alert when a run finishes, crashes or won't finish before its
+/// Slurm time limit (if that alert is turned on in Settings), and keeps the
+/// live-updates connection running.
 ///
 /// These alerts only appear while the app is open. For notifications on a
 /// phone when the app is closed, the server can push through ntfy (see
@@ -28,12 +29,15 @@ class RunAlertListener extends ConsumerWidget {
       final wanted = switch (alert.status) {
         RunStatus.finished => ref.read(notifyOnFinishProvider),
         RunStatus.crashed => ref.read(notifyOnCrashProvider),
-        RunStatus.live => false,
+        RunStatus.live => alert.timeLimit && ref.read(notifyOnTimeLimitProvider),
+        RunStatus.queued => false,
       };
       if (!wanted) return;
-      final text = alert.status == RunStatus.finished
-          ? '${alert.name} finished'
-          : '${alert.name} crashed${alert.message == null ? '' : ': ${alert.message}'}';
+      final text = switch (alert.status) {
+        RunStatus.finished => '${alert.name} finished',
+        _ when alert.timeLimit => "${alert.name} won't finish before its Slurm time limit",
+        _ => '${alert.name} crashed${alert.message == null ? '' : ': ${alert.message}'}',
+      };
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
