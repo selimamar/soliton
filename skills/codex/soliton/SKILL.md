@@ -22,7 +22,9 @@ computes.
    main token to get around it. If a cluster has no `~/.soliton_env`, have
    the user run `python3 -m soliton setup --server <address>` in their own
    terminal and paste the token at its hidden prompt, never in the chat
-   (see references/where-it-runs.md). No secrets on the command line or in job
+   (see references/where-it-runs.md). A "redirects to" error means the
+   logger refused to send the token elsewhere: use that address only if the
+   user confirms it is their server. No secrets on the command line or in job
    scripts either: the logger records both (and the git commit) for rerunning
    from the app, hiding only values named like a token, password or key.
 2. Don't change the science: same inputs, numerics and outputs. Don't catch

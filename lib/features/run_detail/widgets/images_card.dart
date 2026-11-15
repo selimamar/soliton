@@ -29,6 +29,9 @@ class ImagesCards extends ConsumerWidget {
   }
 }
 
+/// The most pixels across a card decodes a picture at (its large view, all).
+const _cardWidth = 2048;
+
 class _ImageCard extends ConsumerStatefulWidget {
   const _ImageCard({super.key, required this.runId, required this.series});
 
@@ -85,6 +88,7 @@ class _ImageCardState extends ConsumerState<_ImageCard> {
                       )),
                     ),
                   ),
+                  (_, final image?) when !image.drawable => const _Missing(),
                   (_, final image?) => Semantics(
                     image: true,
                     label: [
@@ -95,6 +99,8 @@ class _ImageCardState extends ConsumerState<_ImageCard> {
                       onTap: () => _openLarge(context, image),
                       child: Image.memory(
                         image.bytes,
+                        // Decoded no bigger than a card shows.
+                        cacheWidth: image.width > _cardWidth ? _cardWidth : null,
                         fit: BoxFit.contain,
                         gaplessPlayback: true,
                         filterQuality: FilterQuality.medium,

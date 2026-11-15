@@ -28,6 +28,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple, Union
 
+from ._util import urlopen
+
 PAGE = 20_000  # Points per request.
 
 # A metric where higher is better, for "best": accuracy and the like, unless
@@ -80,7 +82,7 @@ class _Reader:
         request = urllib.request.Request(url, headers={
             "Authorization": f"Bearer {self._token}", "User-Agent": "soliton-logger"})
         try:
-            with urllib.request.urlopen(request, timeout=self._timeout) as response:
+            with urlopen(request, timeout=self._timeout) as response:
                 return json.loads(response.read())
         except urllib.error.HTTPError as error:
             detail = _detail(error)

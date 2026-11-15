@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import functools
+import io
 import json
 import math
 import os
 import re
 import secrets
 import socket
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Union
@@ -223,3 +226,24 @@ def _read_dmi(root: Path, name: str) -> str:
         return (root / "sys/class/dmi/id" / name).read_text().strip()
     except OSError:
         return ""
+
+
+class _NoRedirects(urllib.request.HTTPRedirectHandler):
+    """Refuses redirects: urllib would send the request's headers, the token
+    among them, to wherever one points, another host or plain http included.
+    The Soliton API never redirects, so one means the address is wrong (an
+    http:// address a proxy sends to https://) or someone is fishing for it."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        message = (f"the server redirects to {newurl}: use that address for the server "
+                   "(SOLITON_SERVER) if it is yours. The token wasn't sent there.")
+        raise urllib.error.HTTPError(req.full_url, code, message, headers,
+                                     io.BytesIO(json.dumps({"detail": message}).encode()))
+
+
+_opener = urllib.request.build_opener(_NoRedirects)
+
+
+def urlopen(request: urllib.request.Request, timeout: float):
+    """urllib.request.urlopen that never follows a redirect (see _NoRedirects)."""
+    return _opener.open(request, timeout=timeout)

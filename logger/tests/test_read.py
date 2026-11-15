@@ -125,7 +125,7 @@ def test_an_older_server_is_named_as_the_problem(server, tmp_path, monkeypatch):
         raise urllib.error.HTTPError(request.full_url, 404, "Not Found", {},
                                      io.BytesIO(json.dumps({"detail": "Not Found"}).encode()))
 
-    monkeypatch.setattr(_read.urllib.request, "urlopen", refuse)
+    monkeypatch.setattr(_read, "urlopen", refuse)
     with pytest.raises(RuntimeError, match="older than this logger"):
         run.metric("train/loss")
 

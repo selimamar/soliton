@@ -297,7 +297,9 @@ base64, up to 8 MB and 8192 pixels a side; anything else is refused (422).
 `health` is a training problem the logger saw: `kind` is `nan` (a loss
 turned NaN or infinite), `divergence` (a training loss climbed back up) or
 `gradient` (the gradient norm blew up). Kept once per kind and step; the
-first time, while the run is live, it raises a `health` alert.
+first time, while the run is live, it raises a `health` alert: at most one
+per run and kind an hour, so a writer sending one per step can't push a
+notification per step.
 
 **Simulations** (`soliton.simulate`) are runs whose description has a
 `simulation` entry: `{"tEnd": 10, "cflLimit": 1, "monitor": "energy"}`
@@ -314,6 +316,9 @@ their own table, so older databases get them without a migration.
 description, unit, shape, dtype, min, max, mean, std) and up to 8
 `previews` (1D or 2D, at most 96 points per axis, encoded like field
 snapshots: `{"name", "shape", "min", "max", "data"}`). A run's description
+The size is read from the file's own header (what the app decodes), not
+taken from `width` and `height`, so a small, very compressible file can't
+pass off a huge picture that would run the app out of memory.
 may list `datasets` (ids) it trains on; they read back on the run, and on
 each dataset as `usedBy`. A run may name a dataset before it is registered.
 Dataset changes are pushed live as `{"type": "dataset", "event":

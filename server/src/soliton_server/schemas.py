@@ -415,13 +415,50 @@ class ImageEvent(_In):
     @model_validator(mode="after")
     def _is_that_image(self) -> "ImageEvent":
         try:
-            head = base64.b64decode(self.data[:32], validate=True)
-            base64.b64decode(self.data, validate=True)
+            data = base64.b64decode(self.data, validate=True)
         except (binascii.Error, ValueError):
             raise ValueError("data is not base64") from None
-        if not head.startswith(_IMAGE_MAGIC[self.format]):
+        if not data.startswith(_IMAGE_MAGIC[self.format]):
             raise ValueError(f"data is not a {self.format.upper()} file")
+        # The size the file itself gives, which is what the app decodes: a
+        # small, very compressible file can say 60000 x 60000, and the app
+        # would run out of memory drawing it. The width and height sent with
+        # it are only a claim.
+        width, height = image_size(data, self.format)
+        if width > IMAGE_MAX_SIDE or height > IMAGE_MAX_SIDE:
+            raise ValueError(f"the image is {width} x {height}: at most {IMAGE_MAX_SIDE} "
+                             "pixels a side")
+        if self.format == "png" and not (width and height):
+            raise ValueError("data is not a PNG file")
+        self.width, self.height = width, height
         return self
+
+
+_JPEG_FRAMES = frozenset({0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD,
+                          0xCE, 0xCF})
+
+
+def image_size(data: bytes, format: str) -> tuple[int, int]:
+    """(width, height) from a PNG's or JPEG's own header; (0, 0) if it has
+    none (a JPEG without a frame header can't be drawn at all)."""
+    if format == "png":
+        if len(data) < 24 or data[12:16] != b"IHDR":
+            return 0, 0
+        return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+    i = 2
+    while i + 9 < len(data):
+        if data[i] != 0xFF:
+            i += 1
+            continue
+        marker = data[i + 1]
+        if marker in (0xD8, 0x01, 0xFF) or 0xD0 <= marker <= 0xD7:
+            i += 1 if marker == 0xFF else 2
+            continue
+        if marker in _JPEG_FRAMES:
+            return (int.from_bytes(data[i + 7:i + 9], "big"),
+                    int.from_bytes(data[i + 5:i + 7], "big"))
+        i += 2 + int.from_bytes(data[i + 2:i + 4], "big")
+    return 0, 0
 
 
 class HealthEvent(_In):

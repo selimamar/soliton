@@ -23,11 +23,13 @@ import urllib.request
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
+from ._util import urlopen
+
 DEFAULT_FILE = "~/.soliton_env"
 
 # What the server says of a token (see check_token).
-MAIN, JOB, WRONG, THROTTLED, UNREACHABLE, NOT_SOLITON = (
-    "main", "job", "wrong", "throttled", "unreachable", "not-soliton",
+MAIN, JOB, WRONG, THROTTLED, UNREACHABLE, NOT_SOLITON, REDIRECTED = (
+    "main", "job", "wrong", "throttled", "unreachable", "not-soliton", "redirected",
 )
 
 
@@ -54,11 +56,13 @@ def check_token(server: str, token: str, timeout: float = 15) -> Tuple[str, str]
         headers={"Authorization": f"Bearer {token}", "User-Agent": "soliton-logger"},
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with urlopen(request, timeout=timeout) as response:
             body = json.loads(response.read() or b"{}")
             return (MAIN, "") if isinstance(body, dict) and body.get("ok") else (NOT_SOLITON, "")
     except urllib.error.HTTPError as error:
         detail = error.read().decode(errors="replace")
+        if 300 <= error.code < 400:  # Not followed: see _util.urlopen.
+            return REDIRECTED, error.headers.get("Location", "") if error.headers else ""
         if error.code == 403 and "job token" in detail:
             return JOB, ""
         if error.code == 401:
@@ -134,6 +138,9 @@ def run_setup(server: Optional[str], file: str = DEFAULT_FILE, check: bool = Tru
                      + ("It may serve plain http://: try that address. " if "SSL" in detail else "")
                      + "Check the address, or run this where the server can be reached "
                      "(add --no-check to save it anyway). Nothing saved.",
+        REDIRECTED: f"{server} redirects to {detail or 'another address'}. The token wasn't "
+                    "sent there: if that is your server, run this again with that address. "
+                    "Nothing saved.",
         NOT_SOLITON: f"{server} answered, but not as a Soliton server{f' ({detail})' if detail else ''}. "
                      "Nothing saved.",
     }

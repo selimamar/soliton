@@ -18,7 +18,7 @@ import urllib.request
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
-from ._util import dumps, open_private, private_dir
+from ._util import dumps, open_private, private_dir, urlopen
 
 EVENTS_FILE = "events.jsonl"
 STATE_FILE = "upload.json"
@@ -84,7 +84,7 @@ class ApiClient:
             headers=headers,
         )
         try:
-            with urllib.request.urlopen(request, timeout=self._timeout) as response:
+            with urlopen(request, timeout=self._timeout) as response:
                 data = response.read()
             if not data:
                 return None

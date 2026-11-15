@@ -70,6 +70,10 @@ QUEUE_WAIT_ALERT = timedelta(minutes=10)
 # Alerts only for what just happened, not for a run uploaded later
 # (`soliton sync`).
 RECENT = timedelta(minutes=15)
+# At most one "health" alert per run and kind in this time: the logger sends
+# each kind once per job, but a writer that sent one per step would push a
+# notification per step.
+HEALTH_ALERT_GAP = timedelta(hours=1)
 HEALTH_SHOWN = 10  # The latest problems in a run's description.
 # Thinning (Store.thin_run): points kept per curve, as many as the app's
 # charts show, so a thinned run looks the same in the app.
@@ -321,6 +325,8 @@ class Store:
         # (run id, time limit) already warned about, so each job warns once.
         # Kept in memory: after a restart a run may warn once more.
         self._time_limit_warned: set[tuple[str, str]] = set()
+        # (run id, kind) -> when its last "health" alert went (HEALTH_ALERT_GAP).
+        self._health_alerted: dict[tuple[str, str], datetime] = {}
 
     # Runs -----------------------------------------------------------------
 
@@ -977,8 +983,7 @@ class Store:
             changes.append(_change(row, "updated"))
         return changes
 
-    @staticmethod
-    def _store_health(session: Session, row: RunRow, event: HealthEvent, time: datetime,
+    def _store_health(self, session: Session, row: RunRow, event: HealthEvent, time: datetime,
                       now: datetime) -> Change | None:
         """Keeps a training problem; a "health" alert the first time it
         arrives, while the run is live and it is recent."""
@@ -988,6 +993,10 @@ class Store:
                                  message=event.message, at=time))
         if row.status != "live" or _aware(now) - _aware(time) > RECENT:
             return None
+        last = self._health_alerted.get((row.id, event.kind))
+        if last is not None and _aware(now) - last < HEALTH_ALERT_GAP:
+            return None
+        self._health_alerted[(row.id, event.kind)] = _aware(now)
         return replace(_change(row, "health"), message=event.message)
 
     @staticmethod

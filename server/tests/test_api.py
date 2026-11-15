@@ -888,6 +888,31 @@ def test_only_png_and_jpeg_files_are_taken(client):
     assert client.get("/api/runs/tiny-1/images").json() == []
 
 
+def test_an_image_is_as_big_as_its_own_header_says(client):
+    """The size in the file is what the app decodes: a tiny, very
+    compressible PNG that says 60000 x 60000 would exhaust the app's memory,
+    whatever width and height come with it."""
+    import base64 as b64
+    import struct
+
+    create_run(client)
+    bomb = bytearray(b64.b64decode(png()))
+    bomb[16:24] = struct.pack(">II", 60_000, 60_000)
+    response = client.post("/api/runs/tiny-1/events", json={"events": [
+        image(0, data=b64.b64encode(bytes(bomb)).decode(), width=2, height=2)]})
+    assert response.status_code == 422 and "8192" in response.text
+
+    jpeg = (b"\xff\xd8\xff\xe0" + struct.pack(">H", 16) + b"JFIF\x00" + bytes(9)
+            + b"\xff\xc0" + struct.pack(">HBHHB", 11, 8, 9000, 20, 1) + bytes(3) + b"\xff\xd9")
+    response = client.post("/api/runs/tiny-1/events", json={"events": [
+        image(0, format="jpeg", data=b64.b64encode(jpeg).decode(), width=20, height=20)]})
+    assert response.status_code == 422 and "20 x 9000" in response.text
+
+    # A claim that disagrees with the file: the file wins.
+    send(client, [image(0, width=4000, height=1)])
+    assert client.get("/api/runs/tiny-1/images").json()[0]["steps"][0]["width"] == 2
+
+
 def test_a_job_token_can_send_images(app, client):
     token = client.post("/api/job-token").json()["token"]
     with job_client(app, token) as job:
@@ -1099,6 +1124,16 @@ def test_a_training_problem_alerts_once_and_shows_on_the_run(client, notificatio
     shown = client.get("/api/runs/tiny-1").json()["health"]
     assert [(h["kind"], h["step"]) for h in shown] == [("gradient", 300), ("nan", 120)]
     assert shown[1]["message"] == "train/loss is NaN at step 120"
+
+
+def test_training_problems_sent_step_after_step_alert_once(client, notifications):
+    """A writer sending one per step (the logger sends each kind once per
+    job) doesn't push a notification per step."""
+    create_run(client)
+    send(client, [health(step=step, message=f"NaN at {step}") for step in range(100)])
+    send(client, [health(step=500, message="NaN at 500")])
+    assert [c.message for c in notifications if c.event == "health"] == ["NaN at 0"]
+    assert len(client.get("/api/runs/tiny-1").json()["health"]) > 1, "all kept, though"
 
 
 def test_a_training_problem_of_an_ended_run_is_kept_without_an_alert(client, notifications):

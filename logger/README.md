@@ -590,6 +590,12 @@ leaked job token can't touch runs it didn't start. A job continuing a run
 directory or machine, copy that file, or set `SOLITON_RUN_KEY` to its
 contents. With the main token, the key isn't needed.
 
+The logger never follows a redirect (uploading, `soliton setup`,
+`soliton.runs()`): it would send the token wherever one points, another
+host or plain http included. A server that redirects (say an `http://`
+address a proxy sends to `https://`) gets an error naming where it points:
+use that address instead.
+
 ## Output
 
 What the script prints (`print`, logging, warnings, its errors) is sent with

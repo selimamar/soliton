@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:soliton/data/providers.dart';
@@ -76,5 +79,31 @@ void main() {
       'data': 'iVBORw0KGgo=',
     });
     expect(image.bytes.take(4), [0x89, 0x50, 0x4e, 0x47]);
+  });
+
+  test('a picture is as big as its own header says, and a huge one isn\'t drawn', () {
+    // A 2 x 2 PNG's header, saying 60000 x 60000: a small, very compressible
+    // file can, and decoding it would run the app out of memory.
+    final png = base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAAAAABX3VL4AAAADklEQVR4nGM4cYLhxAkACWYDIUK1MmAAAAAASUVORK5CYII=',
+    );
+    final bomb = Uint8List.fromList(png)..setRange(16, 24, [0, 0, 0xEA, 0x60, 0, 0, 0xEA, 0x60]);
+    LoggedImage read(Uint8List data, {String format = 'png'}) => LoggedImage.fromJson({
+      'name': 'x',
+      'step': 0,
+      'format': format,
+      'width': 2,
+      'height': 2,
+      'data': base64Encode(data),
+    });
+    expect((read(png).width, read(png).height, read(png).drawable), (2, 2, true));
+    expect((read(bomb).width, read(bomb).drawable), (60000, false), reason: 'the claim was 2 x 2');
+
+    final jpeg = Uint8List.fromList([
+      0xFF, 0xD8, 0xFF, 0xE0, 0, 16, ...'JFIF'.codeUnits, 0, ...List.filled(9, 0), //
+      0xFF, 0xC0, 0, 11, 8, 0x23, 0x28, 0, 20, 1, 0, 0, 0, 0xFF, 0xD9,
+    ]);
+    final image = read(jpeg, format: 'jpeg');
+    expect((image.width, image.height, image.drawable), (20, 9000, false));
   });
 }
