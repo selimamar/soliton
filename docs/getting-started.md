@@ -231,6 +231,7 @@ offline runs). The full logger API is in [logger/README.md](../logger/README.md)
 | "Lost contact" | The job stopped sending for 10 minutes: killed (out of memory, node failure) or lost its network. It turns live again if data arrives |
 | Crashed at the time limit with no message, or only after 10 minutes | The job script runs `python` without `exec`, or lacks `--signal=B:TERM@60` |
 | "The server rejected the token" | The token changed or was mistyped: Settings → Server |
+| A continued run's job gets 403 with the job token | It can't find the run's key: run it with the same `SOLITON_DIR` as the first job (the key is in `<SOLITON_DIR>/<run id>/key`), or set `SOLITON_RUN_KEY` to that file's contents |
 | "That's the job token" | The app needs the server's main token; the job token is for job scripts |
 | A queued job doesn't move on | What Slurm says is as of `soliton sbatch`, the last `soliton queue`, or the last Soliton job that started: run `soliton queue`. The wait itself counts up by itself |
 | "Asked to stop" stays | The script doesn't log often, or checks `run.should_stop()` rarely: it stops at its next check (or next log, for a script that never checks) |

@@ -90,6 +90,10 @@ with soliton.init(
   checkpoint: save `run.id` in the checkpoint and pass `id=` to `init`.
   The app then shows the run's jobs (one per restart) and marks where each
   took over; submit the continuing job with `soliton sbatch --id <run id>`.
+  Keep `SOLITON_DIR` the same for every job of a run: the run's key
+  (`$SOLITON_DIR/<run id>/key`) is there, and with a job token a run only
+  accepts updates carrying it (else set `SOLITON_RUN_KEY` to the file's
+  contents).
 - `run.should_stop()` turns `True` when the user presses Stop in the app:
   check it where the script can save a checkpoint (the end of an epoch, or
   every N steps) and leave the loop. Use the script's own checkpoint code;

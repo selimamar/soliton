@@ -96,7 +96,13 @@ Where the server is depends on the user's setup:
 runs, send their events, describe datasets and list queued jobs, and the
 server answers 403 to everything else (listing or reading runs, deleting,
 editing tags). That is by design: don't ask the user for the main token to
-work around it; check uploads as in "Checking that it works" below.
+work around it; check uploads as in "Checking that it works" below. With the
+job token, a run that exists changes only with its **run key**, which the
+logger keeps in `$SOLITON_DIR/<run id>/key`: a job continuing a run
+(`init(id=...)`) finds it when it uses the same `SOLITON_DIR` (keep it the
+same across jobs, e.g. `$SCRATCH/soliton-runs`); otherwise set
+`SOLITON_RUN_KEY` to that file's contents. Never pass the token on the
+command line (`soliton --token` shows it in `ps`): use the environment.
 
 | Variable | Default | |
 |---|---|---|
