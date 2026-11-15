@@ -4,8 +4,9 @@ import 'package:material_ui/material_ui.dart';
 import 'routes.dart';
 
 /// The app's sections, switched between at the bottom of a phone's screen
-/// or down the side of a wider one: Runs (training), Compute (simulations)
-/// and Data (datasets). Screens opened from them (a run, settings, ...) cover it.
+/// or down the side of a wider one: Runs (training), Compute (simulations),
+/// Data (datasets) and Board (to-do cards). Screens opened from them (a run,
+/// settings, ...) cover it.
 class SectionsShell extends StatelessWidget {
   const SectionsShell({super.key, required this.location, required this.child});
 
@@ -20,6 +21,12 @@ class SectionsShell extends StatelessWidget {
     (route: AppRoutes.runs, label: 'Runs', icon: Icons.show_chart, selected: Icons.show_chart),
     (route: AppRoutes.compute, label: 'Compute', icon: Icons.waves_outlined, selected: Icons.waves),
     (route: AppRoutes.data, label: 'Data', icon: Icons.storage_outlined, selected: Icons.storage),
+    (
+      route: AppRoutes.board,
+      label: 'Board',
+      icon: Icons.view_kanban_outlined,
+      selected: Icons.view_kanban,
+    ),
   ];
 
   @override
@@ -28,6 +35,8 @@ class SectionsShell extends StatelessWidget {
         ? 1
         : location.startsWith(AppRoutes.data)
         ? 2
+        : location.startsWith(AppRoutes.board)
+        ? 3
         : 0;
     void open(int i) {
       if (i != index) context.go(_sections[i].route);

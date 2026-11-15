@@ -198,6 +198,9 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
 | `GET /api/datasets/{id}` | One dataset, with its previews, `madeBy` and `usedBy` |
 | `PUT /api/datasets/{id}` | Registers or updates a dataset (the logger does this). Job token too |
 | `DELETE /api/datasets/{id}` | Forgets a dataset (the files are not touched) |
+| `GET /api/board` | The app's to-do cards kept on this server, by project, column and position (below) |
+| `PUT /api/board/{id}` | Adds a card or replaces it whole (the app makes its id) |
+| `DELETE /api/board/{id}` | Removes a card (already gone counts as done) |
 | `GET /api/metrics/latest?names=val/rel_l2,perf/inference_s` | For sweeps: `{run id: {metric: {latest, min}}}`, up to 20 names |
 | `GET /api/runs/{id}/metrics/points?name=train/loss&after=-1&limit=10000` | Every value of one metric, not downsampled, a page at a time (up to 50,000): `{name, steps, values, next}`; pass `next` as `after` for the next page (`null` on the last). For `soliton.runs()` |
 | `GET /api/runs/{id}/metrics/summary` | Each metric the run logged: `count`, `first`, `final` (with steps) and its finite `min` and `max` with their steps |
@@ -260,6 +263,20 @@ may list `datasets` (ids) it trains on; they read back on the run, and on
 each dataset as `usedBy`. A run may name a dataset before it is registered.
 Dataset changes are pushed live as `{"type": "dataset", "event":
 "updated", "datasetId": ...}`.
+
+**The board** (the app's Board section): to-do cards, main token only.
+The app pools the cards of every server it knows into one board, so each
+server keeps only the cards saved on it. A card is `{"title", "project",
+"column", "position", "notes", "checklist", "links", "tag", "due"}`:
+`column` is `ideas`, `todo`, `running` or `done`; `position` orders cards
+within a project and column; `checklist` is up to 100 `{"text", "done"}`;
+`links` up to 50 `{"kind": "run" | "dataset", "id", "server"}`, where
+`server` is the address of the server the run or dataset is on, empty for
+this one; runs with the card's `tag` belong to it without being linked;
+`due` is a day, `"2026-11-18"`. Answers add `id`, `createdAt` and
+`updatedAt`. Changes are pushed live as `{"type": "board", "event":
+"updated" | "deleted", "cardId": ...}`. The table is new, so existing
+databases get it on start without a migration.
 
 **Field snapshots** (`run.log_field`, `run.log_rollout` and
 `run.capture_layers` in the logger): each frame a 1D, 2D or 3D array of at

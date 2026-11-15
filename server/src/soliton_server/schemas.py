@@ -459,3 +459,39 @@ Event = Annotated[
 
 class EventsIn(_In):
     events: list[Event] = Field(max_length=5000)
+
+
+# The board ---------------------------------------------------------------
+
+BoardColumn = Literal["ideas", "todo", "running", "done"]
+
+
+class BoardChecklistItemIn(_In):
+    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
+    done: bool = False
+
+
+class BoardLinkIn(_In):
+    """Something a card points at: a run (or simulation) or a dataset, by
+    its id on [server]: the address of the server it is on, or empty for
+    the server the card is on."""
+
+    kind: Literal["run", "dataset"]
+    id: Annotated[str, StringConstraints(pattern=RUN_ID_PATTERN)]
+    server: Annotated[str, StringConstraints(max_length=500)] = ""
+
+
+class BoardCardIn(_In):
+    """A card on the app's to-do board, as the app saves it (whole)."""
+
+    title: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+    project: Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)] = ""
+    column: BoardColumn = "todo"
+    position: float = Field(default=0, allow_inf_nan=False)
+    notes: Notes = ""
+    checklist: list[BoardChecklistItemIn] = Field(default_factory=list, max_length=100)
+    links: list[BoardLinkIn] = Field(default_factory=list, max_length=50)
+    # Runs with this tag belong to the card without being linked one by one.
+    tag: Optional[Tag] = None
+    # A day, "2026-11-18".
+    due: Optional[Annotated[str, StringConstraints(pattern=r"^\d{4}-\d{2}-\d{2}$")]] = None

@@ -43,6 +43,12 @@ class FakeServer {
   final deletes = <String>[];
   final _deleted = <String>{};
 
+  /// Its board's cards, by id, as the server sends them; false: a server
+  /// from before the board (404).
+  final board = <String, Map<String, Object?>>{};
+  var hasBoard = true;
+  var boardWrites = 0;
+
   final _data = MockRunRepository(latency: Duration.zero);
 
   /// For `apiClientFactoryProvider.overrideWithValue(server.clientFor)`.
@@ -58,6 +64,27 @@ class FakeServer {
     final path = request.url.pathSegments;
     if (path.length < 2 || path[0] != 'api') return _json({'detail': 'Not Found'}, status: 404);
     try {
+      if (path.length >= 2 && path[1] == 'board') {
+        if (!hasBoard) return _json({'detail': 'Not Found'}, status: 404);
+        switch ((request.method, path.sublist(2))) {
+          case ('GET', []):
+            return _json([for (final card in board.values) card]);
+          case ('PUT', [final id]):
+            final body = jsonDecode(request.body) as Map<String, Object?>;
+            // A second later on every write, so each one is a new version.
+            final now = DateTime.utc(2026, 11, 14, 12).add(Duration(seconds: ++boardWrites));
+            board[id] = {
+              ...body,
+              'id': id,
+              'createdAt': board[id]?['createdAt'] ?? now.toIso8601String(),
+              'updatedAt': now.toIso8601String(),
+            };
+            return _json(board[id]!);
+          case ('DELETE', [final id]):
+            board.remove(id);
+            return http.Response('', 204);
+        }
+      }
       if (request.method == 'PATCH' && path.length == 3 && path[1] == 'runs') {
         final body = jsonDecode(request.body) as Map<String, Object?>;
         edits.add(body);

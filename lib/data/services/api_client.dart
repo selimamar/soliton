@@ -72,6 +72,15 @@ class ApiClient {
     ),
   );
 
+  /// Creates or replaces a resource whole; returns the server's answer.
+  Future<Object?> putJson(String path, Map<String, Object?> body) => _send(
+    () => _http.put(
+      connection.api(path),
+      headers: {..._headers, 'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    ),
+  );
+
   /// Removes a resource. Already gone (404) counts as done.
   Future<void> delete(String path) async {
     try {

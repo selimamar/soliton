@@ -361,6 +361,26 @@ class ServerSettingRow(Base):
     value: Mapped[str] = mapped_column(Text)
 
 
+class BoardCardRow(Base):
+    """A card on the app's to-do board (schemas.BoardCardIn). The app pools
+    the cards of every server it knows into one board. A new table, so
+    existing databases get it on start without a migration."""
+
+    __tablename__ = "board_cards"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    project: Mapped[str] = mapped_column(String(200), default="")
+    # "ideas", "todo", "running" or "done".
+    column: Mapped[str] = mapped_column(String(16), default="todo")
+    # Order within its project and column, smallest first.
+    position: Mapped[float] = mapped_column(Double, default=0)
+    title: Mapped[str] = mapped_column(String(200))
+    # Notes, checklist, links, tag and due date (schemas.BoardCardIn).
+    info: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime)
+    updated_at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
 def make_engine(url: str) -> Engine:
     if url.startswith("sqlite"):
         engine = create_engine(url, connect_args={"check_same_thread": False, "timeout": 30})

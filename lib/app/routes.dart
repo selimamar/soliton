@@ -20,6 +20,9 @@ abstract final class AppRoutes {
   /// The Data section: datasets.
   static const data = '/data';
 
+  /// The Board section: to-do cards by project, linked to runs and data.
+  static const board = '/board';
+
   /// A dataset's page, e.g. `/data/ns2d-vorticity-v3`.
   static String dataset(String id) => '/data/${Uri.encodeComponent(id)}';
 

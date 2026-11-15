@@ -27,7 +27,7 @@ from .config import Settings, check_token, replace_private
 from .db import make_engine, make_sessionmaker
 from .live import Broadcaster
 from .notify import NtfyNotifier
-from .schemas import RUN_ID_PATTERN, DatasetIn, EventsIn, RunIn, RunNotesIn
+from .schemas import RUN_ID_PATTERN, BoardCardIn, DatasetIn, EventsIn, RunIn, RunNotesIn
 from .store import (
     Change,
     DatasetNotFound,
@@ -525,6 +525,30 @@ def create_app(
     def delete_dataset(dataset_id: RunId):
         store.delete_dataset(dataset_id)
         dataset_changed(dataset_id, "deleted")
+        return Response(status_code=204)
+
+    # The board: the app's to-do cards. The app pools every server's cards
+    # into one board; each card lives on one server. Main token only.
+
+    def card_changed(card_id: str, event: str) -> None:
+        broadcaster.publish({"type": "board", "event": event, "cardId": card_id})
+
+    @app.get("/api/board", dependencies=auth)
+    def list_board():
+        """Every card on this server, by project, column and position."""
+        return store.list_board()
+
+    @app.put("/api/board/{card_id}", dependencies=auth)
+    def put_board_card(card_id: RunId, body: BoardCardIn):
+        """Adds a card or replaces it whole (the app makes its id)."""
+        card = store.put_board_card(card_id, body)
+        card_changed(card_id, "updated")
+        return card
+
+    @app.delete("/api/board/{card_id}", dependencies=auth)
+    def delete_board_card(card_id: RunId):
+        store.delete_board_card(card_id)
+        card_changed(card_id, "deleted")
         return Response(status_code=204)
 
     @app.get("/api/metrics/latest", dependencies=auth)

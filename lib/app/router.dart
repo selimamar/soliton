@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart' show GlobalKey, NavigatorState;
 
+import '../features/board/board_screen.dart';
 import '../features/compare/compare_screen.dart';
 import '../features/data/data_screen.dart';
 import '../features/data/dataset_screen.dart';
@@ -33,9 +34,10 @@ import 'sections_shell.dart';
 ///                         system) opens on that tab
 ///   /data                 datasets
 ///   /data/:id             a dataset
+///   /board                to-do cards, by project, from every server
 ///
-/// The runs list, the simulations and the datasets share a shell that switches between
-/// them; every other screen covers it.
+/// The runs list, the simulations, the datasets and the board share a shell
+/// that switches between them; every other screen covers it.
 /// Any other path shows [NotFoundScreen].
 final routerProvider = Provider<GoRouter>((ref) {
   // Don't `ref.watch` other providers in here: a rebuild would create a new
@@ -114,6 +116,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
+          GoRoute(path: '/board', builder: (context, state) => const BoardScreen()),
           GoRoute(
             path: '/compute',
             builder: (context, state) => const SimulationsScreen(),

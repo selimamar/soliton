@@ -20,6 +20,7 @@ from sqlalchemy import Text, cast, delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from .db import (
+    BoardCardRow,
     DatasetRow,
     DatasetUseRow,
     FieldRow,
@@ -43,6 +44,7 @@ from .db import (
 )
 from .floats import decode_float, downsample, encode_float, from_columns, to_columns
 from .schemas import (
+    BoardCardIn,
     CurveEvent,
     DatasetIn,
     EvalEvent,
@@ -1479,6 +1481,48 @@ class Store:
                 select(DatasetUseRow.dataset_id).where(DatasetUseRow.run_id == row.id)
                 .order_by(DatasetUseRow.dataset_id)
             )),
+        }
+
+    # The board ------------------------------------------------------------
+
+    def list_board(self) -> list[dict]:
+        """Every card on this server's part of the board."""
+        with self._sessions() as session:
+            rows = session.scalars(select(BoardCardRow).order_by(
+                BoardCardRow.project, BoardCardRow.column, BoardCardRow.position,
+                BoardCardRow.created_at))
+            return [self._card_json(row) for row in rows]
+
+    def put_board_card(self, card_id: str, body: BoardCardIn) -> dict:
+        """Adds a card, or replaces it (the app sends it whole)."""
+        now = self._clock()
+        info = body.model_dump(include={"notes", "checklist", "links", "tag", "due"})
+        with self._sessions.begin() as session:
+            row = session.get(BoardCardRow, card_id)
+            if row is None:
+                row = BoardCardRow(id=card_id, created_at=now)
+                session.add(row)
+            row.title, row.project, row.column = body.title, body.project, body.column
+            row.position, row.info, row.updated_at = body.position, info, now
+            session.flush()
+            return self._card_json(row)
+
+    def delete_board_card(self, card_id: str) -> None:
+        """Removes a card. Already gone counts as done."""
+        with self._sessions.begin() as session:
+            row = session.get(BoardCardRow, card_id)
+            if row is not None:
+                session.delete(row)
+
+    @staticmethod
+    def _card_json(row: BoardCardRow) -> dict:
+        info = row.info or {}
+        return {
+            "id": row.id, "title": row.title, "project": row.project, "column": row.column,
+            "position": row.position, "notes": info.get("notes", ""),
+            "checklist": info.get("checklist", []), "links": info.get("links", []),
+            "tag": info.get("tag"), "due": info.get("due"),
+            "createdAt": iso(row.created_at), "updatedAt": iso(row.updated_at),
         }
 
     # Datasets -------------------------------------------------------------

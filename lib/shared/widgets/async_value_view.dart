@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../data/board_repository.dart';
 import '../../data/run_repository.dart';
 import '../../data/services/api_client.dart';
 
@@ -96,6 +97,11 @@ class _ErrorView extends StatelessWidget {
     title: "Can't reach the server",
     message: 'Check your connection, and that the server at $address is running.',
     canRetry: true,
+  ),
+  BoardNotSupportedException() => (
+    title: 'Server too old for the board',
+    message: 'Update soliton-server to keep a board on it.',
+    canRetry: false,
   ),
   ServerErrorException(:final statusCode) => (
     title: 'Server error',

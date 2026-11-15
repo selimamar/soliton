@@ -196,6 +196,11 @@ What it does:
   Open it to read or copy
   all of it (the server keeps the last 1,000 lines). Off with
   `SOLITON_CAPTURE_OUTPUT=0`.
+- **Board**: to-do cards in a lane per project, across Ideas, To do,
+  Running and Done, each with notes, a checklist, a due date and links to
+  runs, simulations and datasets that show how they are doing; a card's tag
+  gathers every run with that tag. One board for every server: each card
+  is saved on one of them (`/api/board`), so every device sees it.
 - **Search** at the top of Runs, Compute and Data: every word typed must
   appear somewhere in the name, project, host, tags, notes, model, dataset
   or PDE (for datasets: name, source, host, format, path, description).

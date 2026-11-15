@@ -174,9 +174,10 @@ offline runs). The full logger API is in [logger/README.md](../logger/README.md)
 
 ## 5. What you see
 
-- **Runs** (training), **Compute** (simulations), **Data** (datasets): the
-  bar at the bottom, or the side on a wide screen. Each list has search and
-  status filters (Queued, while some are; Live, Finished, Crashed).
+- **Runs** (training), **Compute** (simulations), **Data** (datasets) and
+  **Board** (to-do cards): the bar at the bottom, or the side on a wide
+  screen. Each list has search and status filters (Queued, while some are;
+  Live, Finished, Crashed).
 - **A queued job** (from `soliton sbatch`): how long it has waited, why in
   plain words (Priority, Resources, a limit), when Slurm expects to start it
   ("Not estimated" until it's near the front), and what it asked for. It
@@ -220,6 +221,15 @@ offline runs). The full logger API is in [logger/README.md](../logger/README.md)
   differ", only the hyperparameters that changed between them.
 - **Organize**: tag runs and write notes on their Overview; group the list
   by project, model, dataset, tag or host; order it by a metric.
+- **Keep a to-do board**: the Board section has a lane per project across
+  Ideas, To do, Running and Done. A card holds notes, a checklist and a due
+  date, and links to runs, simulations and datasets, showing how they are
+  doing (live, 35%, crashed). Give a card a tag and every run with that tag
+  belongs to it, without linking each one. Drag a card to another column or
+  lane (long-press on a phone), or pick its column on the card. On a phone
+  the board shows one column at a time: the tabs above the lanes pick it,
+  and dropping a card on a tab moves it there. There is one board for all your
+  servers: each card is saved on one of them, and every device sees it.
 - **The farm**: the egg button on the runs list shows the runs as a farm,
   finished runs as animals as big as their models, live runs as eggs that
   hatch when they finish. Pick an animal for each model family (a moose for

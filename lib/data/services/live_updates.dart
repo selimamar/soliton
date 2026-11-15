@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../board_providers.dart';
 import '../providers.dart';
 import 'server_connection.dart';
 
@@ -232,6 +233,9 @@ class LiveUpdates extends Notifier<LiveStatus> {
         if (message['datasetId'] case final String id) ref.invalidate(datasetProvider(link.id(id)));
       case 'run':
         _onRunChange(link, message);
+      case 'board':
+        // Another device changed a card.
+        ref.invalidate(boardProvider);
     }
   }
 
