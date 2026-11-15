@@ -1,5 +1,12 @@
 # Soliton
 
+**[Getting started](docs/getting-started.md)** ·
+[On Sherlock](docs/sherlock.md) ·
+[For coding agents](docs/for-agents.md) ·
+[Logger](logger/README.md) ·
+[Server](server/README.md) ·
+[Agent skills](skills/README.md)
+
 Watch your deep learning training runs from your phone: loss curves,
 hyperparameters, architecture, gradient norms and per-layer activation
 statistics, updating live, with an alert when a run finishes or crashes.
@@ -253,6 +260,7 @@ lib/
 test/                           unit, widget, accessibility and server tests
 logger/                         the Python logger (package `soliton`)
 server/                         the server (package `soliton-server`)
+docs/README.md                  index of the guides below
 docs/getting-started.md         the app and how to use it, for people
 docs/sherlock.md                using the logger on Sherlock
 docs/for-agents.md              how Soliton works, for coding agents
