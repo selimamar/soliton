@@ -303,7 +303,7 @@ with sim:
 - `setup`: how it's set up, shown on its Overview (equation, method, grid,
   parameters, boundary and initial conditions; nested dicts are fine).
   `monitor`: the value drawn on its card in the list. The other options
-  (`project`, `tags`, `notes`, `system_metrics`, `capture_output`, `price_per_hour`, `host`,
+  (`project`, `tags`, `notes`, `system_metrics`, `capture_output`, `capture_code`, `price_per_hour`, `host`,
   `id`, `server`, `token`, `mode`, `dir`) are as for `init()`.
 
 Solvers that aren't in Python can still report, unchanged: launch them
@@ -364,6 +364,7 @@ soliton data scan $SCRATCH/data          # each data file or folder of them in t
 | `project` | `""` | Shown under the name; the app can group runs by it |
 | `system_metrics`, `system_interval` | `True`, `15` | Sample GPU, memory and CPU use every `system_interval` seconds (see above) |
 | `capture_output` | `SOLITON_CAPTURE_OUTPUT`, else `True` | Send what the script prints (see Output, below) |
+| `capture_code` | `SOLITON_CAPTURE_CODE`, else `True` | Record what it takes to run it again: git commit and changed files, command line, job script, packages (see Reproducing a run, below) |
 | `price_per_hour` | `SOLITON_PRICE_PER_HOUR`, else estimated | What the machine costs in US dollars per hour (all its GPUs), for the app's rounded cost estimate. Without it, the app assumes a typical on-demand cloud price for the GPUs (e.g. about $4/h per H100, $2.50 per A100, $0.80 per L4) or $0.05 per CPU core. `0` hides the estimate (e.g. a cluster you don't pay by the hour for) |
 | `tags`, `notes` | none | To organise runs in the app, e.g. `tags=["baseline"]`, `notes="first try with AdamW"`. Only the starting values: they're then edited in the app, and the logger never overwrites them |
 | `config` | none | Hyperparameters: a dict (nested is fine) or argparse namespace |
@@ -373,7 +374,7 @@ soliton data scan $SCRATCH/data          # each data file or folder of them in t
 | `pde` | none | What is solved, listed right after the data and loss: `{"equation": "Navier-Stokes 2D", "viscosity": 1e-3, "domain": "[0, 1]² periodic", "resolution": "64 × 64"}` (nested is fine). The equation becomes the `PDE` hyperparameter, which the app can group runs by |
 | `total_steps`, `total_epochs` | 0 | Progress bar, time left, epochs on the x-axis |
 | `host` | detected | Where it runs: `SOLITON_HOST`, else the Slurm cluster (e.g. "Sherlock"), the platform (Modal, RunPod, Colab, Kaggle, SageMaker, AWS Batch), the cloud (AWS, GCP, Azure, DigitalOcean, Hetzner, Oracle Cloud, Vultr, Linode), Kubernetes, else the machine's name |
-| `id` | new | Pass a previous run's id to continue it, e.g. in a job restarted from a checkpoint (save `run.id` in the checkpoint); a run that had ended turns live again |
+| `id` | new | Pass a previous run's id to continue it, e.g. in a job restarted from a checkpoint (save `run.id` in the checkpoint); a run that had ended turns live again. The app lists each job that ran it and marks where each took over on its charts; its time left counts from where it resumed |
 | `server`, `token` | `SOLITON_SERVER`, `SOLITON_TOKEN` | |
 | `mode` | `SOLITON_MODE`, else `online` if a server is set | `online`, `offline` (save only) or `disabled` |
 | `dir` | `SOLITON_DIR`, else `./soliton-runs` | Where runs are saved |

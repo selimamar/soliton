@@ -19,7 +19,9 @@ computes.
    they're missing, the logger saves the run locally (offline): that's
    fine, don't work around it. `SOLITON_TOKEN` may be a job token that can
    add runs but not read them (403 on reads): fine too; never ask for the
-   main token to get around it.
+   main token to get around it. No secrets on the command line or in job
+   scripts either: the logger records both (and the git commit) for rerunning
+   from the app, hiding only values named like a token, password or key.
 2. Don't change the science: same inputs, numerics and outputs. Don't catch
    exceptions to hide a crash. Don't replace NaN before logging it (the
    first NaN marks a simulation as diverged).

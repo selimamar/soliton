@@ -38,6 +38,8 @@ with soliton.init(
   metrics".
 - `step` is the global optimizer step: it never resets. Resuming from a
   checkpoint: save `run.id` in the checkpoint and pass `id=` to `init`.
+  The app then shows the run's jobs (one per restart) and marks where each
+  took over; submit the continuing job with `soliton sbatch --id <run id>`.
 - `run.should_stop()` turns `True` when the user presses Stop in the app:
   check it where the script can save a checkpoint (the end of an epoch, or
   every N steps) and leave the loop. Use the script's own checkpoint code;

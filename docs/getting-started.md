@@ -235,5 +235,7 @@ offline runs). The full logger API is in [logger/README.md](../logger/README.md)
 | A queued job doesn't move on | What Slurm says is as of `soliton sbatch`, the last `soliton queue`, or the last Soliton job that started: run `soliton queue`. The wait itself counts up by itself |
 | "Asked to stop" stays | The script doesn't log often, or checks `run.should_stop()` rarely: it stops at its next check (or next log, for a script that never checks) |
 | No time-limit alert | It comes once the run has gone 10 minutes and 2% of the way, and only if it would miss the limit by more than 5 minutes; it needs `total_steps` (or a simulation's `t_end`) |
+| The server won't start: "the database is at version N, newer than this server knows" | A newer server already upgraded that database: update the server (`git pull`, then restart it) |
+| Reproduce says "Uncommitted changes" | The code wasn't committed when the run started, so its commit alone may not reproduce it: commit before long runs |
 | The Mac app asks to use the keychain | Once after the app was rebuilt (it is signed without a developer team): Always Allow |
 | Nothing updates | The tunnel to the Sherlock test server is closed, or its job ended: start them again |

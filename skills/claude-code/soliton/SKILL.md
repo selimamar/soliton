@@ -25,6 +25,11 @@ them when something here isn't enough.
   work around it. `SOLITON_TOKEN` may be a job token that can add runs but
   not read them (the server answers 403 to reads); that's fine too, never ask
   for the main token to get around it.
+- **No secrets on the command line or in job scripts.** The logger records
+  both (and the git commit) so the user can rerun the run from the app; it
+  hides values named like a token, password, secret or key, but keep secrets
+  in the environment. Before a long job, suggest committing the code: the
+  run then records a clean commit instead of "uncommitted changes".
 - **Don't change the science.** Monitoring is added around the computation:
   same inputs, same numerics, same outputs. Don't catch exceptions to hide a
   crash, and don't replace NaN before logging it (the first NaN marks a
@@ -83,6 +88,8 @@ with soliton.init(
   metrics".
 - `step` is the global optimizer step: it never resets. Resuming from a
   checkpoint: save `run.id` in the checkpoint and pass `id=` to `init`.
+  The app then shows the run's jobs (one per restart) and marks where each
+  took over; submit the continuing job with `soliton sbatch --id <run id>`.
 - `run.should_stop()` turns `True` when the user presses Stop in the app:
   check it where the script can save a checkpoint (the end of an epoch, or
   every N steps) and leave the loop. Use the script's own checkpoint code;

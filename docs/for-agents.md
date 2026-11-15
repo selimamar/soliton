@@ -153,6 +153,10 @@ and choose what to watch in a program's output. The full API is in
 
 - Don't change what the computation does. Don't catch exceptions to hide a
   crash; don't replace NaN before logging it.
+- No secrets on the command line or in job scripts: the logger records both
+  for Reproduce (it hides values named like a token, password, secret or key,
+  but secrets belong in the environment). Suggest committing the code before
+  a long job, so its run records a clean commit.
 - Log scalars a few times per second at most, fields every few hundred
   steps. In fast GPU loops log every 10–50 steps (logging a GPU tensor waits
   for the GPU).
@@ -203,4 +207,6 @@ Codex: the `soliton` skill, from /path/to/soliton/skills). In short:
 - `SOLITON_TOKEN` may be a job token that can't read runs (403): that's
   expected; check uploads in `$SOLITON_DIR/<run id>/upload.json`.
 - Don't change what the computation does; check with a short run first.
+- Training loops check `run.should_stop()` (the app's Stop button). No
+  secrets on the command line or in job scripts (they're recorded).
 ```

@@ -67,7 +67,7 @@ soliton demo                            # 2. a small real training run (PyTorch)
 tool/run_web.sh                           # 3. the app, at http://localhost:8787
 ```
 
-In the app: **Settings → Data source** (or **Connect server** on the runs list), enter
+In the app: **Settings → Server** (or **Connect server** on the runs list), enter
 `http://127.0.0.1:8000` and the token. The demo run appears and updates live.
 `soliton demo --crash-at 500` shows what a crash looks like.
 
@@ -348,5 +348,11 @@ first start and deletes the old copy. Disconnecting deletes it everywhere.
 5. ~~Notifications: in-app alerts, and push through ntfy~~
 6. ~~Saved settings, log scale, step/epoch x-axis, compare runs~~
 7. ~~The server token in the Keychain/Keystore~~
-8. Next ideas: native push (APNs/FCM),
-   accounts for several people, database migrations, deleting runs from the app
+8. ~~Slurm: job times, queued jobs (`soliton sbatch`, `soliton queue`), the
+   time-limit alert, Resources (right-sizing), continued runs over several jobs~~
+9. ~~Control and safety: Stop from the app, a separate job token, rotating the
+   main token, database migrations, deleting runs~~
+10. ~~Several servers, and all of them in one list; the settings that differ
+    in Compare; Reproduce (code version, command, job script)~~
+11. Next ideas: training-health alerts, accounts for several people, native
+    push (APNs/FCM), signing the Apple apps with a developer team

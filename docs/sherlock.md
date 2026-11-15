@@ -245,6 +245,16 @@ server/README.md) and point jobs at it with `SSL_CERT_FILE`.
 - **Killed outright** (out of memory, node failure): no chance to report. The
   server marks the run as crashed ("lost contact") after 10 minutes without
   data. If the run was offline, it shows whatever `sync` uploaded.
+- **Stop in the app:** the script stops at its next `run.should_stop()` check,
+  after saving a checkpoint, and the run ends "Stopped from the app"; a script
+  that doesn't check is stopped as by `scancel`. No SSH needed.
+- **Continued in a new job** (`init(id=...)`, `soliton sbatch --id`): the same
+  run goes live again; its Overview lists each job (id, queue wait, run time,
+  steps, how it ended) and its charts mark where each took over.
+
+Commit your code before submitting a long job: the run records its git commit
+(System tab → Reproduce), and warns when files had uncommitted changes, since
+the commit alone then can't reproduce it.
 
 ## What leaves Sherlock
 

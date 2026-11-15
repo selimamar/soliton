@@ -270,7 +270,15 @@ up in logs), get `{"type": "ready"}`, then one message per change:
  "statusMessage": null, "currentStep": 1200, "totalSteps": 50000}
 ```
 
-`event` is `created`, `updated`, `finished`, `crashed`, `revived` or `deleted`.
+`event` is `created`, `updated`, `started` (a queued job's run began),
+`finished`, `crashed`, `revived`, `time-limit` (won't finish before its Slurm
+time limit) or `deleted`; `"notify": false` marks one not to alert about (a
+queued job you cancelled).
+
+Besides what the logger sent, a run's JSON has `jobs` (each process that ran
+it: `jobId`, `submittedAt`, `startedAt`, `endedAt`, `status`, `message`,
+`startStep`, `endStep`), `resumedAtStep` (where its latest process took over)
+and `stopRequestedAt` (the app's Stop button, until it ends).
 The server sends `{"type": "ping"}` when idle, to keep proxies from closing
 the connection. Interactive API docs are at `/docs` while the server runs.
 
