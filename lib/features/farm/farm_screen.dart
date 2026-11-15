@@ -16,12 +16,20 @@ import '../../shared/widgets/stat_tile.dart';
 import '../../shared/widgets/status_chip.dart';
 import 'farm_painter.dart';
 import 'farm_palette.dart';
+import 'farm_settings.dart';
+import 'farm_settings_section.dart';
+import 'farm_sky.dart';
 import 'farm_world.dart';
 
-/// The runs as a farm: a duck for each finished run, as big as its model,
-/// walking about; an egg in the nest for each live run, filling its ring as
-/// it trains and hatching when it finishes. Tap one for its figures and a
-/// way to the full analysis.
+/// The runs as a farm: an animal for each finished run, as big as its
+/// model, walking about (a duck, or the animal its model family is set to
+/// in the farm's settings); an egg in the nest for each live run, filling
+/// its ring as it trains and hatching when it finishes. Tap one for its
+/// figures and a way to the full analysis.
+///
+/// The farm keeps the app's clock: its light fades smoothly from day to
+/// night (the animals fall asleep, the coop's lamp comes on), and the
+/// season sets its colours and weather.
 ///
 /// With reduced motion (or a screen reader) the ducks stand still in rows.
 ///
@@ -110,6 +118,11 @@ class _FarmScreenState extends ConsumerState<FarmScreen> with SingleTickerProvid
       title: const Text('Farm'),
       actions: [
         IconButton(
+          icon: const Icon(Icons.tune),
+          tooltip: 'Farm settings',
+          onPressed: () => showFarmSettings(context),
+        ),
+        IconButton(
           icon: const Icon(Icons.view_list_outlined),
           tooltip: 'Runs as a list',
           onPressed: () => context.go(AppRoutes.runs),
@@ -125,7 +138,13 @@ class _FarmScreenState extends ConsumerState<FarmScreen> with SingleTickerProvid
 
   Widget _farm(List<Run> runs) {
     final theme = Theme.of(context);
-    final palette = FarmPalette.of(context);
+    final sky = FarmSky.at(
+      ref.watch(clockProvider),
+      hemisphere: ref.watch(farmHemisphereProvider),
+      timeOfDay: ref.watch(farmTimeOfDayProvider),
+    );
+    final animals = ref.watch(farmAnimalsProvider);
+    final palette = FarmPalette.of(context).seasoned(sky.season);
     final style = AppTheme.styleOf(context);
     final labelStyle = switch (style) {
       AppStyle.ink => TextStyle(
@@ -148,7 +167,7 @@ class _FarmScreenState extends ConsumerState<FarmScreen> with SingleTickerProvid
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _FarmCaption(runs: runs, palette: palette),
+        _FarmCaption(runs: runs, palette: palette, animals: animals, sky: sky),
         Expanded(
           child: Stack(
             children: [
@@ -160,7 +179,9 @@ class _FarmScreenState extends ConsumerState<FarmScreen> with SingleTickerProvid
                         constraints.biggest,
                         bottomInset: MediaQuery.paddingOf(context).bottom,
                       )
-                      ..sync(runs);
+                      ..setAnimals(animals)
+                      ..sync(runs)
+                      ..setSky(sky);
                     return MouseRegion(
                       cursor: _overRun ? SystemMouseCursors.click : MouseCursor.defer,
                       onEnter: (event) => _hover(event.localPosition),
@@ -178,6 +199,7 @@ class _FarmScreenState extends ConsumerState<FarmScreen> with SingleTickerProvid
                                   layout: _world.layout,
                                   palette: palette,
                                   labelStyle: labelStyle,
+                                  season: sky.season,
                                 ),
                               ),
                             ),
@@ -238,10 +260,29 @@ class _FarmScreenState extends ConsumerState<FarmScreen> with SingleTickerProvid
 /// eggs, and (Paper, Ink) which colour is which model. Ink writes it as a
 /// figure caption.
 class _FarmCaption extends StatelessWidget {
-  const _FarmCaption({required this.runs, required this.palette});
+  const _FarmCaption({
+    required this.runs,
+    required this.palette,
+    required this.animals,
+    required this.sky,
+  });
 
   final List<Run> runs;
   final FarmPalette palette;
+
+  /// Which animal each family is: families that aren't ducks are named in
+  /// the legend with their animal, e.g. "FNO (beavers)".
+  final Map<String, FarmAnimal> animals;
+  final FarmSky sky;
+
+  /// "dawn", "day", "dusk" or "night".
+  String get _timeOfDay => sky.light > 0.95
+      ? 'day'
+      : sky.light < 0.05
+      ? 'night'
+      : sky.sun < 0.5
+      ? 'dawn'
+      : 'dusk';
 
   static const _words = [
     'no', 'one', 'two', 'three', 'four', 'five', 'six', //
@@ -276,6 +317,7 @@ class _FarmCaption extends StatelessWidget {
               style: strong.copyWith(color: crashed > 0 ? scheme.error : null),
             ),
             const TextSpan(text: ' crashed'),
+            TextSpan(text: ' · ${sky.season.label}, $_timeOfDay'),
           ],
         ),
         style: base?.copyWith(fontFeatures: AppText.tabular),
@@ -293,6 +335,9 @@ class _FarmCaption extends StatelessWidget {
                 text: '†',
                 style: TextStyle(color: scheme.error),
               ),
+            TextSpan(
+              text: ' ${sky.season.label}, ${_timeOfDay == 'day' ? 'by day' : 'at $_timeOfDay'}.',
+            ),
           ],
         ),
         style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant, height: 1.4),
@@ -315,9 +360,16 @@ class _FarmCaption extends StatelessWidget {
               text: _two(crashed),
               style: TextStyle(color: scheme.error),
             ),
+            TextSpan(
+              text:
+                  ' · ${sky.season.label.toUpperCase()} ${_timeOfDay.toUpperCase()} '
+                  '· LUX ${(sky.light * 100).round().toString().padLeft(3, '0')}',
+            ),
           ],
         ),
-        semanticsLabel: '$finished trained, $live live, $crashed crashed',
+        semanticsLabel:
+            '$finished trained, $live live, $crashed crashed. '
+            '${sky.season.label}, $_timeOfDay',
         style: base?.copyWith(letterSpacing: 0.5, fontFeatures: AppText.tabular),
       ),
     };
@@ -339,20 +391,26 @@ class _FarmCaption extends StatelessWidget {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: palette.family(i).$1,
-                          shape: style == AppStyle.ink ? BoxShape.rectangle : BoxShape.circle,
-                          border: Border.all(
-                            color: palette.line ?? scheme.outline,
-                            width: style == AppStyle.ink ? 0.8 : 0.5,
+                      // Only ducks carry their family's colour.
+                      if (animals[family] == null) ...[
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: palette.family(i).$1,
+                            shape: style == AppStyle.ink ? BoxShape.rectangle : BoxShape.circle,
+                            border: Border.all(
+                              color: palette.line ?? scheme.outline,
+                              width: style == AppStyle.ink ? 0.8 : 0.5,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(family, style: base),
+                        const SizedBox(width: 4),
+                      ],
+                      Text(switch (animals[family]) {
+                        final animal? => '$family (${animal.plural})',
+                        null => family,
+                      }, style: base),
                     ],
                   ),
               ],

@@ -7,7 +7,10 @@ import 'package:material_ui/material_ui.dart';
 import '../../app/theme.dart';
 import '../../models/run.dart';
 import '../../shared/formatters.dart';
+import 'farm_beasts.dart';
 import 'farm_palette.dart';
+import 'farm_settings.dart';
+import 'farm_sky.dart';
 import 'farm_world.dart';
 
 // The farm is drawn in two layers: the scene (grass, coop, nest, pond,
@@ -23,11 +26,12 @@ String? farmLabel(AppStyle style, int index) => switch (style) {
   AppStyle.lab => (index + 1).toString().padLeft(2, '0'),
 };
 
-/// What a screen reader says for [run] on the farm.
-String farmSemanticsLabel(Run run) {
+/// What a screen reader says for [run] on the farm, a finished one being
+/// [animal].
+String farmSemanticsLabel(Run run, {FarmAnimal animal = FarmAnimal.duck}) {
   final kind = switch (run.status) {
     RunStatus.queued => 'egg not yet laid, queued',
-    RunStatus.finished => 'duck',
+    RunStatus.finished => animal.label.toLowerCase(),
     RunStatus.live => 'egg, ${(run.progress * 100).round()}% trained',
     RunStatus.crashed => 'cracked egg, crashed',
   };
@@ -39,10 +43,21 @@ String farmSemanticsLabel(Run run) {
 /// move. Wrap it in a [RepaintBoundary]: it only repaints when the size or
 /// style changes.
 class FarmScenePainter extends CustomPainter {
-  FarmScenePainter({required this.layout, required this.palette, required this.labelStyle});
+  FarmScenePainter({
+    required this.layout,
+    required this.palette,
+    required this.labelStyle,
+    this.season = FarmSeason.summer,
+  });
 
   final FarmLayout layout;
+
+  /// Already in the [season]'s colours ([FarmPalette.seasoned]).
   final FarmPalette palette;
+
+  /// Brings spring flowers, autumn leaves on the grass, or winter's snow
+  /// and ice.
+  final FarmSeason season;
 
   /// For Lab's zone labels (COOP, INCUBATOR).
   final TextStyle labelStyle;
@@ -89,6 +104,7 @@ class FarmScenePainter extends CustomPainter {
     for (final dot in _scatter(l, 3, 1 / 2600)) {
       canvas.drawCircle(dot, 1.8, fill..color = p.groundMark);
     }
+    _groundCover(canvas, l, outline: null);
     canvas.drawPath(
       _pathLine(l, size),
       Paint()
@@ -107,6 +123,37 @@ class FarmScenePainter extends CustomPainter {
         fill..color = p.roofShade,
       )
       ..restore();
+    if (season == FarmSeason.winter) {
+      // Snow on both slopes of the roof, the eaves showing round it; the
+      // shady slope a little greyer.
+      final snow = l.coop.deflate(4);
+      final (lit, shady) = p.dark
+          ? (const Color(0xFFB9C2CB), const Color(0xFF9AA4AE))
+          : (const Color(0xFFFAFCFD), const Color(0xFFDDE5EB));
+      canvas
+        ..drawRRect(
+          RRect.fromLTRBAndCorners(
+            snow.left,
+            snow.top,
+            l.coop.center.dx - 1,
+            snow.bottom,
+            topLeft: const Radius.circular(6),
+            bottomLeft: const Radius.circular(6),
+          ),
+          fill..color = shady,
+        )
+        ..drawRRect(
+          RRect.fromLTRBAndCorners(
+            l.coop.center.dx + 1,
+            snow.top,
+            snow.right,
+            snow.bottom,
+            topRight: const Radius.circular(6),
+            bottomRight: const Radius.circular(6),
+          ),
+          fill..color = lit,
+        );
+    }
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         Rect.fromCenter(center: Offset(l.coop.center.dx, l.coop.bottom), width: 36, height: 8),
@@ -121,11 +168,27 @@ class FarmScenePainter extends CustomPainter {
       _blob(l.pond.deflate(l.pond.shortestSide * 0.08).shift(const Offset(4, 3))),
       fill..color = p.waterLight,
     );
-    _waterMarks(canvas, l, p.waterMark, 1.5);
+    if (season == FarmSeason.winter) {
+      _ice(canvas, l, p.dark ? const Color(0xFF7E95A6) : const Color(0xFFFFFFFF), 1.6);
+    } else {
+      _waterMarks(canvas, l, p.waterMark, 1.5);
+    }
     for (final (centre, r) in l.trees) {
       canvas
         ..drawCircle(centre, r, fill..color = p.tree)
         ..drawCircle(centre.translate(-r * 0.22, -r * 0.27), r * 0.66, fill..color = p.treeLight);
+      if (season == FarmSeason.winter) {
+        // Snow caught in the bare branches.
+        final snow = Paint()..color = p.dark ? const Color(0xFFB9C2CB) : const Color(0xFFFAFCFD);
+        for (final (x, y, k) in const [
+          (-0.35, -0.4, 0.22),
+          (0.2, -0.2, 0.16),
+          (-0.05, 0.3, 0.14),
+          (0.42, 0.25, 0.12),
+        ]) {
+          canvas.drawCircle(centre.translate(x * r, y * r), k * r, snow);
+        }
+      }
     }
     canvas.drawRRect(
       RRect.fromRectAndRadius((Offset.zero & size).deflate(6), const Radius.circular(4)),
@@ -155,6 +218,7 @@ class FarmScenePainter extends CustomPainter {
         canvas.drawCircle(dot + o, 0.9, fill..color = p.groundMark);
       }
     }
+    _groundCover(canvas, l, outline: line);
     // The coop, its shady half lightly hatched.
     final coop = l.coop;
     canvas.drawRect(coop, fill..color = p.roof);
@@ -182,7 +246,11 @@ class FarmScenePainter extends CustomPainter {
     canvas
       ..drawPath(pond, fill..color = p.water)
       ..drawPath(pond, line..strokeWidth = 1);
-    _waterMarks(canvas, l, p.waterMark, 0.9);
+    if (season == FarmSeason.winter) {
+      _ice(canvas, l, p.waterMark, 0.9);
+    } else {
+      _waterMarks(canvas, l, p.waterMark, 0.9);
+    }
     for (final (centre, r) in l.trees) {
       canvas
         ..drawCircle(centre, r, fill..color = p.tree)
@@ -270,6 +338,10 @@ class FarmScenePainter extends CustomPainter {
           ..strokeWidth = 0.8,
       );
     }
+    if (season == FarmSeason.winter) {
+      _ice(canvas, l, p.accent, 0.9);
+      _label(canvas, 'ICE', l.pond.bottomCenter.translate(-8, 4), p.accent);
+    }
     for (final (centre, r) in l.trees) {
       canvas.drawCircle(centre, r * 0.75, outline);
       canvas
@@ -325,6 +397,68 @@ class FarmScenePainter extends CustomPainter {
     }
   }
 
+  /// Spring's flowers or autumn's fallen leaves on the grass.
+  void _groundCover(Canvas canvas, FarmLayout l, {required Paint? outline}) {
+    if (season != FarmSeason.spring && season != FarmSeason.autumn) return;
+    final p = palette;
+    final fill = Paint();
+    final random = math.Random(11);
+    for (final at in _scatter(l, 9, 1 / 9000)) {
+      if (season == FarmSeason.spring) {
+        for (var i = 0; i < 5; i++) {
+          final a = i / 5 * 2 * math.pi;
+          canvas.drawCircle(
+            at + Offset(math.cos(a), math.sin(a)) * 2.4,
+            1.7,
+            fill..color = p.dark ? const Color(0xFFC9C3D0) : const Color(0xFFFFFFFF),
+          );
+        }
+        canvas.drawCircle(at, 1.3, fill..color = const Color(0xFFE8C04A));
+        if (outline != null) canvas.drawCircle(at, 4.2, outline..strokeWidth = 0.5);
+      } else {
+        final leaf = Rect.fromCenter(center: at, width: 7, height: 3.6);
+        canvas
+          ..save()
+          ..translate(at.dx, at.dy)
+          ..rotate(random.nextDouble() * math.pi)
+          ..translate(-at.dx, -at.dy)
+          ..drawOval(
+            leaf,
+            fill
+              ..color = [
+                const Color(0xFFD9824A),
+                const Color(0xFFC25B3F),
+                const Color(0xFFE2B254),
+              ][random.nextInt(3)].withValues(alpha: p.dark ? 0.7 : 1),
+          );
+        if (outline != null) canvas.drawOval(leaf, outline..strokeWidth = 0.6);
+        canvas.restore();
+      }
+    }
+  }
+
+  /// Cracks across a frozen pond.
+  void _ice(Canvas canvas, FarmLayout l, Color color, double width) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = width
+      ..strokeJoin = StrokeJoin.round;
+    final c = l.pond.center, rx = l.pond.width / 2, ry = l.pond.height / 2;
+    for (final crack in const [
+      [(-0.7, -0.2), (-0.35, 0.05), (-0.1, -0.3), (0.25, -0.15)],
+      [(0.05, 0.25), (0.3, 0.4), (0.55, 0.1)],
+      [(-0.35, 0.05), (-0.45, 0.45)],
+    ]) {
+      final path = Path();
+      for (final (i, (x, y)) in crack.indexed) {
+        final at = c + Offset(x * rx, y * ry);
+        i == 0 ? path.moveTo(at.dx, at.dy) : path.lineTo(at.dx, at.dy);
+      }
+      canvas.drawPath(path, paint);
+    }
+  }
+
   void _waterMarks(Canvas canvas, FarmLayout l, Color color, double width) {
     final paint = Paint()
       ..color = color
@@ -345,6 +479,8 @@ class FarmScenePainter extends CustomPainter {
   @override
   bool shouldRepaint(FarmScenePainter old) =>
       old.layout.size != layout.size ||
+      old.season != season ||
+      old.palette.ground != palette.ground ||
       old.palette.style != palette.style ||
       old.palette.dark != palette.dark ||
       old.palette.accent != palette.accent;
@@ -514,6 +650,8 @@ class FarmCreaturesPainter extends CustomPainter {
     for (final duck in standing) {
       _duck(canvas, duck);
     }
+    _weather(canvas);
+    _night(canvas, size);
     // Labels on top, so a duck walking by doesn't hide another's.
     if (p.style != AppStyle.paper) {
       for (final (i, duck) in world.ducks.indexed) {
@@ -524,7 +662,10 @@ class FarmCreaturesPainter extends CustomPainter {
         _text(
           canvas,
           farmLabel(p.style, i)!,
-          duck.position.translate(duck.facing * 9.5 * s, -53 * s),
+          duck.position.translate(
+            duck.facing * duck.animal.head.dx * s,
+            -(duck.animal.head.dy + (duck.asleep ? 10 : 0)) * s,
+          ),
           style,
           centred: true,
           above: true,
@@ -544,7 +685,199 @@ class FarmCreaturesPainter extends CustomPainter {
         _text(canvas, '†', egg.position.translate(11, -30), labelStyle.copyWith(color: p.alert));
       }
     }
+    _snores(canvas);
     if (p.style == AppStyle.lab) _hud(canvas, size);
+  }
+
+  /// The season's rain, petals, leaves, snow or glints on the pond. Drawn
+  /// under the night, so it darkens with everything else.
+  void _weather(Canvas canvas) {
+    final ink = p.style != AppStyle.paper;
+    final fill = Paint();
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    for (final f in world.flakes) {
+      final at = f.position;
+      switch (f.kind) {
+        case FlakeKind.rain:
+          canvas.drawLine(
+            at,
+            at.translate(-1.6, 9),
+            stroke
+              ..color = (ink ? p.waterMark : const Color(0xFF6E8FAE)).withValues(alpha: 0.7)
+              ..strokeWidth = ink ? 0.9 : 1.3,
+          );
+        case FlakeKind.petal:
+          canvas
+            ..save()
+            ..translate(at.dx, at.dy)
+            ..rotate(f.phase)
+            ..drawOval(
+              Rect.fromCenter(center: Offset.zero, width: 5, height: 3.2),
+              fill..color = p.dark ? const Color(0xFFB58A98) : const Color(0xFFF0C4CF),
+            )
+            ..restore();
+        case FlakeKind.leaf:
+          final leaf = Rect.fromCenter(center: Offset.zero, width: 8, height: 4);
+          canvas
+            ..save()
+            ..translate(at.dx, at.dy)
+            ..rotate(f.phase * 1.3)
+            ..drawOval(
+              leaf,
+              fill
+                ..color = const [
+                  Color(0xFFD9824A),
+                  Color(0xFFC25B3F),
+                  Color(0xFFE2B254),
+                ][(f.speed * 100).floor() % 3],
+            );
+          if (_outlined) {
+            canvas.drawOval(
+              leaf,
+              stroke
+                ..color = p.line!
+                ..strokeWidth = 0.6,
+            );
+          }
+          canvas.restore();
+        case FlakeKind.snow:
+          final r = 1.2 + f.speed;
+          canvas.drawCircle(
+            at,
+            r,
+            fill..color = p.style == AppStyle.lab ? p.ground : const Color(0xFFFFFFFF),
+          );
+          if (p.style != AppStyle.paper || !p.dark) {
+            canvas.drawCircle(
+              at,
+              r,
+              stroke
+                ..color = p.style == AppStyle.lab
+                    ? p.accent
+                    : (p.line ?? const Color(0xFF9FB4C3)).withValues(alpha: 0.6)
+                ..strokeWidth = 0.5,
+            );
+          }
+        case FlakeKind.glint:
+          final k = math.max(0.0, math.sin(f.phase)) * 4;
+          if (k > 0.2) {
+            stroke
+              ..color = (ink ? p.waterMark : const Color(0xFFFFFFFF))
+              ..strokeWidth = 1.2;
+            canvas
+              ..drawLine(at.translate(-k, 0), at.translate(k, 0), stroke)
+              ..drawLine(at.translate(0, -k), at.translate(0, k), stroke);
+          }
+        case FlakeKind.firefly:
+          break; // Lit, so drawn over the night.
+      }
+    }
+  }
+
+  /// The night: a wash over the whole farm, warm at dawn and dusk; then
+  /// what lights up in the dark: the lamp by the coop, the moon and stars
+  /// in the pond, fireflies.
+  void _night(Canvas canvas, Size size) {
+    final sky = world.sky;
+    final (colour, strength) = p.night;
+    if (sky.warmth > 0.02 && sky.darkness > 0.02) {
+      canvas.drawRect(
+        Offset.zero & size,
+        Paint()..color = const Color(0xFFF08A4B).withValues(alpha: sky.warmth * 0.16),
+      );
+    }
+    if (sky.darkness < 0.02) return;
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()..color = colour.withValues(alpha: sky.darkness * strength),
+    );
+    final lit = _smooth(0.25, 0.7, sky.darkness);
+    final l = world.layout;
+    // The lamp over the coop door, and its pool of light.
+    final lamp = Offset(l.coop.center.dx + 26, l.coop.bottom + 2);
+    canvas
+      ..drawCircle(
+        lamp,
+        46,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [
+              p.lamp.withValues(alpha: 0.32 * lit),
+              p.lamp.withValues(alpha: 0),
+            ],
+          ).createShader(Rect.fromCircle(center: lamp, radius: 46)),
+      )
+      ..drawCircle(lamp, 3.2, Paint()..color = p.lamp.withValues(alpha: lit));
+    // The moon in the pond (faint on ice), and a few stars.
+    final ice = sky.season == FarmSeason.winter;
+    final moon = l.pond.center + Offset(l.pond.width * 0.18, -l.pond.height * 0.18);
+    final r = math.min(11.0, l.pond.shortestSide * 0.12);
+    final glow = lit * (ice ? 0.45 : 0.9);
+    final moonLayer = Rect.fromCircle(center: moon, radius: r + 2);
+    canvas
+      ..saveLayer(moonLayer, Paint())
+      ..drawCircle(moon, r, Paint()..color = const Color(0xFFF3EFD8).withValues(alpha: glow))
+      ..drawCircle(
+        moon.translate(r * 0.42, -r * 0.2),
+        r * 0.88,
+        Paint()..blendMode = BlendMode.clear,
+      )
+      ..restore();
+    if (!ice) {
+      final star = Paint()..color = const Color(0xFFDCE6F2).withValues(alpha: lit * 0.8);
+      for (final (x, y) in const [
+        (-0.5, -0.1),
+        (-0.2, 0.4),
+        (0.35, 0.3),
+        (-0.6, 0.3),
+        (0.05, -0.5),
+      ]) {
+        canvas.drawCircle(
+          l.pond.center + Offset(x * l.pond.width / 2, y * l.pond.height / 2),
+          1.1,
+          star,
+        );
+      }
+    }
+    final flies = _smooth(0.55, 0.95, sky.darkness);
+    if (flies > 0) {
+      for (final f in world.flakes) {
+        if (f.kind != FlakeKind.firefly) continue;
+        final on = math.max(0.0, math.sin(f.phase)) * flies;
+        if (on < 0.05) continue;
+        canvas
+          ..drawCircle(f.position, 6, Paint()..color = p.lamp.withValues(alpha: on * 0.25))
+          ..drawCircle(f.position, 1.8, Paint()..color = p.lamp.withValues(alpha: on));
+      }
+    }
+  }
+
+  /// "z" over each sleeping animal, drifting up.
+  void _snores(Canvas canvas) {
+    final style = labelStyle.copyWith(
+      color: p.style == AppStyle.lab ? p.accent : const Color(0xFFDCE6F2),
+      fontSize: (labelStyle.fontSize ?? 12) * 0.95,
+    );
+    for (final duck in world.ducks) {
+      if (!duck.asleep) continue;
+      final s = duck.scale;
+      final top = duck.position.translate(
+        duck.facing * (duck.animal.head.dx + 6) * s,
+        -(duck.animal.head.dy - 6) * s,
+      );
+      final rise = world.animate ? (world.time * 0.5 + duck.id.hashCode % 7 / 7) % 1 : 0.3;
+      // No halo: on the night's wash, Ink's page-coloured halo would glare.
+      text
+          .get(p.style == AppStyle.lab ? 'Zz' : 'z', style)
+          .paint(canvas, top.translate(rise * 6, -rise * 10));
+    }
+  }
+
+  static double _smooth(double a, double b, double x) {
+    final t = ((x - a) / (b - a)).clamp(0.0, 1.0);
+    return t * t * (3 - 2 * t);
   }
 
   /// Paints [s] at [at]: its top-left corner, or the middle of its top
@@ -579,6 +912,11 @@ class FarmCreaturesPainter extends CustomPainter {
 
   FarmPalette get p => palette;
 
+  /// Shadows fall west in the morning and east in the evening, and grow
+  /// long as the sun gets low.
+  double get _shadowShift => (world.sky.sun - 0.5) * -0.5;
+  double get _shadowStretch => 1 + (world.sky.sun - 0.5).abs() * 0.8;
+
   void _duck(Canvas canvas, FarmDuck duck) {
     final (colour, shade) = p.family(world.familyIndexOf(duck.run));
     final phase = (duck.id.hashCode % 628) / 100;
@@ -599,8 +937,9 @@ class FarmCreaturesPainter extends CustomPainter {
       ..save()
       ..translate(duck.position.dx, duck.position.dy)
       ..scale(duck.scale * duck.pop * bump * lift);
+    final half = duck.animal.width / 2;
     if (duck.swimming) {
-      final rx = 20 + math.sin(world.time * 4.8 + phase) * 3;
+      final rx = half * 1.25 + math.sin(world.time * 4.8 + phase) * 3;
       canvas.drawOval(
         Rect.fromCenter(center: const Offset(0, -6), width: rx * 2, height: 12),
         Paint()
@@ -610,13 +949,22 @@ class FarmCreaturesPainter extends CustomPainter {
       );
     } else {
       canvas.drawOval(
-        Rect.fromCenter(center: Offset.zero, width: 32, height: 9),
+        Rect.fromCenter(
+          center: Offset(_shadowShift * half, 0),
+          width: half * 2 * _shadowStretch,
+          height: 9,
+        ),
         fill..color = p.shadow,
       );
     }
     canvas.scale(duck.facing, 1);
+    if (duck.animal != FarmAnimal.duck) {
+      paintBeast(canvas, p, duck, time: world.time, line: line);
+      canvas.restore();
+      return;
+    }
 
-    if (!duck.swimming) {
+    if (!duck.swimming && !duck.asleep) {
       for (var i = 0; i < 2; i++) {
         final ph = duck.gait + i * math.pi, hx = -3.0 + i * 5;
         final fx = duck.walking ? hx + math.sin(ph) * 4 : hx;
@@ -641,6 +989,8 @@ class FarmCreaturesPainter extends CustomPainter {
     final rock = duck.walking && !duck.swimming ? math.sin(duck.gait) * 5 : 0.0;
     final bob = duck.swimming
         ? 8 + math.sin(world.time * 3.6 + phase) * 0.8
+        : duck.asleep
+        ? 9.0
         : duck.walking
         ? -math.sin(duck.gait).abs() * 1.4
         : 0.0;
@@ -659,7 +1009,12 @@ class FarmCreaturesPainter extends CustomPainter {
 
     // The head: looks about, tucks down to preen, bobs as it walks.
     var turn = 0.0, hx = 0.0, hy = 0.0;
-    if (duck.pose != null) {
+    if (duck.asleep) {
+      // Head tucked onto its back.
+      turn = -40;
+      hx = -5;
+      hy = 6;
+    } else if (duck.pose != null) {
       final k = math.sin(math.min(1, duck.poseTime) * math.pi);
       if (duck.pose == DuckPose.look) {
         turn = math.sin(duck.poseTime * 4.8) * 12 * k;
@@ -895,7 +1250,10 @@ class FarmCreaturesPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(FarmCreaturesPainter old) =>
-      old.world != world || old.palette.style != palette.style || old.palette.dark != palette.dark;
+      old.world != world ||
+      old.palette.style != palette.style ||
+      old.palette.dark != palette.dark ||
+      old.palette.ground != palette.ground;
 
   @override
   SemanticsBuilderCallback get semanticsBuilder =>
@@ -903,9 +1261,12 @@ class FarmCreaturesPainter extends CustomPainter {
         for (final duck in world.ducks)
           CustomPainterSemantics(
             key: ValueKey('duck ${duck.id}'),
-            rect: Rect.fromCircle(center: duck.centre, radius: 24),
+            rect: Rect.fromCircle(
+              center: duck.centre,
+              radius: math.max(24, duck.animal.centre * duck.scale),
+            ),
             properties: SemanticsProperties(
-              label: farmSemanticsLabel(duck.run),
+              label: farmSemanticsLabel(duck.run, animal: duck.animal),
               button: true,
               selected: duck.id == world.selectedId,
               textDirection: TextDirection.ltr,

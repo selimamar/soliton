@@ -1,6 +1,8 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../app/theme.dart';
+import 'farm_settings.dart';
+import 'farm_sky.dart';
 
 /// The farm's colours in one style and brightness.
 ///
@@ -100,6 +102,132 @@ class FarmPalette {
   final Color muted;
 
   (Color, Color) family(int index) => index < 0 ? unknownFamily : families[index % families.length];
+
+  /// An animal's (body, shade, detail) colours: the detail is a moose's
+  /// antlers, a goose's neck, a beaver's tail or a bear's muzzle. Lab's
+  /// animals are outlines, all alike.
+  (Color, Color, Color) beast(FarmAnimal animal) {
+    if (style == AppStyle.lab) {
+      final (body, shade) = families.first;
+      return (body, shade, body);
+    }
+    const c = Color.new;
+    return switch ((style, dark, animal)) {
+      (_, _, FarmAnimal.duck) => (unknownFamily.$1, unknownFamily.$2, bill),
+      (AppStyle.paper, false, FarmAnimal.goose) => (c(0xFFB7AFA2), c(0xFF958C7F), c(0xFF33373C)),
+      (AppStyle.paper, false, FarmAnimal.moose) => (c(0xFF7D5F4A), c(0xFF634A39), c(0xFFD9C9A8)),
+      (AppStyle.paper, false, FarmAnimal.beaver) => (c(0xFF9A7052), c(0xFF7C573E), c(0xFF5A4A40)),
+      (AppStyle.paper, false, FarmAnimal.bear) => (c(0xFF6E5A4E), c(0xFF56453B), c(0xFFB39A84)),
+      (AppStyle.paper, true, FarmAnimal.goose) => (c(0xFF9E978B), c(0xFF7F786D), c(0xFF202326)),
+      (AppStyle.paper, true, FarmAnimal.moose) => (c(0xFF6A5040), c(0xFF523D30), c(0xFFB8A888)),
+      (AppStyle.paper, true, FarmAnimal.beaver) => (c(0xFF83604A), c(0xFF684B38), c(0xFF4A3D35)),
+      (AppStyle.paper, true, FarmAnimal.bear) => (c(0xFF5C4A40), c(0xFF463830), c(0xFF957F6C)),
+      (_, false, FarmAnimal.goose) => (c(0xFFECE8E0), c(0xFFD9D3C7), c(0xFF4A4844)),
+      (_, false, FarmAnimal.moose) => (c(0xFFE6D9CA), c(0xFFD4C3AF), c(0xFFFFFFFF)),
+      (_, false, FarmAnimal.beaver) => (c(0xFFEAD9C6), c(0xFFD8C2AA), c(0xFFC9B8A6)),
+      (_, false, FarmAnimal.bear) => (c(0xFFDDD3C8), c(0xFFC9BCAE), c(0xFFF3ECE2)),
+      (_, true, FarmAnimal.goose) => (c(0xFF45474D), c(0xFF393B40), c(0xFF1A1B1F)),
+      (_, true, FarmAnimal.moose) => (c(0xFF5A4A3E), c(0xFF493C32), c(0xFF2A2C31)),
+      (_, true, FarmAnimal.beaver) => (c(0xFF5C4A3A), c(0xFF4A3B2E), c(0xFF3A3029)),
+      (_, true, FarmAnimal.bear) => (c(0xFF4E443D), c(0xFF3F3732), c(0xFF6A5E52)),
+    };
+  }
+
+  /// The colour the farm is washed with at night, and how strongly at
+  /// full dark: less in a dark theme, which is dim already.
+  (Color, double) get night => switch (style) {
+    AppStyle.paper => (const Color(0xFF0B1628), dark ? 0.42 : 0.58),
+    AppStyle.ink => (const Color(0xFF1B2440), dark ? 0.34 : 0.36),
+    AppStyle.lab => (const Color(0xFF000814), dark ? 0.4 : 0.5),
+  };
+
+  /// The lamp by the coop door, fireflies and the moon at night.
+  Color get lamp => style == AppStyle.lab ? accent : const Color(0xFFFFD66B);
+
+  /// The farm in [season]: its grass, trees and pond change colour. Paper
+  /// changes most; Ink only tints its trees and pond; Lab, a map, hardly.
+  FarmPalette seasoned(FarmSeason season) {
+    Color mix(Color a, Color b, double t) => Color.lerp(a, b, t)!;
+    if (season == FarmSeason.summer) return this;
+    return switch (style) {
+      AppStyle.paper => switch (season) {
+        FarmSeason.spring => _copy(
+          ground: mix(ground, dark ? const Color(0xFF2A3A2C) : const Color(0xFFC2D9B8), 0.6),
+          tree: dark ? const Color(0xFF5A4450) : const Color(0xFFE2BFC6),
+          treeLight: dark ? const Color(0xFF6A505D) : const Color(0xFFEDD2D8),
+        ),
+        FarmSeason.autumn => _copy(
+          ground: dark ? const Color(0xFF34332A) : const Color(0xFFD3CFB2),
+          groundMark: dark ? const Color(0xFF3E3C31) : const Color(0xFFC4BF9F),
+          tree: dark ? const Color(0xFF6A4A32) : const Color(0xFFD9A06E),
+          treeLight: dark ? const Color(0xFF7A563A) : const Color(0xFFE6B686),
+        ),
+        _ => _copy(
+          ground: dark ? const Color(0xFF39414A) : const Color(0xFFE9EEF2),
+          groundMark: dark ? const Color(0xFF444D57) : const Color(0xFFDDE4EA),
+          path: dark ? const Color(0xFF424A53) : const Color(0xFFF6F8FA),
+          tree: dark ? const Color(0xFF4A4038) : const Color(0xFFB2A493),
+          treeLight: dark ? const Color(0xFF57504A) : const Color(0xFFC4B8AA),
+          water: dark ? const Color(0xFF4B5B68) : const Color(0xFFD6E4EC),
+          waterLight: dark ? const Color(0xFF566876) : const Color(0xFFE6EFF4),
+        ),
+      },
+      AppStyle.ink => _copy(
+        tree: switch (season) {
+          FarmSeason.spring => dark ? const Color(0xFF3A2E34) : const Color(0xFFF6E3E6),
+          FarmSeason.autumn => dark ? const Color(0xFF3E3226) : const Color(0xFFF3DFC8),
+          _ => ground,
+        },
+        water: season == FarmSeason.winter ? ground : null,
+        waterLight: season == FarmSeason.winter ? ground : null,
+      ),
+      AppStyle.lab => this,
+    };
+  }
+
+  FarmPalette _copy({
+    Color? ground,
+    Color? groundMark,
+    Color? path,
+    Color? tree,
+    Color? treeLight,
+    Color? water,
+    Color? waterLight,
+  }) => FarmPalette(
+    style: style,
+    dark: dark,
+    ground: ground ?? this.ground,
+    groundMark: groundMark ?? this.groundMark,
+    path: path ?? this.path,
+    roof: roof,
+    roofShade: roofShade,
+    nest: nest,
+    nestInner: nestInner,
+    straw: straw,
+    water: water ?? this.water,
+    waterLight: waterLight ?? this.waterLight,
+    waterMark: waterMark,
+    tree: tree ?? this.tree,
+    treeLight: treeLight ?? this.treeLight,
+    border: border,
+    line: line,
+    shadow: shadow,
+    ripple: ripple,
+    families: families,
+    unknownFamily: unknownFamily,
+    bill: bill,
+    billShade: billShade,
+    eye: eye,
+    shell: shell,
+    shellShade: shellShade,
+    crashedShell: crashedShell,
+    crashedShade: crashedShade,
+    ringTrack: ringTrack,
+    accent: accent,
+    alert: alert,
+    text: text,
+    muted: muted,
+  );
 
   static FarmPalette _paperLight(ColorScheme s) => FarmPalette(
     style: AppStyle.paper,

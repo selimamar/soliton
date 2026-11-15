@@ -4,6 +4,8 @@ import 'dart:ui' show Offset, Rect, Size;
 import 'package:flutter/foundation.dart';
 
 import '../../models/run.dart';
+import 'farm_settings.dart';
+import 'farm_sky.dart';
 
 /// Where things are on the farm, worked out from the size of the canvas:
 /// the coop and its nest top left, the pond top right, the pasture below.
@@ -101,9 +103,10 @@ class FarmLayout {
   }
 }
 
-/// A finished run: a duck that walks about the farm.
+/// A finished run: an animal (a duck unless its model family is set to
+/// another) that walks about the farm.
 class FarmDuck {
-  FarmDuck._(this.run, this.position, this.scale) : target = position;
+  FarmDuck._(this.run, this.position, this.animal, this.scale) : target = position;
 
   Run run;
 
@@ -111,9 +114,15 @@ class FarmDuck {
   Offset position;
   Offset target;
 
+  /// Which animal it is, from its model family.
+  FarmAnimal animal;
+
   /// How big it's drawn: grows with the parameter count, see
   /// [FarmWorld.scaleFor].
-  final double scale;
+  double scale;
+
+  /// Asleep for the night: it lies still with its eyes shut.
+  bool asleep = false;
 
   /// 1 when it faces right, -1 when left.
   double facing = 1;
@@ -140,11 +149,27 @@ class FarmDuck {
   double pop = 1;
 
   String get id => run.id;
-  bool get blinking => blinkIn < 0;
+  bool get blinking => blinkIn < 0 || asleep;
 
   /// Where its body is, for tapping and for marking it.
-  Offset get centre => position.translate(0, -24 * scale);
+  Offset get centre => position.translate(0, -animal.centre * scale);
 }
+
+/// A bit of weather (or a firefly), drifting across the farm.
+class FarmFlake {
+  FarmFlake._(this.kind, this.position, this.phase, this.speed);
+
+  final FlakeKind kind;
+  Offset position;
+
+  /// Where it is in its sway, spin or blink, in radians.
+  double phase;
+
+  /// 0.5 to 1.5: some drift faster than others.
+  final double speed;
+}
+
+enum FlakeKind { rain, petal, glint, leaf, snow, firefly }
 
 /// What a standing duck does now and then.
 enum DuckPose { look, preen }
@@ -188,9 +213,14 @@ class FarmShard {
 /// out of its egg. [update] it every frame while it [animate]s; when it
 /// doesn't (reduced motion), ducks stand in rows and nothing moves.
 class FarmWorld extends ChangeNotifier {
-  FarmWorld({int seed = 1, this.animate = true}) : _random = math.Random(seed);
+  FarmWorld({int seed = 1, this.animate = true})
+    : _random = math.Random(seed),
+      _weatherRandom = math.Random(seed + 1);
 
   final math.Random _random;
+
+  /// Weather has its own, so it doesn't change where animals wander.
+  final math.Random _weatherRandom;
 
   /// Whether ducks walk about. Off for reduced motion and screen readers.
   bool animate;
@@ -212,6 +242,15 @@ class FarmWorld extends ChangeNotifier {
   /// is its type's index in this list.
   List<String> families = const [];
 
+  /// Which animal each model family is; the rest are ducks.
+  Map<String, FarmAnimal> animals = const {};
+
+  /// The season and light, from the clock.
+  FarmSky sky = FarmSky.day;
+
+  /// The season's weather, and fireflies in warm seasons.
+  final List<FarmFlake> flakes = [];
+
   /// Seconds since the farm started.
   double time = 0;
 
@@ -227,6 +266,42 @@ class FarmWorld extends ChangeNotifier {
   /// The model type a run's colour comes from; null if it wasn't logged.
   static String? familyOf(Run run) =>
       run.architecture.isLeaf && run.architecture.type == 'Model' ? null : run.architecture.type;
+
+  FarmAnimal animalOf(Run run) => animals[familyOf(run)] ?? FarmAnimal.duck;
+
+  /// Sets which animal each model family is; animals already on the farm
+  /// change on the spot.
+  void setAnimals(Map<String, FarmAnimal> value) {
+    if (mapEquals(value, animals)) return;
+    animals = value;
+    for (final duck in ducks) {
+      final animal = animalOf(duck.run);
+      if (animal == duck.animal) continue;
+      duck
+        ..animal = animal
+        ..scale = scaleFor(duck.run.parameterCount) * animal.size;
+      if (!animal.swims && layout.inPond(duck.position)) {
+        duck
+          ..position = _pastureSpot()
+          ..target = duck.position;
+      }
+    }
+    version++;
+    notifyListeners();
+  }
+
+  /// Moves the farm on to [value]'s season and light; a new season brings
+  /// its weather.
+  void setSky(FarmSky value) {
+    if (value == sky) return;
+    final season = sky.season;
+    sky = value;
+    if (value.season != season || flakes.isEmpty) _makeWeather();
+    for (final duck in ducks) {
+      duck.asleep = value.asleep && duck.id != selectedId;
+    }
+    notifyListeners();
+  }
 
   int familyIndexOf(Run run) {
     final family = familyOf(run);
@@ -246,6 +321,10 @@ class FarmWorld extends ChangeNotifier {
   void select(String? id) {
     if (id == selectedId) return;
     selectedId = id;
+    // The one you pick wakes up to be looked at.
+    for (final duck in ducks) {
+      duck.asleep = sky.asleep && duck.id != id;
+    }
     version++;
     notifyListeners();
   }
@@ -273,6 +352,7 @@ class FarmWorld extends ChangeNotifier {
     }
     if (!animate) _standInRows();
     _placeEggs();
+    _makeWeather();
     version++;
   }
 
@@ -327,11 +407,15 @@ class FarmWorld extends ChangeNotifier {
     if (changed) version++;
   }
 
-  FarmDuck _newDuck(Run run, Offset at) => FarmDuck._(run, at, scaleFor(run.parameterCount))
-    ..facing = _random.nextBool() ? 1 : -1
-    ..wait = _random.nextDouble() * 2
-    ..idleIn = 1 + _random.nextDouble() * 3
-    ..blinkIn = 1 + _random.nextDouble() * 3;
+  FarmDuck _newDuck(Run run, Offset at) {
+    final animal = animalOf(run);
+    return FarmDuck._(run, at, animal, scaleFor(run.parameterCount) * animal.size)
+      ..asleep = sky.asleep
+      ..facing = _random.nextBool() ? 1 : -1
+      ..wait = _random.nextDouble() * 2
+      ..idleIn = 1 + _random.nextDouble() * 3
+      ..blinkIn = 1 + _random.nextDouble() * 3;
+  }
 
   void _hatch(FarmEgg egg, Run run) {
     version++;
@@ -381,7 +465,7 @@ class FarmWorld extends ChangeNotifier {
   }
 
   void _pickTarget(FarmDuck duck) {
-    if (_random.nextDouble() < 0.25) {
+    if (_random.nextDouble() < (duck.animal.swims ? 0.25 : 0)) {
       final a = _random.nextDouble() * 2 * math.pi, r = _random.nextDouble() * 0.55;
       duck.target =
           layout.pond.center +
@@ -400,8 +484,10 @@ class FarmWorld extends ChangeNotifier {
     if (!animate || _layout == null) return;
     time += dt;
     for (final duck in ducks) {
-      if (duck.id == selectedId) {
-        duck.walking = false;
+      if (duck.id == selectedId || duck.asleep) {
+        duck
+          ..walking = false
+          ..pose = null;
       } else if (duck.pose != null) {
         duck.poseTime += dt;
         if (duck.poseTime > 1) duck.pose = null;
@@ -420,14 +506,16 @@ class FarmWorld extends ChangeNotifier {
               ..poseTime = 0;
           }
         } else {
-          final speed = (25 + 12 / duck.scale) * (duck.swimming ? 0.8 : 1);
+          final speed = (25 + 12 / duck.scale) * duck.animal.speed * (duck.swimming ? 0.8 : 1);
           duck.position += d / distance * math.min(speed * dt, distance);
           if (d.dx.abs() > 1.5) duck.facing = d.dx.sign;
           duck.walking = true;
         }
       }
       duck.swimming = layout.inPond(duck.position);
-      if (duck.walking) duck.gait += (duck.swimming ? 7 : 15.6) * dt;
+      // Four legs take longer strides than two.
+      final strides = duck.animal == FarmAnimal.duck || duck.animal == FarmAnimal.goose ? 1 : 0.55;
+      if (duck.walking) duck.gait += (duck.swimming ? 7 : 15.6 * strides) * dt;
       duck.blinkIn -= dt;
       if (duck.blinkIn < -0.08) duck.blinkIn = 2.3 + _random.nextDouble() * 3.3;
       duck.pop = math.min(1, duck.pop + dt * 2.1);
@@ -439,6 +527,7 @@ class FarmWorld extends ChangeNotifier {
         ..velocity = shard.velocity.translate(0, 470 * dt);
     }
     shards.removeWhere((s) => s.age > FarmShard.life);
+    _blowWeather(dt);
     notifyListeners();
   }
 
@@ -456,11 +545,76 @@ class FarmWorld extends ChangeNotifier {
     }
 
     for (final duck in ducks) {
-      consider(duck.id, duck.centre, math.max(24, 26 * duck.scale));
+      consider(duck.id, duck.centre, math.max(24, (duck.animal.centre + 4) * duck.scale));
     }
     for (final egg in eggs) {
       consider(egg.id, egg.centre, 24);
     }
     return best;
+  }
+
+  /// Scatters the season's weather over the farm, as much as fits its size.
+  void _makeWeather() {
+    flakes.clear();
+    final size = _layout?.size;
+    if (size == null || size.isEmpty) return;
+    final area = size.width * size.height;
+    final r = _weatherRandom;
+    void add(FlakeKind kind, double perArea, {Rect? within}) {
+      final box = within ?? Offset.zero & size;
+      final n = (area * perArea).round().clamp(3, 120);
+      for (var i = 0; i < n; i++) {
+        flakes.add(
+          FarmFlake._(
+            kind,
+            Offset(box.left + r.nextDouble() * box.width, box.top + r.nextDouble() * box.height),
+            r.nextDouble() * 2 * math.pi,
+            0.5 + r.nextDouble(),
+          ),
+        );
+      }
+    }
+
+    switch (sky.season) {
+      case FarmSeason.spring:
+        add(FlakeKind.rain, 1 / 4500);
+        add(FlakeKind.petal, 1 / 26000);
+        add(FlakeKind.firefly, 1 / 30000);
+      case FarmSeason.summer:
+        add(
+          FlakeKind.glint,
+          1 / 60000,
+          within: layout.pond.deflate(layout.pond.shortestSide * 0.2),
+        );
+        add(FlakeKind.firefly, 1 / 16000);
+      case FarmSeason.autumn:
+        add(FlakeKind.leaf, 1 / 9000);
+      case FarmSeason.winter:
+        add(FlakeKind.snow, 1 / 3200);
+    }
+  }
+
+  /// Moves the weather on by [dt] seconds, wrapping round the edges.
+  void _blowWeather(double dt) {
+    final size = layout.size;
+    for (final f in flakes) {
+      final v = switch (f.kind) {
+        FlakeKind.rain => Offset(-40 * f.speed, 360 * f.speed),
+        FlakeKind.petal => Offset(30 * f.speed, 18 + math.sin(f.phase) * 14),
+        FlakeKind.leaf => Offset(70 * f.speed, 22 + math.sin(f.phase) * 20),
+        FlakeKind.snow => Offset(math.sin(f.phase) * 14, 26 * f.speed),
+        FlakeKind.firefly => Offset(math.cos(f.phase * 0.7) * 10, math.sin(f.phase * 0.9) * 8),
+        FlakeKind.glint => Offset.zero,
+      };
+      f
+        ..position += v * dt
+        ..phase += dt * (f.kind == FlakeKind.firefly ? 2.2 : 1.8) * f.speed;
+      var Offset(:dx, :dy) = f.position;
+      if (dy > size.height + 10) dy -= size.height + 20;
+      if (dy < -10) dy += size.height + 20;
+      if (dx > size.width + 10) dx -= size.width + 20;
+      if (dx < -10) dx += size.width + 20;
+      f.position = Offset(dx, dy);
+    }
   }
 }
