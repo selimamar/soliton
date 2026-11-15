@@ -37,8 +37,14 @@ class Settings:
     ("lost contact"), e.g. a job killed by a time limit. It comes back to
     life if data arrives again."""
 
-    cors_origins: tuple[str, ...] = ("*",)
-    """Origins allowed to call the API from a browser (the web app)."""
+    cors_origins: tuple[str, ...] = ()
+    """Web pages (origins) that may read the API's answers in a browser:
+    the web app's address. "*" is any website."""
+
+    cors_local: bool = True
+    """Also pages served from this computer (http://localhost:<any port>,
+    127.0.0.1, [::1]), e.g. the web app while developing. On while
+    SOLITON_CORS_ORIGINS is unset; setting it lists every allowed page."""
 
     ntfy_url: str | None = None
     """Optional push notifications through ntfy (https://ntfy.sh), e.g.
@@ -79,8 +85,9 @@ class Settings:
         configured = (env.get("SOLITON_TOKEN") or "").strip()
         token = configured or load_or_create_token(data_dir)
         token_file = None if configured else data_dir / "token"
+        # Unset: only pages from this computer, never a website on the internet.
         origins = tuple(
-            o.strip() for o in env.get("SOLITON_CORS_ORIGINS", "*").split(",") if o.strip()
+            o.strip() for o in env.get("SOLITON_CORS_ORIGINS", "").split(",") if o.strip()
         )
         notify_on = frozenset(
             e.strip()
@@ -93,6 +100,7 @@ class Settings:
             token_file=token_file,
             stale_after=timedelta(minutes=float(env.get("SOLITON_STALE_MINUTES", "10"))),
             cors_origins=origins,
+            cors_local=not origins,
             ntfy_url=env.get("SOLITON_NTFY_URL") or None,
             ntfy_token=env.get("SOLITON_NTFY_TOKEN") or None,
             notify_on=notify_on,

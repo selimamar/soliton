@@ -72,9 +72,7 @@ def main(argv: list[str] | None = None) -> None:
         print("  Warning:  plain http on a shared network: the token and the data travel "
               "unencrypted (see --tls-cert)", file=sys.stderr)
     print(f"  Database: {database}", file=sys.stderr)
-    warning = cors_warning()
-    if warning:
-        print(f"  Note:     {warning}", file=sys.stderr)
+    print(cors_note(), file=sys.stderr)
     if os.environ.get("SOLITON_TOKEN"):
         print("  Token:    from SOLITON_TOKEN", file=sys.stderr)
     else:
@@ -85,16 +83,18 @@ def main(argv: list[str] | None = None) -> None:
                 ssl_certfile=args.tls_cert, ssl_keyfile=args.tls_key)
 
 
-def cors_warning(env=os.environ) -> str | None:
-    """A word at startup while any website may read the API's answers
-    (SOLITON_CORS_ORIGINS unset, so "*"). Not a hole: the token is a header
-    a browser never adds by itself. But only the web app needs CORS, from one
-    address. Setting the variable, even to "*", is a choice: no note then."""
-    if (env.get("SOLITON_CORS_ORIGINS") or "").strip():
-        return None
-    return ("any website may read this server's answers (CORS). Set SOLITON_CORS_ORIGINS "
-            "to the web app's address, e.g. https://soliton.example.com, or to "
-            "https://none.invalid if you only use the phone and desktop apps")
+def cors_note(env=os.environ) -> str:
+    """What the startup lines say of CORS: which web pages may read the
+    API's answers in a browser (SOLITON_CORS_ORIGINS). The phone and desktop
+    apps, the logger and curl ignore it."""
+    origins = [o.strip() for o in (env.get("SOLITON_CORS_ORIGINS") or "").split(",") if o.strip()]
+    if not origins:
+        return ("  Web app:  only from this computer (http://localhost); for one served "
+                "elsewhere, set SOLITON_CORS_ORIGINS to its address")
+    if "*" in origins:
+        return ("  Warning:  SOLITON_CORS_ORIGINS=*: any website may read this server's "
+                "answers in your browser (the token still guards them)")
+    return f"  Web app:  from {', '.join(origins)}"
 
 
 def backup(destination: str) -> int:

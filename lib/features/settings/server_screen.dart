@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../shared/browser_hint.dart';
 import '../../app/routes.dart';
 import '../../data/providers.dart';
 import '../../data/services/api_client.dart';
@@ -59,7 +60,8 @@ class _ServerScreenState extends ConsumerState<ServerScreen> {
           : 'The server rejected this token.';
     } on ServerUnreachableException {
       error =
-          "Can't reach ${connection.address}. Check the address, and that the server is running.";
+          "Can't reach ${connection.address}. Check the address, and that the server is "
+          'running.${corsHint()}';
     } on ApiException {
       error = "That address answered, but it doesn't look like a Soliton server.";
     } finally {

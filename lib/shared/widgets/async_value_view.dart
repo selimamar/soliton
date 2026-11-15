@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../data/board_repository.dart';
 import '../../data/run_repository.dart';
 import '../../data/services/api_client.dart';
+import '../browser_hint.dart';
 
 /// Renders an [AsyncValue] with consistent loading and error states, so
 /// screens only have to describe the "data" case.
@@ -95,7 +96,7 @@ class _ErrorView extends StatelessWidget {
   ),
   ServerUnreachableException(:final address) => (
     title: "Can't reach the server",
-    message: 'Check your connection, and that the server at $address is running.',
+    message: 'Check your connection, and that the server at $address is running.${corsHint()}',
     canRetry: true,
   ),
   BoardNotSupportedException() => (

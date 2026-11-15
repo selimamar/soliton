@@ -47,7 +47,7 @@ All from environment variables:
 | `SOLITON_DATA_DIR` | `./soliton-data` | Where the SQLite database and token live |
 | `SOLITON_LISTEN_HOST`, `PORT` | `127.0.0.1`, `8000` | Address and port (also `--host`, `--port`) |
 | `SOLITON_STALE_MINUTES` | `10` | A live run silent this long is marked crashed ("lost contact"); one silent past its Slurm job's time limit is marked a minute after it ("Stopped by its Slurm time limit") |
-| `SOLITON_CORS_ORIGINS` | `*` | Web pages allowed to read the API's answers in a browser (comma-separated); see [CORS](#cors) |
+| `SOLITON_CORS_ORIGINS` | pages from this computer | Web pages allowed to read the API's answers in a browser (comma-separated), e.g. the web app's address; see [CORS](#cors) |
 | `SOLITON_NTFY_URL` | off | Push notifications, e.g. `https://ntfy.sh/<long-random-topic>` |
 | `SOLITON_NTFY_TOKEN` | none | Access token for a protected ntfy topic |
 | `SOLITON_NTFY_DETAILS` | `1` | `0`: notifications don't name the run or quote its error ("A run crashed"), for a topic others may read |
@@ -174,21 +174,25 @@ existing database on startup.)
 
 `SOLITON_CORS_ORIGINS` says which web pages may read the API's answers in
 a browser. Only the web build of the app needs it; the phone and desktop
-apps, the logger and `curl` ignore it. The default, `*`, lets any website
-read them. That isn't a hole (every answer but `/api/health` needs the
-token, which a browser never sends by itself), but any page you visit can
-see that a server is there, and its version. Narrow it, and the server
-stops printing a note about it at startup:
+apps, the logger and `curl` ignore it, and nothing changes in your browser.
 
-- the address you open the web app from, exactly as in the address bar,
-  e.g. `SOLITON_CORS_ORIGINS=https://soliton.example.com` (for
-  `flutter run -d web-server`, fix the port with `--web-port 8080` and list
-  `http://localhost:8080`);
-- or, with no web app, an address nothing uses:
-  `SOLITON_CORS_ORIGINS=https://none.invalid`.
+- **Unset (the default):** pages served from this computer only
+  (`http://localhost`, `127.0.0.1` or `[::1]`, any port), such as
+  `tool/run_web.sh` at `http://localhost:8787`. No website on the internet
+  can read the server's answers in your browser, nor see that it is there.
+- **The web app's address**, exactly as in the address bar, when it is
+  served from elsewhere: `SOLITON_CORS_ORIGINS=https://soliton.example.com`.
+  The list replaces the default: add `http://localhost:8787` too to keep
+  that one.
+- **`*`:** any website. Not a hole on its own (every answer but
+  `/api/health` needs the token, which a browser never sends by itself),
+  but it would turn a later mistake (trusting local requests, or a cookie)
+  into one any website could use. The server warns about it at startup.
 
-Nothing changes in your browser. Setting it to `*` on purpose also
-silences the note.
+The startup lines say which pages are allowed. A web app the server
+doesn't allow can't tell that from a server that is down (the browser hides
+why), so its "Can't reach the server" names this variable and the page's
+address.
 
 ## A separate token for jobs (optional)
 

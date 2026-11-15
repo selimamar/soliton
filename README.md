@@ -395,7 +395,9 @@ secure storage (`lib/data/services/token_store.dart`):
   with a key kept beside it in localStorage, so anything that can run script
   on the page, or read the browser profile, can read it. It also only works
   over HTTPS or on localhost; elsewhere the token isn't saved, and the app
-  asks for it again after a reload.
+  asks for it again after a reload. A server lets the web app in only from
+  this computer (`http://localhost`) unless `SOLITON_CORS_ORIGINS` names
+  the address it is served from ([CORS](server/README.md#cors)).
 
 Older versions kept the token in the plain settings; the app moves it on the
 first start and deletes the old copy. Disconnecting deletes it everywhere.

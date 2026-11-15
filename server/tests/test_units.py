@@ -82,6 +82,7 @@ def test_settings_from_env(tmp_path):
     assert settings.token == "abcdefghijklmnop-qrstuvwxyz"
     assert settings.stale_after.total_seconds() == 150
     assert settings.cors_origins == ("https://a.example", "https://b.example")
+    assert not settings.cors_local, "the list says every page allowed"
     assert settings.notify_on == {"crashed"}
 
 
@@ -212,10 +213,36 @@ def test_big_hyperparameters_and_architectures_are_cut_not_refused():
     assert run.architecture is None
 
 
-def test_a_note_while_any_website_may_read_the_api():
-    from soliton_server.cli import cors_warning
+def test_startup_says_which_web_pages_may_read_the_api():
+    from soliton_server.cli import cors_note
 
-    assert "SOLITON_CORS_ORIGINS" in cors_warning({})
-    assert "SOLITON_CORS_ORIGINS" in cors_warning({"SOLITON_CORS_ORIGINS": " "})
-    assert cors_warning({"SOLITON_CORS_ORIGINS": "https://soliton.example.com"}) is None
-    assert cors_warning({"SOLITON_CORS_ORIGINS": "*"}) is None, "chosen on purpose"
+    assert "only from this computer" in cors_note({})
+    assert "only from this computer" in cors_note({"SOLITON_CORS_ORIGINS": " "})
+    assert cors_note({"SOLITON_CORS_ORIGINS": "https://soliton.example.com"}).endswith(
+        "from https://soliton.example.com")
+    assert "any website" in cors_note({"SOLITON_CORS_ORIGINS": "*"})
+
+
+def test_which_web_pages_may_read_the_api(tmp_path):
+    """By default, pages from this computer (the web app while developing),
+    never a website; SOLITON_CORS_ORIGINS lists the allowed ones instead."""
+    from fastapi.testclient import TestClient
+
+    from soliton_server.app import create_app
+
+    def allowed(env, origin):
+        settings = Settings.from_env({"SOLITON_DATA_DIR": str(tmp_path),
+                                      "SOLITON_TOKEN": "test-token-0123456789", **env})
+        with TestClient(create_app(settings, stale_check_seconds=0)) as client:
+            headers = client.get("/api/health", headers={"Origin": origin}).headers
+            return headers.get("access-control-allow-origin")
+
+    assert allowed({}, "https://evil.example") is None
+    assert allowed({}, "http://localhost:8787") == "http://localhost:8787"
+    assert allowed({}, "http://127.0.0.1:3000") == "http://127.0.0.1:3000"
+    assert allowed({}, "http://localhost.evil.example") is None
+    assert allowed({}, "https://localhost:8787") is None, "a local page is plain http"
+    site = {"SOLITON_CORS_ORIGINS": "https://soliton.example.com"}
+    assert allowed(site, "https://soliton.example.com") == "https://soliton.example.com"
+    assert allowed(site, "http://localhost:8787") is None, "the list replaces the default"
+    assert allowed({"SOLITON_CORS_ORIGINS": "*"}, "https://evil.example") == "*"

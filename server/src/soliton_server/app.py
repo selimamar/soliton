@@ -49,6 +49,8 @@ from .store import (
 log = logging.getLogger(__name__)
 
 RunId = Annotated[str, Path(pattern=RUN_ID_PATTERN)]
+# A page served from this computer (Settings.cors_local).
+LOCAL_ORIGIN = r"http://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?"
 MaxPoints = Annotated[int, Query(ge=4, le=20_000)]
 THIN_CHECK = timedelta(hours=1)  # How often automatic thinning looks for old runs.
 # Full-resolution reads (`soliton.runs()`), a page at a time.
@@ -222,6 +224,7 @@ def create_app(
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(settings.cors_origins),
+        allow_origin_regex=LOCAL_ORIGIN if settings.cors_local else None,
         allow_methods=["*"],
         allow_headers=["*"],
     )
