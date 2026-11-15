@@ -110,7 +110,9 @@ while there's still time to act:
 
 - **NaN loss**: a loss (any name containing "loss") turns NaN or infinite.
 - **Diverging loss**: a training loss climbs back up, to 10 times its lowest
-  (smoothed) value, or back to where it started after having halved.
+  (smoothed) value and at least 5% of where it started (so the noise of a
+  loss that is already tiny doesn't count), or back to where it started
+  after having halved.
   Validation losses don't count: rising can be overfitting.
 - **Exploding gradients**: a gradient norm (a name ending in `grad_norm`,
   e.g. `optim/grad_norm`, what `clip_grad_norm_` returns) stays more than 10
@@ -555,6 +557,11 @@ soliton sync path/to/run-folder   # one run
 duplicates, so running it twice is harmless. With `SOLITON_MODE=offline`,
 nothing is uploaded during training. Use it where there's no internet, then
 `sync` from a machine that has it.
+
+A server older than the logger may not take its newer records (training
+health warnings, pictures). Then the logger says so once and sends the rest
+without them, so the run's metrics still arrive; update the server to keep
+those too.
 
 ## Reproducing a run
 

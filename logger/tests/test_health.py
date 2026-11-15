@@ -126,3 +126,10 @@ def test_simulations_keep_their_own_divergence_check(tmp_path):
     sim.log({"loss": math.nan}, t=0.1)
     assert [r["type"] for r in records(sim)].count("health") == 0
     assert records(sim)[-1]["status"] == "crashed"
+
+
+def test_the_noise_of_a_tiny_loss_isnt_divergence():
+    """Seen on Sherlock: a loss from ~1 down to 2e-5 bounced to 2.5e-4, ten
+    times its low but nowhere near where it started."""
+    values = falling(300, start=1.0, end=2e-5) + [2.5e-4] * 20
+    assert feed(HealthCheck(), "train/loss", values) == []

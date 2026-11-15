@@ -5,7 +5,9 @@ Three problems, each reported once per process (job):
 
 - "nan": a loss turned NaN or infinite.
 - "divergence": a training loss climbed back up: to 10 times its lowest
-  (smoothed) value, or back to where it started after having halved.
+  (smoothed) value and to at least 5% of where it started (so the noise of
+  a loss that is already tiny doesn't count), or back to where it started
+  after having halved.
 - "gradient": a gradient norm (a name ending in "grad_norm") stayed at
   more than 10 times its usual size, or NaN or infinite, for 5 logs in a
   row. One-off spikes (clipped, or skipped by a gradient scaler) don't count.
@@ -25,7 +27,8 @@ from typing import Mapping, Optional
 
 WINDOW = 9  # Values in the smoothed (median) loss.
 MIN_VALUES = 30  # Before a loss can count as diverging.
-RISE = 10.0  # Times its lowest smoothed value.
+RISE = 10.0  # Times its lowest smoothed value,
+SIGNIFICANT = 0.05  # and at least this share of where it started.
 GRAD_HISTORY = 50  # Values a gradient norm is compared with.
 GRAD_MIN_HISTORY = 20
 GRAD_FACTOR = 10.0
@@ -84,7 +87,8 @@ class _Loss:
         lowest = self.lowest
         if start <= 0 or lowest <= 0:
             return None  # A loss that can be negative: no ratio to judge by.
-        if smoothed >= RISE * lowest or (lowest <= start / 2 and smoothed >= start):
+        risen = smoothed >= RISE * lowest and smoothed >= SIGNIFICANT * start
+        if risen or (lowest <= start / 2 and smoothed >= start):
             return smoothed, lowest
         return None
 

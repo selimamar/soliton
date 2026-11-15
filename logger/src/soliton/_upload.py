@@ -26,6 +26,12 @@ STATE_FILE = "upload.json"
 KEY_FILE = "key"
 _BATCH_EVENTS = 500
 _BATCH_BYTES = 2_000_000
+# Record types every server takes. When a server refuses a batch (422), it
+# may only be older than this logger: the batch goes again without the newer
+# types (training health, pictures), so its metrics aren't lost with them.
+CORE_TYPES = frozenset({"metrics", "layers", "field", "eval", "curve", "status", "output"})
+# Servers already told about (once each, not at every batch).
+_warned_older: set = set()
 
 
 class UploadError(Exception):
@@ -204,6 +210,29 @@ def upload_pending(files: RunFiles, client: ApiClient, warn: Callable[[str], Non
     batch_bytes = 0
     batch_end = offset
 
+    def resend_known(error: UploadError) -> Optional[dict]:
+        """The batch without the record types an older server doesn't know;
+        skipped whole if the server refuses that too."""
+        known = [r for r in batch if r.get("type") in CORE_TYPES]
+        newer = sorted({str(r.get("type")) for r in batch} - CORE_TYPES)
+        if newer and known:
+            try:
+                reply = client.post_events(run_id, known, key)
+            except UploadError as again:
+                if "HTTP 422" not in str(again):
+                    raise
+            else:
+                if client.server not in _warned_older:
+                    _warned_older.add(client.server)
+                    warn(f"the server is older than this logger: it doesn't take "
+                         f"{', '.join(newer)} records, so those are skipped (the run's "
+                         "metrics still go). Update the server to keep them.")
+                return reply if isinstance(reply, dict) else None
+        elif newer:
+            return None  # Only newer records: nothing the server would take.
+        warn(f"skipped {len(batch)} records the server rejected: {error}")
+        return None
+
     def send_batch() -> None:
         nonlocal batch, batch_bytes, sent
         if not batch:
@@ -218,7 +247,7 @@ def upload_pending(files: RunFiles, client: ApiClient, warn: Callable[[str], Non
         except UploadError as error:
             if "HTTP 422" not in str(error):
                 raise
-            warn(f"skipped {len(batch)} records the server rejected: {error}")
+            reply = resend_known(error)
         if on_reply is not None and reply:
             on_reply(reply)
         sent += len(batch)
