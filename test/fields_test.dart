@@ -430,7 +430,7 @@ void main() {
     });
 
     testWidgets('a run without fields says how to log them', (tester) async {
-      await openFieldsTab(tester, 'resnet50-cifar');
+      await openFieldsTab(tester, 'gpt-tiny');
       expect(find.text('This run logs no fields'), findsOneWidget);
     });
   });

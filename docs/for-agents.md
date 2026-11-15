@@ -35,6 +35,7 @@ the computation + soliton logger  ──HTTP──►  soliton-server  ◄──
 | `run.should_stop()` in the loop | The **Stop** button on a live run's page: it turns `True` within seconds; save a checkpoint and leave the loop, and the run ends "Stopped from the app" |
 | `run.log({...}, step=, epoch=)` | **Metrics** tab: one chart per known name, the rest under "Other metrics"; log scale and step/epoch axis options |
 | `run.watch(model)` (PyTorch) | **Layers** tab (activation histograms, dead units, gradient norms per layer) and the network diagram on the Overview; the model's class is its family, which the runs list groups by and the farm turns into an animal |
+| `run.log_image(name, figure)` (a matplotlib figure, PIL image, array or PNG/JPEG file) | **Fields** tab: the picture, with a slider over the steps it was logged at; tap to zoom. For plots the app has no form for (phase portraits, confusion matrices, generated samples). Log every few hundred steps |
 | `run.log_field`, `log_rollout`, `capture_layers`, `log_eval`, `log_curve` | **Fields** tab: prediction, truth and error maps, rollouts, 3D views, worst validation samples, error against resolution or a parameter |
 | `soliton.simulate(name, t_end=, setup=, monitor=, cfl_limit=)`, `sim.log({...}, t=, dt=)` | A card under **Compute**: simulated time, progress, time left. Diagnostics tab: every value against t, drift of conserved quantities, log scale for "residual"/"error" names, `cfl` against its limit |
 | `sim.log_field(name, field)` | Fields tab, at the simulated time |

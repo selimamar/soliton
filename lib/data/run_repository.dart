@@ -1,5 +1,6 @@
 import '../models/dataset.dart';
 import '../models/field_snapshot.dart';
+import '../models/logged_image.dart';
 import '../models/layer_stats.dart';
 import '../models/metric_series.dart';
 import '../models/run.dart';
@@ -34,6 +35,14 @@ abstract interface class RunRepository {
   /// One snapshot of field [name] at [step]. Throws
   /// [FieldNotFoundException] if there is none.
   Future<FieldSnapshot> fetchFieldSnapshot(String runId, String name, int step);
+
+  /// The pictures the run logs (`run.log_image`), each with the steps it
+  /// was logged at; empty for most runs.
+  Future<List<ImageSeries>> fetchImages(String runId);
+
+  /// One picture: [name] at [step]. Throws [ImageNotFoundException] if there
+  /// is none.
+  Future<LoggedImage> fetchImage(String runId, String name, int step);
 
   /// Validation-set summaries (`run.log_eval`), per field name.
   Future<List<LoggedSeries<EvalStep>>> fetchEvals(String runId);

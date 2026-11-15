@@ -5,12 +5,14 @@ import '../../models/metric_series.dart';
 import '../../models/run.dart';
 import '../../models/run_insights.dart';
 import '../../models/run_output.dart';
+import '../../models/logged_image.dart';
 import '../run_repository.dart';
 import '../tags.dart';
 import 'mock_runs.dart';
 import 'mock_datasets.dart';
 import 'mock_output.dart';
 import 'mock_simulations.dart';
+import 'mock_images.dart';
 
 /// A [RunRepository] serving generated demo data, with a fake network delay.
 /// Edited tags and notes, and deletions, are kept in memory, until the app
@@ -159,6 +161,40 @@ class MockRunRepository implements RunRepository {
       }
     }
     throw FieldNotFoundException(name, step);
+  }
+
+  late final Map<String, List<LoggedImage>> _images = mockImages(
+    (id) => _runs.where((r) => r.run.id == id).firstOrNull?.run.currentStep ?? 0,
+  );
+
+  @override
+  Future<List<ImageSeries>> fetchImages(String runId) async {
+    await Future<void>.delayed(latency);
+    _find(runId);
+    final byName = <String, List<LoggedImage>>{};
+    for (final image in _images[runId] ?? const <LoggedImage>[]) {
+      byName.putIfAbsent(image.name, () => []).add(image);
+    }
+    return [
+      for (final MapEntry(key: name, value: images) in byName.entries)
+        ImageSeries(
+          name: name,
+          steps: [
+            for (final i in images)
+              ImageStep(step: i.step, width: i.width, height: i.height, caption: i.caption),
+          ],
+        ),
+    ];
+  }
+
+  @override
+  Future<LoggedImage> fetchImage(String runId, String name, int step) async {
+    await Future<void>.delayed(latency);
+    _find(runId);
+    for (final image in _images[runId] ?? const <LoggedImage>[]) {
+      if (image.name == name && image.step == step) return image;
+    }
+    throw ImageNotFoundException(name, step);
   }
 
   @override

@@ -8,6 +8,7 @@ import '../models/metric_series.dart';
 import '../models/run.dart';
 import '../models/run_insights.dart';
 import '../models/run_output.dart';
+import '../models/logged_image.dart';
 import 'api_run_repository.dart';
 import 'combined_run_repository.dart';
 import 'empty_run_repository.dart';
@@ -284,6 +285,20 @@ typedef FieldSnapshotKey = ({String runId, String name, int step});
 /// A logged snapshot never changes, so live updates don't refetch it.
 final fieldSnapshotProvider = FutureProvider.autoDispose.family<FieldSnapshot, FieldSnapshotKey>(
   (ref, key) => ref.watch(runRepositoryProvider).fetchFieldSnapshot(key.runId, key.name, key.step),
+  retry: retryDataRequest,
+);
+
+final imagesProvider = FutureProvider.autoDispose.family<List<ImageSeries>, String>(
+  (ref, runId) => ref.watch(runRepositoryProvider).fetchImages(runId),
+  retry: retryDataRequest,
+);
+
+/// Which picture to fetch: a run's image at a step.
+typedef ImageKey = ({String runId, String name, int step});
+
+/// A logged picture never changes, so live updates don't refetch it.
+final imageProvider = FutureProvider.autoDispose.family<LoggedImage, ImageKey>(
+  (ref, key) => ref.watch(runRepositoryProvider).fetchImage(key.runId, key.name, key.step),
   retry: retryDataRequest,
 );
 

@@ -5,6 +5,7 @@ import '../models/metric_series.dart';
 import '../models/run.dart';
 import '../models/run_insights.dart';
 import '../models/run_output.dart';
+import '../models/logged_image.dart';
 import 'run_repository.dart';
 import 'services/saved_servers.dart';
 
@@ -123,6 +124,14 @@ class CombinedRunRepository implements RunRepository {
   @override
   Future<FieldSnapshot> fetchFieldSnapshot(String runId, String name, int step) =>
       _onServer(runId, (_, repository, id) => repository.fetchFieldSnapshot(id, name, step));
+
+  @override
+  Future<List<ImageSeries>> fetchImages(String runId) =>
+      _onServer(runId, (_, repository, id) => repository.fetchImages(id));
+
+  @override
+  Future<LoggedImage> fetchImage(String runId, String name, int step) =>
+      _onServer(runId, (_, repository, id) => repository.fetchImage(id, name, step));
 
   @override
   Future<List<LoggedSeries<EvalStep>>> fetchEvals(String runId) =>

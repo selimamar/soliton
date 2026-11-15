@@ -275,6 +275,7 @@ class LiveUpdates extends Notifier<LiveStatus> {
       ref.invalidate(layerStatsProvider(runId));
       ref.invalidate(layerGradNormsProvider(runId));
       ref.invalidate(fieldsProvider(runId));
+      ref.invalidate(imagesProvider(runId));
       ref.invalidate(evalsProvider(runId));
       ref.invalidate(curvesProvider(runId));
       ref.invalidate(runOutputProvider(runId));

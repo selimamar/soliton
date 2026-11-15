@@ -836,6 +836,85 @@ def test_a_runs_metrics_summarised(client):
     assert (summary["val/accuracy"]["max"], summary["val/accuracy"]["maxStep"]) == (0.9, 9)
 
 
+# Images ----------------------------------------------------------------------------
+
+def png(width=2, height=2):
+    import base64
+    import struct
+    import zlib
+
+    def chunk(kind, body):
+        return (struct.pack(">I", len(body)) + kind + body
+                + struct.pack(">I", zlib.crc32(kind + body) & 0xFFFFFFFF))
+
+    rows = b"".join(b"\x00" + bytes([200]) * width for _ in range(height))
+    data = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+    return base64.b64encode(data).decode()
+
+
+def image(step, name="phase portrait", caption=None, **fields):
+    return {"type": "image", "step": step, "name": name, "format": "png", "width": 2,
+            "height": 2, "caption": caption, "data": png(), **fields}
+
+
+def test_images_are_kept_by_step_and_read_back(client):
+    create_run(client)
+    send(client, [image(0, caption="epoch 0"), image(100, caption="epoch 1"),
+                  image(100, name="confusion")])
+    assert client.get("/api/runs/tiny-1/images").json() == [
+        {"name": "confusion", "steps": [{"step": 100, "width": 2, "height": 2, "caption": None}]},
+        {"name": "phase portrait", "steps": [
+            {"step": 0, "width": 2, "height": 2, "caption": "epoch 0"},
+            {"step": 100, "width": 2, "height": 2, "caption": "epoch 1"}]},
+    ]
+    latest = client.get("/api/runs/tiny-1/images/snapshot", params={"name": "phase portrait"}).json()
+    assert (latest["step"], latest["format"], latest["caption"]) == (100, "png", "epoch 1")
+    assert latest["data"] == png()
+    first = client.get("/api/runs/tiny-1/images/snapshot",
+                       params={"name": "phase portrait", "step": 0}).json()
+    assert first["caption"] == "epoch 0"
+    missing = client.get("/api/runs/tiny-1/images/snapshot", params={"name": "nope"})
+    assert missing.status_code == 404
+    assert client.get("/api/runs/tiny-1").json()["currentStep"] == 100
+
+
+def test_only_png_and_jpeg_files_are_taken(client):
+    create_run(client)
+    for bad in (image(0, data="not base64!"), image(0, format="jpeg"),
+                image(0, data="R0lGODlhAQABAAAAACw="), image(0, format="gif")):
+        response = client.post("/api/runs/tiny-1/events", json={"events": [bad]})
+        assert response.status_code == 422, bad.get("format")
+    assert client.get("/api/runs/tiny-1/images").json() == []
+
+
+def test_a_job_token_can_send_images(app, client):
+    token = client.post("/api/job-token").json()["token"]
+    with job_client(app, token) as job:
+        create_run(job)
+        send(job, [image(0)])
+    assert len(client.get("/api/runs/tiny-1/images").json()) == 1
+
+
+def test_storage_counts_images_and_thinning_keeps_the_latest(client):
+    create_run(client)
+    send(client, [image(step) for step in range(5)])
+    send(client, [{"type": "status", "status": "finished"}])
+    row = client.get("/api/storage").json()["runs"][0]
+    assert row["images"] == 5 and row["thinnable"]
+    client.post("/api/runs/tiny-1/thin")
+    assert [s["step"] for s in client.get("/api/runs/tiny-1/images").json()[0]["steps"]] == [4]
+    assert not client.get("/api/storage").json()["runs"][0]["thinnable"]
+
+
+def test_deleting_a_run_deletes_its_images(client):
+    create_run(client)
+    send(client, [image(0)])
+    client.delete("/api/runs/tiny-1")
+    create_run(client)
+    assert client.get("/api/runs/tiny-1/images").json() == []
+
+
 # Storage ---------------------------------------------------------------------------
 
 def big_run(client, run_id, steps=3000, fields=3, status="finished"):
@@ -1086,6 +1165,8 @@ def test_a_job_token_can_only_add_runs_and_data(app, client):
             ("GET", "/api/runs/other/output"), ("GET", "/api/datasets"),
             ("GET", "/api/runs/other/metrics/points?name=train/loss"),
             ("GET", "/api/runs/other/metrics/summary"),
+            ("GET", "/api/runs/other/images"),
+            ("GET", "/api/runs/other/images/snapshot?name=x"),
             ("PATCH", "/api/runs/other"), ("DELETE", "/api/runs/other"),
             ("DELETE", "/api/datasets/ns2d"), ("GET", "/api/session"),
             ("POST", "/api/job-token"), ("DELETE", "/api/job-token"),

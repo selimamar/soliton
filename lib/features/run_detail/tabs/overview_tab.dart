@@ -486,5 +486,5 @@ String? thinnedNote(Run run) => switch (run.thinnedAt) {
   null => null,
   final at =>
     'Thinned out on ${formatShortDate(at)} to save space: each curve keeps '
-        '${formatInt(run.thinnedTo ?? 1000)} points and each field its latest snapshot.',
+        '${formatInt(run.thinnedTo ?? 1000)} points, and each field and picture its latest snapshot.',
 };

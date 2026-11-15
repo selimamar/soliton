@@ -62,7 +62,8 @@ class StorageScreen extends ConsumerWidget {
           children: [
             Text(
               'The server keeps everything a run logged. Thinning an ended run keeps as many '
-              'points per curve as its charts show, and the latest snapshot of each field: it '
+              'points per curve as its charts show, and the latest snapshot of each field and '
+              'picture: it '
               'looks the same here, but soliton.runs() no longer gets every point, and older '
               "snapshots are gone. It can't be undone.",
               style: theme.textTheme.bodyMedium?.copyWith(
@@ -193,7 +194,7 @@ class _ServerStorageState extends ConsumerState<_ServerStorage> {
       title: 'Thin out ${run.name}?',
       message:
           'Each curve keeps ${formatInt(thinPoints)} points (as many as its charts show) and '
-          'each field its latest snapshot. It looks the same in the app, but soliton.runs() no '
+          'each field and picture its latest snapshot. It looks the same in the app, but soliton.runs() no '
           "longer gets every point it logged, and older snapshots are gone. This can't be undone.",
       action: 'Thin out',
     )) {
@@ -308,6 +309,7 @@ class _RunRow extends StatelessWidget {
     final facts = [
       '${formatCount(run.points)} points',
       if (run.snapshots > 0) '${run.snapshots} ${run.snapshots == 1 ? 'snapshot' : 'snapshots'}',
+      if (run.images > 0) '${run.images} ${run.images == 1 ? 'picture' : 'pictures'}',
       if (run.thinnedAt != null) 'thinned',
       if (!run.ended) run.status == RunStatus.queued ? 'queued' : 'running',
     ].join(' · ');
@@ -420,7 +422,7 @@ class _ThinOlderDialogState extends State<_ThinOlderDialog> {
                 : '${matching.length} ${matching.length == 1 ? 'run' : 'runs'}, taking '
                       '${formatBytes(bytes)} now. Each keeps '
                       '${formatInt(widget.report.thinPoints)} points per curve and its latest '
-                      "field snapshots. This can't be undone.",
+                      "field snapshots and pictures. This can't be undone.",
           ),
         ],
       ),

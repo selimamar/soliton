@@ -183,8 +183,8 @@ offline runs). The full logger API is in [logger/README.md](../logger/README.md)
   turns into the run when its script starts logging.
 - **A run's page**: Overview (progress, time left, queue wait and time
   limit for Slurm jobs, cost estimate, hyperparameters, tags and notes, what
-  it printed), Metrics, Layers, Fields and System (the machine and how busy
-  it kept it).
+  it printed), Metrics, Layers, Fields (with any pictures the script drew,
+  `run.log_image`) and System (the machine and how busy it kept it).
 - **Continued runs** (several jobs, from checkpoints): a Jobs card on the
   Overview lists each job (Slurm id, queue wait, run time, steps, how it
   ended), and the Metrics charts mark where each later job took over.

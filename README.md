@@ -179,6 +179,10 @@ What it does:
   validation set with its worst samples, error against resolution or a PDE
   parameter, and the learned Fourier weights. Maps show the run's domain
   coordinates; charts and maps export as PNG images.
+- **Pictures the job draws** (`run.log_image`): any plot of your own, a
+  phase portrait, a confusion matrix, samples from a generative model, from
+  a matplotlib figure, a PIL image, an array or a PNG/JPEG file. Shown on the
+  Fields tab with a slider over the steps it was logged at; tap one to zoom.
 - **Sweep**: a project's runs as a grid over two hyperparameters (e.g.
   Fourier modes × width) or a scatter of two metrics (error against cost).
 - **Live updates**: charts and the list refresh as the server receives data.
@@ -407,6 +411,6 @@ first start and deletes the old copy. Disconnecting deletes it everywhere.
     (`soliton.runs(...)`: settings, full-resolution metrics, summary tables)~~
 13. ~~Storage: each run's share of the database, thinning old runs, giving
     the space back~~
-14. Next ideas: backing up the server's data, logging images (a figure the
-    job draws itself), accounts for several people, native push (APNs/FCM),
-    signing the Apple apps with a developer team
+14. ~~Logging pictures the job draws (`run.log_image`)~~
+15. Next ideas: backing up the server's data, accounts for several people,
+    native push (APNs/FCM), signing the Apple apps with a developer team

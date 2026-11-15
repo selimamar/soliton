@@ -55,6 +55,7 @@ class RunStorage {
     this.points = 0,
     this.layerPoints = 0,
     this.snapshots = 0,
+    this.images = 0,
     this.thinnedAt,
     this.simulation = false,
     this.thinnable = false,
@@ -70,6 +71,7 @@ class RunStorage {
     points: (json['points'] as num?)?.toInt() ?? 0,
     layerPoints: (json['layerPoints'] as num?)?.toInt() ?? 0,
     snapshots: (json['snapshots'] as num?)?.toInt() ?? 0,
+    images: (json['images'] as num?)?.toInt() ?? 0,
     thinnedAt: _time(json['thinnedAt']),
     simulation: json['simulation'] == true,
     thinnable: json['thinnable'] == true,
@@ -86,6 +88,9 @@ class RunStorage {
   final int points;
   final int layerPoints;
   final int snapshots;
+
+  /// Pictures it logged (`run.log_image`).
+  final int images;
 
   /// When it was thinned out; null if it keeps everything.
   final DateTime? thinnedAt;

@@ -122,6 +122,24 @@ a newer one with
 `#SBATCH --constraint=GPU_CC:7.0|GPU_CC:7.5|GPU_CC:8.6|GPU_CC:8.9|GPU_CC:9.0`
 (`sh_node_feat -p gpu` lists the features).
 
+**Pictures drawn in the job** (`run.log_image`): Sherlock's matplotlib
+module brings Python 3.12 and NumPy, and needs its category first. Draw
+without a window:
+
+```bash
+ml viz
+ml py-matplotlib/3.10.3_py312
+```
+
+```python
+import matplotlib
+matplotlib.use("Agg")
+```
+
+Tested on 2026-11-14: a CPU job drew a phase portrait every
+500 steps and an error map every 1,500, and the app showed them on the run's
+Fields tab as they arrived, about 45 KB each.
+
 **To see it while it waits**, submit with `soliton sbatch` from a login node
 (with `SOLITON_SERVER` and `SOLITON_TOKEN` set), the same options as sbatch:
 

@@ -113,6 +113,11 @@ with soliton.init(
   evaluation `run.log_field("u", pred[0, 0], target[0, 0], extent=..., axes=...)`,
   `run.log_eval("u", preds, targets)`, and `pde={...}` in `init`. See
   "Fields" and "Diagnostics" in `logger/README.md`.
+- A plot the script already draws for itself (a phase portrait, a confusion
+  matrix, generated samples): also `run.log_image("name", fig)` every few
+  hundred steps (matplotlib figure, PIL image, array or PNG file), then
+  `plt.close(fig)`. Use `matplotlib.use("Agg")` on a cluster. Not for
+  curves over training: those are `run.log` metrics.
 
 ## 2b. A Python simulation
 
@@ -333,6 +338,9 @@ exec python3 train.py                    # exec: Python must be the job script t
   user, once per job, when the run won't finish before its time limit. It
   also tells them when a queued job starts, so there's no need to poll
   `squeue` for that.
+- Plots drawn in the job (`run.log_image`): Sherlock's module needs its
+  category first, `ml viz`, then `ml py-matplotlib/3.10.3_py312` (it brings
+  Python 3.12 and NumPy); call `matplotlib.use("Agg")` before pyplot.
 - When a job ends, the app's Resources card suggests `--mem`, `-c`, `-G`
   and `--time` for next time. If the user passes those on, use them in the
   next job script for the same computation.

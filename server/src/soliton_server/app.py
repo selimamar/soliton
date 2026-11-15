@@ -32,6 +32,7 @@ from .store import (
     Change,
     DatasetNotFound,
     FieldNotFound,
+    ImageNotFound,
     RUN_KEY_REFUSED,
     RunKeyRefused,
     RunNotFound,
@@ -314,6 +315,10 @@ def create_app(
         return JSONResponse(status_code=404,
                             content={"detail": f"No dataset with id '{error.args[0]}'"})
 
+    @app.exception_handler(ImageNotFound)
+    async def image_not_found(_, error: ImageNotFound):
+        return JSONResponse(status_code=404, content={"detail": f"No image '{error.args[0]}'"})
+
     @app.exception_handler(FieldNotFound)
     async def field_not_found(_, error: FieldNotFound):
         return JSONResponse(status_code=404, content={"detail": f"No field '{error.args[0]}'"})
@@ -459,6 +464,15 @@ def create_app(
     @app.get("/api/runs/{run_id}/grad-norms", dependencies=auth)
     def grad_norms(run_id: RunId):
         return store.grad_norms(run_id)
+
+    @app.get("/api/runs/{run_id}/images", dependencies=auth)
+    def images(run_id: RunId):
+        return store.images(run_id)
+
+    @app.get("/api/runs/{run_id}/images/snapshot", dependencies=auth)
+    def image(run_id: RunId, name: Annotated[str, Query(min_length=1, max_length=200)],
+              step: Annotated[Optional[int], Query(ge=0)] = None):
+        return store.image(run_id, name, step)
 
     @app.get("/api/runs/{run_id}/fields", dependencies=auth)
     def fields(run_id: RunId):

@@ -8,6 +8,7 @@ import 'package:soliton/data/run_repository.dart';
 import 'package:soliton/data/services/api_client.dart';
 import 'package:soliton/data/services/live_updates.dart';
 import 'package:soliton/data/services/server_connection.dart';
+import 'package:soliton/models/logged_image.dart';
 import 'package:soliton/models/run.dart';
 
 /// A stand-in for the Soliton server, answering like the real one (see
@@ -179,6 +180,16 @@ class FakeServer {
               'steps': [for (final s in series.steps) s.toJson()],
             },
         ]),
+        ['runs', final id, 'images'] => _json([
+          for (final series in await _data.fetchImages((await _run(id)).id)) series.toJson(),
+        ]),
+        ['runs', final id, 'images', 'snapshot'] => _image(
+          await _data.fetchImage(
+            (await _run(id)).id,
+            request.url.queryParameters['name']!,
+            int.parse(request.url.queryParameters['step']!),
+          ),
+        ),
         ['runs', final id, 'output'] => _json(
           (await _data.fetchOutput((await _run(id)).id)).toJson(),
         ),
@@ -191,6 +202,8 @@ class FakeServer {
         }),
         _ => _json({'detail': 'Not Found'}, status: 404),
       };
+    } on ImageNotFoundException catch (error) {
+      return _json({'detail': "No image '${error.name} at step ${error.step}'"}, status: 404);
     } on FieldNotFoundException catch (error) {
       return _json({'detail': "No field '${error.name} at step ${error.step}'"}, status: 404);
     } on RunNotFoundException catch (error) {
@@ -202,6 +215,16 @@ class FakeServer {
     if (!runIds.contains(id) || _deleted.contains(id)) throw RunNotFoundException(id);
     return _data.fetchRun(id);
   }
+
+  static http.Response _image(LoggedImage image) => _json({
+    'name': image.name,
+    'step': image.step,
+    'format': image.format,
+    'width': image.width,
+    'height': image.height,
+    'caption': image.caption,
+    'data': base64Encode(image.bytes),
+  });
 
   static http.Response _json(Object body, {int status = 200}) => http.Response(
     jsonEncode(body),

@@ -217,6 +217,25 @@ class FieldRow(Base):
     target: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class ImageRow(Base):
+    """A picture the script drew (`run.log_image`), at one step: a PNG or
+    JPEG file, base64. A table of its own, so older databases get it
+    without a migration."""
+
+    __tablename__ = "run_images"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    name: Mapped[str] = mapped_column(String(200), primary_key=True)
+    step: Mapped[int] = mapped_column(Integer, primary_key=True)
+    format: Mapped[str] = mapped_column(String(8))
+    width: Mapped[int] = mapped_column(Integer)
+    height: Mapped[int] = mapped_column(Integer)
+    caption: Mapped[str | None] = mapped_column(Text, nullable=True)
+    data: Mapped[str] = mapped_column(Text)
+
+
 class RunItemRow(Base):
     """A summary logged at one step, as the app reads it: a validation
     set's errors ("eval") or a curve ("curve"), keyed by name."""

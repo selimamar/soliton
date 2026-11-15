@@ -23,6 +23,7 @@ from .db import (
     DatasetRow,
     DatasetUseRow,
     FieldRow,
+    ImageRow,
     LayerPointRow,
     LayerRow,
     MetricPointRow,
@@ -47,6 +48,7 @@ from .schemas import (
     EvalEvent,
     FieldEvent,
     HealthEvent,
+    ImageEvent,
     LayersEvent,
     MetricsEvent,
     OUTPUT_KEPT,
@@ -107,6 +109,10 @@ def run_key_hash(key: str) -> str:
 
 class DatasetNotFound(Exception):
     pass
+
+
+class ImageNotFound(Exception):
+    """The run exists, but has no such image (at that step)."""
 
 
 class FieldNotFound(Exception):
@@ -667,7 +673,7 @@ class Store:
             for table in (MetricPointRow, LayerPointRow, LayerRow, FieldRow, RunItemRow,
                           RunNotesRow, RunSystemRow, RunSimulationRow, DatasetUseRow,
                           RunOutputRow, RunResumeRow, RunStopRow, RunJobRow, RunKeyRow,
-                          RunHealthRow, RunThinRow):
+                          RunHealthRow, RunThinRow, ImageRow):
                 session.execute(delete(table).where(table.run_id == run_id))
             session.delete(row)
             return change
@@ -693,6 +699,7 @@ class Store:
                     "endedAt": iso(row.ended_at), "bytes": size.get("bytes", 0),
                     "points": size.get("points", 0), "layerPoints": size.get("layerPoints", 0),
                     "snapshots": size.get("snapshots", 0),
+                    "images": size.get("images", 0),
                     "thinnedAt": iso(thin.at) if thin else None,
                     # Whether thinning would free anything (see thin_run).
                     "thinnable": row.status in ("finished", "crashed") and row.id in thinnable,
@@ -722,8 +729,8 @@ class Store:
     def _run_sizes(session: Session, run_id: str | None = None) -> dict[str, dict]:
         """Each run's estimated bytes, and how many points, layer points and
         field snapshots it keeps."""
-        sizes: dict[str, dict] = defaultdict(lambda: {"bytes": 0, "points": 0,
-                                                      "layerPoints": 0, "snapshots": 0})
+        sizes: dict[str, dict] = defaultdict(lambda: {"bytes": 0, "points": 0, "layerPoints": 0,
+                                                      "snapshots": 0, "images": 0})
 
         def rows(table, *columns):
             query = select(table.run_id, func.count(), *columns).group_by(table.run_id)
@@ -743,6 +750,9 @@ class Store:
                 + func.length(cast(FieldRow.meta, Text)))):
             sizes[rid]["snapshots"] = count
             sizes[rid]["bytes"] += count * ROW_BYTES + int(length or 0)
+        for rid, count, length in rows(ImageRow, func.sum(func.length(ImageRow.data))):
+            sizes[rid]["images"] = count
+            sizes[rid]["bytes"] += count * ROW_BYTES + int(length or 0)
         for rid, count, length in rows(RunItemRow, func.sum(func.length(cast(RunItemRow.data, Text)))):
             sizes[rid]["bytes"] += count * ROW_BYTES + int(length or 0)
         for rid, count, length in rows(RunOutputRow, func.sum(func.length(RunOutputRow.line))):
@@ -757,7 +767,8 @@ class Store:
         for table, key in ((MetricPointRow, MetricPointRow.name), (LayerPointRow, LayerPointRow.layer)):
             found.update(session.scalars(
                 select(table.run_id).group_by(table.run_id, key).having(func.count() > max_points)))
-        for table, keys in ((FieldRow, (FieldRow.name,)), (RunItemRow, (RunItemRow.type, RunItemRow.name))):
+        for table, keys in ((FieldRow, (FieldRow.name,)), (ImageRow, (ImageRow.name,)),
+                            (RunItemRow, (RunItemRow.type, RunItemRow.name))):
             found.update(session.scalars(
                 select(table.run_id).group_by(table.run_id, *keys).having(func.count() > 1)))
         return found
@@ -775,7 +786,8 @@ class Store:
                 raise RunNotEnded(run_id)
             before = self._run_sizes(session, run_id).get(run_id, {}).get("bytes", 0)
             self._thin_points(session, run_id, max_points)
-            for table, keys in ((FieldRow, ("name",)), (RunItemRow, ("type", "name"))):
+            for table, keys in ((FieldRow, ("name",)), (ImageRow, ("name",)),
+                                (RunItemRow, ("type", "name"))):
                 latest = (select(*[getattr(table, k) for k in keys], func.max(table.step))
                           .where(table.run_id == run_id)
                           .group_by(*[getattr(table, k) for k in keys]))
@@ -883,6 +895,7 @@ class Store:
             field_rows: list[dict] = []
             item_rows: list[dict] = []
             output_rows: list[dict] = []
+            image_rows: list[dict] = []
             for event in events:
                 # Clamp to now: a clock running ahead mustn't keep a dead run alive.
                 time = min(event.time or now, now)
@@ -935,6 +948,13 @@ class Store:
                 elif isinstance(event, (EvalEvent, CurveEvent)):
                     item_rows.append(_item_row(run_id, event))
                     row.current_step = max(row.current_step, event.step)
+                elif isinstance(event, ImageEvent):
+                    image_rows.append({
+                        "run_id": run_id, "name": event.name, "step": event.step,
+                        "format": event.format, "width": event.width, "height": event.height,
+                        "caption": event.caption, "data": event.data,
+                    })
+                    row.current_step = max(row.current_step, event.step)
                 elif isinstance(event, OutputEvent):
                     output_rows.extend(
                         {"run_id": run_id, "number": event.start + i, "line": line}
@@ -948,6 +968,8 @@ class Store:
                 _upsert(session, RunOutputRow, output_rows, ("run_id", "number"))
                 self._trim_output(session, run_id)
             # One at a time: each row is up to a megabyte or so.
+            for image_row in image_rows:
+                _upsert(session, ImageRow, [image_row], ("run_id", "name", "step"))
             for field_row in field_rows:
                 _upsert(session, FieldRow, [field_row], ("run_id", "name", "step"))
             changes.append(_change(row, "updated"))
@@ -1231,6 +1253,36 @@ class Store:
             ]
 
     # Field snapshots ------------------------------------------------------
+
+    def images(self, run_id: str) -> list[dict]:
+        """Every image the run logged, by name, with the steps it was logged
+        at (size and caption); without the pictures themselves."""
+        with self._sessions() as session:
+            self._find(session, run_id)
+            rows = session.execute(
+                select(ImageRow.name, ImageRow.step, ImageRow.width, ImageRow.height,
+                       ImageRow.caption)
+                .where(ImageRow.run_id == run_id).order_by(ImageRow.name, ImageRow.step)
+            )
+            images: dict[str, dict] = {}
+            for name, step, width, height, caption in rows:
+                images.setdefault(name, {"name": name, "steps": []})["steps"].append(
+                    {"step": step, "width": width, "height": height, "caption": caption})
+        return list(images.values())
+
+    def image(self, run_id: str, name: str, step: int | None) -> dict:
+        """One image, with its picture; the latest one if [step] is None.
+        Raises ImageNotFound."""
+        with self._sessions() as session:
+            self._find(session, run_id)
+            query = select(ImageRow).where(ImageRow.run_id == run_id, ImageRow.name == name)
+            query = (query.order_by(ImageRow.step.desc()).limit(1) if step is None
+                     else query.where(ImageRow.step == step))
+            row = session.scalars(query).first()
+            if row is None:
+                raise ImageNotFound(name if step is None else f"{name} at step {step}")
+            return {"name": row.name, "step": row.step, "format": row.format, "width": row.width,
+                    "height": row.height, "caption": row.caption, "data": row.data}
 
     def fields(self, run_id: str) -> list[dict]:
         """Every logged field, with the steps it was logged at and their

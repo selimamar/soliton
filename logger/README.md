@@ -297,6 +297,38 @@ parameter with 3 or more axes (FNO-style spectral weights, in × out ×
 modes...), |w| averaged over the channels, as a map over the modes. Weights
 still large at the highest kept mode suggest more modes would help.
 
+### Pictures: `run.log_image`
+
+**`run.log_image(name, image, step=None, *, caption=None)`** logs a picture
+the script drew, for plots the app has no form for: a phase portrait, a
+confusion matrix, samples from a generative model, a custom diagnostic. It
+shows on the run's Fields tab, one card per name, with a slider over the
+steps it was logged at; tapping it opens it large to zoom in.
+
+```python
+import matplotlib
+matplotlib.use("Agg")                     # no window on a cluster
+import matplotlib.pyplot as plt
+
+if step % 500 == 0:
+    fig, ax = plt.subplots(figsize=(5, 4))
+    ax.plot(trajectory[:, 0], trajectory[:, 1])
+    run.log_image("phase portrait", fig, caption=f"epoch {epoch}")
+    plt.close(fig)
+```
+
+`image` is a matplotlib figure, a PIL image, an array (`(H, W)` greyscale,
+`(H, W, 3)` RGB or `(H, W, 4)` RGBA, channels first too as PyTorch has them;
+floats in [0, 1] are read as such, others stretched from their min to their
+max), or a PNG or JPEG file (a path, or its bytes). Pictures larger than 1600
+pixels are scaled down, and each is sent once, so log every few hundred
+steps, not every step: a picture is typically 20 to 200 KB on the server.
+`step` defaults to the latest step logged. A picture that can't be sent
+(an unknown kind, or over 6 MB) is skipped with a warning, so training goes
+on. Arrays need NumPy; figures and PIL images are saved by the library that
+made them. Thinning a run (Settings → Storage) keeps each picture's latest
+step.
+
 ### Simulations: `soliton.simulate`
 
 A simulation (a PDE solve, or any computation that steps through time or

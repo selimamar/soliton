@@ -5,6 +5,7 @@ import '../models/metric_series.dart';
 import '../models/run.dart';
 import '../models/run_insights.dart';
 import '../models/run_output.dart';
+import '../models/logged_image.dart';
 import 'run_repository.dart';
 
 /// No runs, simulations or datasets: what the app reads while no server is
@@ -32,6 +33,13 @@ class EmptyRunRepository implements RunRepository {
 
   @override
   Future<List<FieldSummary>> fetchFields(String runId) => Future.error(RunNotFoundException(runId));
+
+  @override
+  Future<List<ImageSeries>> fetchImages(String runId) => Future.error(RunNotFoundException(runId));
+
+  @override
+  Future<LoggedImage> fetchImage(String runId, String name, int step) =>
+      Future.error(RunNotFoundException(runId));
 
   @override
   Future<FieldSnapshot> fetchFieldSnapshot(String runId, String name, int step) =>

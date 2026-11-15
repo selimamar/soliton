@@ -22,6 +22,7 @@ import '../../../shared/widgets/xy_chart_card.dart';
 import '../../../models/run_insights.dart';
 import '../volume/volume_card.dart';
 import '../widgets/field_heatmap.dart';
+import '../widgets/images_card.dart';
 
 /// Snapshots of the fields a run predicts (e.g. a PDE solution), logged with
 /// `run.log_field(...)` and `run.log_rollout(...)`: the prediction, the true
@@ -111,7 +112,14 @@ class _FieldsTabState extends ConsumerState<FieldsTab> {
           for (final f in fields)
             if (f.steps.isNotEmpty) f,
         ];
-        if (usable.isEmpty) return const _NoFields();
+        // Pictures the script drew (run.log_image), after the fields.
+        final images = ref.watch(imagesProvider(widget.runId)).value ?? const [];
+        final hasImages = images.any((s) => s.steps.isNotEmpty);
+        if (usable.isEmpty) {
+          return hasImages
+              ? SpacedListView(children: [ImagesCards(runId: widget.runId)])
+              : const _NoFields();
+        }
         final outputs = [
           for (final f in usable)
             if (f.kind == FieldKind.output) f,
@@ -187,6 +195,7 @@ class _FieldsTabState extends ConsumerState<FieldsTab> {
             ),
             // A simulation shows its curves on its Diagnostics tab instead.
             if (FieldsWording.of(context).compares) CurvesCards(runId: widget.runId),
+            if (hasImages) ImagesCards(runId: widget.runId),
             if (outputs.isNotEmpty && layers.isNotEmpty)
               _LayersCard(
                 runId: widget.runId,
@@ -483,9 +492,10 @@ class _NoFields extends StatelessWidget {
               FieldsWording.of(context).compares
                   ? 'To see a predicted field next to the true one, log snapshots with '
                         'run.log_field("u", prediction, target), or a rollout with '
-                        'run.log_rollout.'
+                        'run.log_rollout. Any plot of your own: run.log_image(name, figure).'
                   : 'To see its fields, log snapshots with sim.log_field("u", u), or several '
-                        'times at once with sim.log_rollout.',
+                        'times at once with sim.log_rollout. Any plot of your own: '
+                        'sim.log_image(name, figure).',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,

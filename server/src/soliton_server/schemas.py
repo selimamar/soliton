@@ -392,6 +392,38 @@ class StatusEvent(_In):
     notify: bool = True
 
 
+IMAGE_MAX_BYTES = 8 * 1024 * 1024  # Per image, decoded.
+IMAGE_MAX_SIDE = 8192
+_IMAGE_MAGIC = {"png": b"\x89PNG\r\n\x1a\n", "jpeg": b"\xff\xd8\xff"}
+
+
+class ImageEvent(_In):
+    """A picture the script drew (`run.log_image`): a PNG or JPEG file,
+    base64, shown as it is in the app."""
+
+    type: Literal["image"]
+    step: int = Field(ge=0)
+    epoch: Optional[int] = Field(default=None, ge=0)
+    time: Time = None
+    name: Name
+    format: Literal["png", "jpeg"]
+    width: int = Field(ge=0, le=IMAGE_MAX_SIDE)
+    height: int = Field(ge=0, le=IMAGE_MAX_SIDE)
+    caption: Optional[str] = Field(default=None, max_length=500)
+    data: str = Field(min_length=4, max_length=IMAGE_MAX_BYTES * 4 // 3 + 4)
+
+    @model_validator(mode="after")
+    def _is_that_image(self) -> "ImageEvent":
+        try:
+            head = base64.b64decode(self.data[:32], validate=True)
+            base64.b64decode(self.data, validate=True)
+        except (binascii.Error, ValueError):
+            raise ValueError("data is not base64") from None
+        if not head.startswith(_IMAGE_MAGIC[self.format]):
+            raise ValueError(f"data is not a {self.format.upper()} file")
+        return self
+
+
 class HealthEvent(_In):
     """A problem the logger saw in training (once per kind and job): the
     loss turned NaN or infinite ("nan"), climbed back up ("divergence"), or
@@ -420,7 +452,7 @@ class OutputEvent(_In):
 
 Event = Annotated[
     Union[MetricsEvent, LayersEvent, FieldEvent, EvalEvent, CurveEvent, StatusEvent, OutputEvent,
-          HealthEvent],
+          HealthEvent, ImageEvent],
     Field(discriminator="type"),
 ]
 

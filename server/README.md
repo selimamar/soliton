@@ -68,8 +68,8 @@ size and each run's share (`GET /api/storage`), and keeps it in check:
   ended more than N days ago (`POST /api/storage/thin?olderThanDays=N`, or
   by itself with `SOLITON_THIN_AFTER_DAYS`): each curve, metrics and layer
   statistics, keeps 1,000 points chosen as the app's charts choose them
-  (spikes and NaN survive), and each field, curve and validation summary
-  its latest step only. It looks the same in the app; `soliton.runs()` gets
+  (spikes and NaN survive), and each field, picture, curve and validation
+  summary its latest step only. It looks the same in the app; `soliton.runs()` gets
   those 1,000 points instead of every one. It can't be undone. A live or
   queued run is refused (409).
 - **Give back** the space (`POST /api/storage/compact`): deleted and thinned
@@ -191,6 +191,8 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
 | `GET /api/runs/{id}/fields/snapshot?name=u&step=1200` | One field snapshot (the latest without `step`) |
 | `GET /api/runs/{id}/evals` | Validation-set summaries (`run.log_eval`), per name and step |
 | `GET /api/runs/{id}/curves` | Curves (`run.log_curve`), per name and step |
+| `GET /api/runs/{id}/images` | Pictures (`run.log_image`), per name: each step's `width`, `height` and `caption`, without the pictures |
+| `GET /api/runs/{id}/images/snapshot?name=...&step=...` | One picture: `format`, `width`, `height`, `caption` and `data` (base64); the latest without `step` |
 | `GET /api/runs/{id}/output` | The last 1,000 lines the script printed: `{"lines": [...], "total": 52341}` |
 | `GET /api/datasets` | Every dataset, most recently updated first, without previews |
 | `GET /api/datasets/{id}` | One dataset, with its previews, `madeBy` and `usedBy` |
@@ -227,7 +229,12 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
  "message": "Diverged at t = 0.83: energy is NaN"}
 {"type": "health", "kind": "nan", "step": 1234,
  "message": "train/loss is NaN at step 1,234"}
+{"type": "image", "step": 1200, "name": "phase portrait", "format": "png",
+ "width": 800, "height": 600, "caption": "epoch 3", "data": "<base64 PNG>"}
 ```
+
+`image` is a picture the script drew (`run.log_image`): a PNG or JPEG file,
+base64, up to 8 MB and 8192 pixels a side; anything else is refused (422).
 
 `health` is a training problem the logger saw: `kind` is `nan` (a loss
 turned NaN or infinite), `divergence` (a training loss climbed back up) or

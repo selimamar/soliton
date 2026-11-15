@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from ._health import Diverged, HealthCheck
+from ._images import to_event as image_event
 from ._health import enabled as _health_enabled
 from ._fields import (
     DEFAULT_POINTS,
@@ -375,6 +376,32 @@ class Run:
                            y_label=y_label, train_range=train_range)
         with self._lock:
             self._append_record({"type": "curve", "step": self._step_for(step), **body})
+
+    def log_image(self, name: str, image: Any, step: Optional[int] = None, *,
+                  caption: Optional[str] = None) -> None:
+        """Logs a picture the script drew, shown on the run's Fields tab with
+        a slider over the steps it was logged at: any custom plot (a phase
+        portrait, a confusion matrix, samples from a generative model).
+
+        [image]: a matplotlib figure (close it yourself after), a PIL image,
+        an array ((H, W) greyscale, (H, W, 3) RGB or (H, W, 4) RGBA, channels
+        first too; floats in [0, 1], else stretched), or a PNG or JPEG file
+        (a path or its bytes). Pictures larger than 1600 pixels are scaled
+        down; each is sent once, so log every few hundred steps, not every
+        step. [step] defaults to the latest step logged. A picture that
+        can't be sent is skipped with a warning, so training goes on.
+        """
+        if self._finished:
+            return
+        name = str(name).strip()[:200] or "image"
+        try:
+            event = image_event(name, image, 0, caption)
+        except Exception as error:  # A bad picture mustn't stop training.
+            self._warn_once(f"image:{name}", f"skipping image {name!r}: {error}")
+            return
+        with self._lock:
+            event["step"] = self._step_for(step)
+            self._append_record(event)
 
     def log_fourier_weights(self, model, step: Optional[int] = None, *,
                             max_size: int = 64) -> None:

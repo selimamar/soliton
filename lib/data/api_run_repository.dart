@@ -5,6 +5,7 @@ import '../models/metric_series.dart';
 import '../models/run.dart';
 import '../models/run_insights.dart';
 import '../models/run_output.dart';
+import '../models/logged_image.dart';
 import 'run_repository.dart';
 import 'services/api_client.dart';
 
@@ -57,6 +58,33 @@ class ApiRunRepository implements RunRepository {
     return [
       for (final json in (list as List).cast<Map<String, Object?>>()) FieldSummary.fromJson(json),
     ];
+  }
+
+  @override
+  Future<List<ImageSeries>> fetchImages(String runId) async {
+    try {
+      final list = await _object(runId, '${_runPath(runId)}/images');
+      return [
+        for (final json in (list as List).cast<Map<String, Object?>>()) ImageSeries.fromJson(json),
+      ];
+    } on RunNotFoundException {
+      // A server older than images answers 404 too; a missing run shows on
+      // its own page.
+      return const [];
+    }
+  }
+
+  @override
+  Future<LoggedImage> fetchImage(String runId, String name, int step) async {
+    try {
+      final json = await _client.getJson(
+        '${_runPath(runId)}/images/snapshot',
+        query: {'name': name, 'step': '$step'},
+      );
+      return LoggedImage.fromJson(json! as Map<String, Object?>);
+    } on NotFoundException {
+      throw ImageNotFoundException(name, step);
+    }
   }
 
   @override

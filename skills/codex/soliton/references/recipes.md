@@ -63,6 +63,11 @@ with soliton.init(
   evaluation `run.log_field("u", pred[0, 0], target[0, 0], extent=..., axes=...)`,
   `run.log_eval("u", preds, targets)`, and `pde={...}` in `init`. See
   "Fields" and "Diagnostics" in `logger/README.md`.
+- A plot the script already draws for itself (a phase portrait, a confusion
+  matrix, generated samples): also `run.log_image("name", fig)` every few
+  hundred steps (matplotlib figure, PIL image, array or PNG file), then
+  `plt.close(fig)`. Use `matplotlib.use("Agg")` on a cluster. Not for
+  curves over training: those are `run.log` metrics.
 
 ## A Python simulation
 
