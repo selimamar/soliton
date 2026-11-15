@@ -58,7 +58,20 @@ runs to explore every screen.
 
 ## 2. Have a server
 
-Pick the one that fits:
+Install the server once, on the computer that will run it (Python 3.10 or
+newer), straight from this repository:
+
+```bash
+uv tool install "git+https://github.com/selimamar/soliton#subdirectory=server"
+# or: pipx install "git+https://github.com/selimamar/soliton#subdirectory=server"
+```
+
+That puts the `soliton-server` command on your `PATH`; `uv tool upgrade
+soliton-server` (or `pipx upgrade soliton-server`) updates it. In a clone of
+this repository, the [README's setup](../README.md#setting-up-everything-stays-in-this-folder)
+installs it too.
+
+Then pick where it runs:
 
 | Server | For | How |
 |---|---|---|
@@ -123,9 +136,16 @@ project's `AGENTS.md`.
 
 ### By hand
 
-Install the logger in the environment the computation uses
-(`pip install ./logger`, no dependencies), or put `logger/src` on
-`PYTHONPATH`. Then tell each machine where the server is, once:
+Install the logger in the environment the computation uses (it has no
+dependencies):
+
+```bash
+pip install "git+https://github.com/selimamar/soliton#subdirectory=logger"
+```
+
+or `pip install ./logger` from a clone of this repository, or put
+`logger/src` on `PYTHONPATH`. Then tell each machine where the server is,
+once:
 
 ```bash
 soliton setup --server https://runs.example.com    # or: python3 -m soliton setup ...

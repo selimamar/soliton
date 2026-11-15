@@ -1,7 +1,7 @@
 name: soliton
 description: Monitor your deep learning training runs from your phone.
 publish_to: 'none'
-version: 0.2.0+2
+version: 0.3.0+3
 
 environment:
   # material_ui needs Flutter 3.47 / Dart 3.13.
