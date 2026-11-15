@@ -22,13 +22,13 @@ The plan in short:
 - [x] Add an MIT `LICENSE` file (copied into `logger/` and `server/` for
       their packages). The bundled fonts keep their own licences
       (`assets/fonts/OFL-*.txt`).
-- [ ] Check the whole history once more for anything personal or secret:
+- [x] Check the whole history once more for anything personal or secret:
       paths on this computer, emails, tokens, keys.
 - [x] [Getting started](getting-started.md) installs the app from a release
       (Homebrew, or the APK) first, and from this repository otherwise.
 - [ ] Publish the logger and the server to PyPI (section 5), so that
       `pip install soliton` and `pip install soliton-server` work.
-- [ ] Make the repository public: Settings → General → Danger Zone →
+- [x] Make the repository public: Settings → General → Danger Zone →
       Change visibility.
 
 ## 2. Android: an APK on GitHub Releases
@@ -75,8 +75,8 @@ installs over the old one and keeps their settings.
       attaches `Soliton-0.3.0.zip` to a GitHub Release (with the APK, when
       the Android key is set up). It runs for the first time on the first
       tag, so check its log then (the repository's Actions tab).
-- [ ] Create the tap: an empty repository named `selimamar/homebrew-tap`.
-- [ ] Copy [packaging/homebrew/soliton.rb](../packaging/homebrew/soliton.rb)
+- [x] Create the tap: an empty repository named `selimamar/homebrew-tap`.
+- [x] Copy [packaging/homebrew/soliton.rb](../packaging/homebrew/soliton.rb)
       into it as `Casks/soliton.rb`, with the first release's version and
       checksum (`shasum -a 256 Soliton-0.3.0.zip`), then check it with
       `brew audit --cask selimamar/tap/soliton`.
@@ -108,6 +108,7 @@ people will see, because it isn't signed by an Apple developer:
 People install and update it with:
 
 ```bash
+brew trust --cask selimamar/tap/soliton    # once: Homebrew asks you to trust it
 brew install --cask selimamar/tap/soliton
 brew upgrade
 ```

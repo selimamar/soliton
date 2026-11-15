@@ -3,6 +3,7 @@
 # template. The release workflow keeps `version` and `sha256` up to date
 # there.
 #
+#   brew trust --cask selimamar/tap/soliton
 #   brew install --cask selimamar/tap/soliton
 cask "soliton" do
   version "0.2.0"
@@ -18,7 +19,7 @@ cask "soliton" do
     strategy :github_latest
   end
 
-  depends_on macos: ">= :monterey"
+  depends_on macos: :monterey
 
   app "Soliton.app"
 

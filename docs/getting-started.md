@@ -22,6 +22,7 @@ your job + logger  ──►  server  ◄──  the app (phone, tablet, Mac, br
 **On a Mac**, with [Homebrew](https://brew.sh):
 
 ```bash
+brew trust --cask selimamar/tap/soliton    # once: Homebrew asks you to trust it
 brew install --cask selimamar/tap/soliton
 ```
 
