@@ -152,6 +152,13 @@ Run it on the user's machine, never in a job script, and never ask for the
 main token in the chat; if `SOLITON_TOKEN` there is the job token, ask the
 user to run the analysis in a shell that has the main one.
 
+Asked to back up the server's data, use `soliton-server --backup <folder>`
+on the server's machine (safe while it runs; it never overwrites a file),
+or point the user to Settings → Storage → Download a backup. Never copy
+`soliton.db` with `cp` while the server runs (the copy can be broken), and
+never put a backup anywhere others can read: it holds everything the runs
+logged. See [Backups](../server/README.md#backups).
+
 ## Adding monitoring to a computation
 
 1. **Training in Python:** `soliton.init` before training, `run.log` in the

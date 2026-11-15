@@ -6,8 +6,11 @@ import asyncio
 import hashlib
 import hmac
 import json
+import os
+import pathlib
 import secrets
 import logging
+import tempfile
 import threading
 import time
 from collections import deque
@@ -19,10 +22,11 @@ from typing import Annotated, Literal, Optional
 from fastapi import Depends, FastAPI, Header, HTTPException, Path, Query, Request, WebSocket
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from starlette.websockets import WebSocketDisconnect
 
 from . import __version__
+from .backup import BackupError, back_up_engine, backup_name, remove_stale, sqlite_file
 from .config import Settings, check_token, replace_private
 from .db import make_engine, make_sessionmaker
 from .live import Broadcaster
@@ -198,9 +202,14 @@ def create_app(
             except Exception:
                 log.exception("Checking for stale runs failed")
 
+    database_file = sqlite_file(settings.database_url)
+    backup_folder = database_file.parent if database_file else pathlib.Path(tempfile.gettempdir())
+
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         broadcaster.bind(asyncio.get_running_loop())
+        if database_file is not None:
+            remove_stale(backup_folder)
         task = asyncio.create_task(check_stale_runs()) if stale_check_seconds > 0 else None
         yield
         if task is not None:
@@ -430,6 +439,47 @@ def create_app(
     @app.post("/api/storage/compact", dependencies=auth)
     async def compact():
         return await run_in_threadpool(store.compact)
+
+    # Backups (the app's "Download a backup"): the copy is made next to the
+    # database, opened, then removed from the disk at once (it is read from
+    # the open file), so nothing is left behind even if the download stops.
+    backing_up = threading.Lock()  # One copy at a time.
+
+    @app.get("/api/storage/backup", dependencies=auth)
+    async def download_backup():
+        """A consistent copy of the whole (SQLite) database, as a file."""
+        if not backing_up.acquire(blocking=False):
+            raise HTTPException(status_code=409, detail="A backup is already being made")
+        try:
+            path = await run_in_threadpool(back_up_engine, engine, backup_folder)
+        except BackupError as error:
+            raise HTTPException(status_code=409, detail=str(error))
+        finally:
+            backing_up.release()
+        file = open(path, "rb")
+        size = os.fstat(file.fileno()).st_size
+        try:
+            path.unlink()
+            removed = True
+        except OSError:  # Windows can't remove an open file: removed after.
+            removed = False
+        log.info("Sending a backup of the database (%d bytes)", size)
+
+        def chunks():
+            try:
+                while chunk := file.read(1024 * 1024):
+                    yield chunk
+            finally:
+                file.close()
+                if not removed:
+                    path.unlink(missing_ok=True)
+
+        return StreamingResponse(chunks(), media_type="application/vnd.sqlite3", headers={
+            "Content-Length": str(size),
+            "Content-Disposition": f'attachment; filename="{backup_name()}"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        })
 
     @app.delete("/api/runs/{run_id}", dependencies=auth)
     def delete_run(run_id: RunId):

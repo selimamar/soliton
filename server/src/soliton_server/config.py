@@ -72,13 +72,10 @@ class Settings:
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = os.environ) -> Settings:
-        data_dir = Path(env.get("SOLITON_DATA_DIR") or "soliton-data")
-        url = env.get("SOLITON_DATABASE_URL") or env.get("DATABASE_URL")
-        if url:
-            url = normalize_database_url(url)
-        else:
+        data_dir = data_dir_from_env(env)
+        url = database_url_from_env(env)
+        if not (env.get("SOLITON_DATABASE_URL") or env.get("DATABASE_URL")):
             data_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-            url = f"sqlite:///{(data_dir / 'soliton.db').resolve()}"
         configured = (env.get("SOLITON_TOKEN") or "").strip()
         token = configured or load_or_create_token(data_dir)
         token_file = None if configured else data_dir / "token"
@@ -106,6 +103,19 @@ class Settings:
             thin_after=(timedelta(days=float(env["SOLITON_THIN_AFTER_DAYS"]))
                         if env.get("SOLITON_THIN_AFTER_DAYS", "").strip() else None),
         )
+
+
+def data_dir_from_env(env: Mapping[str, str] = os.environ) -> Path:
+    return Path(env.get("SOLITON_DATA_DIR") or "soliton-data")
+
+
+def database_url_from_env(env: Mapping[str, str] = os.environ) -> str:
+    """The database the server uses, without creating anything: the
+    configured URL, else soliton.db in the data folder."""
+    url = env.get("SOLITON_DATABASE_URL") or env.get("DATABASE_URL")
+    if url:
+        return normalize_database_url(url)
+    return f"sqlite:///{(data_dir_from_env(env) / 'soliton.db').resolve()}"
 
 
 def check_token(token: str) -> None:

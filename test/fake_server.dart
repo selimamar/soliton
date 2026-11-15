@@ -39,6 +39,13 @@ class FakeServer {
   final thinned = <String>{};
   var compacted = 0;
 
+  /// The database engine it reports; a backup (`GET storage/backup`) is
+  /// [backup], or refused with [backupRefusal] (409).
+  var engine = 'sqlite';
+  final backup = utf8.encode('SQLite format 3\u0000 every run');
+  String? backupRefusal;
+  var backups = 0;
+
   /// The paths it was asked to delete (DELETE requests), e.g. `runs/x`.
   final deletes = <String>[];
   final _deleted = <String>{};
@@ -52,8 +59,10 @@ class FakeServer {
   final _data = MockRunRepository(latency: Duration.zero);
 
   /// For `apiClientFactoryProvider.overrideWithValue(server.clientFor)`.
+  /// (No stall limit: [Stream.timeout] never finishes under the widget
+  /// tests' fake clock; the limit is tested in real time in storage_test.)
   ApiClient clientFor(ServerConnection connection) =>
-      ApiClient(connection, httpClient: MockClient(_handle));
+      ApiClient(connection, httpClient: MockClient(_handle), stallLimit: null);
 
   Future<http.Response> _handle(http.Request request) async {
     requests++;
@@ -146,8 +155,19 @@ class FakeServer {
       }
       return switch (path.sublist(1)) {
         ['session'] => _json({'ok': true, 'version': '0.1.0', 'jobToken': ?jobToken}),
+        ['storage', 'backup'] when backupRefusal != null => _json({
+          'detail': backupRefusal,
+        }, status: 409),
+        ['storage', 'backup'] => () {
+          backups++;
+          return http.Response.bytes(
+            backup,
+            200,
+            headers: {'content-type': 'application/vnd.sqlite3'},
+          );
+        }(),
         ['storage'] => _json({
-          'database': {'engine': 'sqlite', 'bytes': 9000000, 'free': compacted > 0 ? 0 : 2500000},
+          'database': {'engine': engine, 'bytes': 9000000, 'free': compacted > 0 ? 0 : 2500000},
           'thinPoints': 1000,
           'runs': [
             for (final run in await _data.fetchRuns())

@@ -219,6 +219,10 @@ What it does:
   takes a fraction of the space. **Give back** the freed space to the disk
   (SQLite). The server can also thin runs by itself
   (`SOLITON_THIN_AFTER_DAYS`). A thinned run says so on its Overview.
+  **Download a backup** of the whole database (to Downloads on a Mac, the
+  share sheet on a phone), or make one on the server with
+  `soliton-server --backup <folder>`, safe while it runs
+  ([Backups](server/README.md#backups)).
 - **Several servers**: Settings → Server keeps a list (a lab server, the
   Sherlock test server, a local one), each with its own token; tap one to
   show its runs, or **All servers** to see every server's runs together,

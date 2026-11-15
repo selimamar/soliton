@@ -103,6 +103,11 @@ class _ErrorView extends StatelessWidget {
     message: 'Update soliton-server to keep a board on it.',
     canRetry: false,
   ),
+  ServerRefusedException(:final reason) => (
+    title: 'Not possible',
+    message: reason,
+    canRetry: false,
+  ),
   ServerErrorException(:final statusCode) => (
     title: 'Server error',
     message: 'The server had a problem (HTTP $statusCode). Try again in a moment.',

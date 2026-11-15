@@ -13,6 +13,7 @@ From the project root (see the main README for `env.sh`):
 source env.sh
 soliton-server                  # http://127.0.0.1:8000, this computer only
 soliton-server --show-token     # the token for the logger and the app
+soliton-server --backup ~/soliton-backups/   # a copy of the database (see Backups)
 ```
 
 Paste that token into the app (Settings → Server). On each machine that runs
@@ -77,6 +78,58 @@ size and each run's share (`GET /api/storage`), and keeps it in check:
   but the file only shrinks when SQLite rewrites it (VACUUM). Uploads wait
   while it runs, a minute or so on a large database. PostgreSQL reuses freed
   space by itself, so there is nothing to do there.
+
+## Backups
+
+Every run the server knows lives in its database, and nothing copies it by
+itself: back it up, more so once results are read straight from the server
+(`soliton.runs()`). A backup holds everything the runs logged, plus the
+hashes of the main and job tokens (not the tokens): keep it as private as
+the database.
+
+- **`soliton-server --backup PATH`** copies the SQLite database to PATH: a
+  folder (the copy is named like `soliton-2026-11-15-093012.db`) or the
+  path of a new file. It is safe while the server runs (SQLite's online
+  backup: a consistent snapshot of one moment, while uploads carry on),
+  checks the copy, makes it readable by you only, and never overwrites a
+  file. It finds the database as the server does (`SOLITON_DATA_DIR` or
+  `SOLITON_DATABASE_URL`) and creates nothing else.
+- **From the app**: Settings → Storage → **Download a backup**
+  (`GET /api/storage/backup`, main token only) sends the same copy: to the
+  Downloads folder on a Mac, the share sheet on a phone (Save to Files,
+  AirDrop, Drive), a download in a browser. The server makes it next to the
+  database, refuses if the disk hasn't room for it, and removes it from the
+  disk as it sends it, so nothing is left behind even if the download stops.
+
+Keep at least one copy off the machine the server runs on (another disk,
+your laptop, a cloud folder), so one failure can't take both. For a copy
+every day, add a line to `crontab -e` on the server's machine, then copy
+that folder elsewhere:
+
+```bash
+0 3 * * * cd /path/to/ModelsAPP && SOLITON_DATA_DIR=.data .venv/bin/soliton-server --backup "$HOME/soliton-backups/"
+```
+
+Old copies stay until you remove them, e.g.
+`find ~/soliton-backups -name 'soliton-*.db' -mtime +30 -delete`.
+
+**Restoring**: stop the server, move its `soliton.db` (and any
+`soliton.db-wal`, `soliton.db-shm`) aside, put the backup in its place as
+`soliton.db`, and start it. To move the server, start one elsewhere with
+`SOLITON_DATA_DIR` set to a folder holding the backup as `soliton.db`. Runs
+logged after the backup aren't in it: `soliton sync` on the jobs' run
+folders sends them again. A restored server uses its own token (its token
+file or `SOLITON_TOKEN`; `--show-token`), so devices connect with that; a
+job token from before still works.
+
+**PostgreSQL**: `--backup` and the app's button point you to `pg_dump`:
+
+```bash
+pg_dump --format=custom "$DATABASE_URL" > soliton.dump          # back up
+pg_restore --clean --dbname "$DATABASE_URL" soliton.dump        # restore
+```
+
+A hosted PostgreSQL usually keeps its own backups as well.
 
 ## Push notifications (ntfy)
 
@@ -208,6 +261,7 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
 | `POST /api/runs/{id}/thin?maxPoints=1000` | Thins out an ended run (see Storage): `{run, freed}`; 409 for a live or queued run |
 | `POST /api/storage/thin?olderThanDays=30` | Thins every run that ended longer ago: `{thinned, freed}` |
 | `POST /api/storage/compact` | Gives freed space back to the disk (SQLite): the database's size `before` and `after` |
+| `GET /api/storage/backup` | A consistent copy of the whole SQLite database, as a file (`application/vnd.sqlite3`, see Backups); main token only. 409 with the reason for PostgreSQL, a full disk, or while another backup is being made |
 | `WS /api/live` | Live updates (below) |
 
 **Events** (`POST .../events` with `{"events": [...]}`, up to 5000 per batch):

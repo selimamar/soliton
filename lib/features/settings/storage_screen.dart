@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
@@ -6,6 +8,7 @@ import '../../app/routes.dart';
 import '../../data/combined_run_repository.dart';
 import '../../data/providers.dart';
 import '../../data/services/api_client.dart';
+import '../../data/services/backup_saver.dart';
 import '../../data/services/saved_servers.dart';
 import '../../data/services/server_connection.dart';
 import '../../models/run.dart';
@@ -136,6 +139,7 @@ class _ServerStorageState extends ConsumerState<_ServerStorage> {
               '${report.runs.length} ${report.runs.length == 1 ? 'run' : 'runs'}',
               if (thinned > 0) '$thinned thinned',
               if (report.canCompact) '${formatBytes(report.free!)} can be given back to the disk',
+              if (report.engine != 'sqlite') 'PostgreSQL: back it up with pg_dump',
             ].join(' · '),
             style: muted,
           ),
@@ -154,6 +158,14 @@ class _ServerStorageState extends ConsumerState<_ServerStorage> {
                   icon: const Icon(Icons.cleaning_services_outlined, size: 18),
                   label: Text('Give back ${formatBytes(report.free!)}'),
                   onPressed: _busy ? null : () => _compact(report),
+                ),
+              if (report.engine == 'sqlite')
+                Builder(
+                  builder: (buttonContext) => OutlinedButton.icon(
+                    icon: const Icon(Icons.download_outlined, size: 18),
+                    label: const Text('Download a backup'),
+                    onPressed: _busy ? null : () => _backup(report, buttonContext),
+                  ),
                 ),
             ],
           ),
@@ -238,6 +250,96 @@ class _ServerStorageState extends ConsumerState<_ServerStorage> {
     }
   }
 
+  /// Downloads a copy of the whole database (GET /api/storage/backup) and
+  /// hands it to [BackupSaver]: Downloads on a Mac, the share sheet on a
+  /// phone, the browser's download on the web.
+  Future<void> _backup(StorageReport report, BuildContext buttonContext) async {
+    final saver = ref.read(backupSaverProvider);
+    // Where the share sheet points (iPad).
+    final box = buttonContext.findRenderObject() as RenderBox?;
+    final origin = box == null ? null : box.localToGlobal(Offset.zero) & box.size;
+    final size = report.bytes == null ? '' : ' (about ${formatBytes(report.bytes!)})';
+    if (!await _confirm(
+      title: 'Download a backup?',
+      message:
+          'A copy of everything ${widget.named ? widget.server.name : 'this server'} stores$size, '
+          "as one file: every run's data, settings and notes. Keep it somewhere private. The "
+          'server makes the copy without stopping, so runs keep uploading; '
+          '${saver.destination}. To restore it, see "Backups" in the server README.',
+      action: 'Download',
+    )) {
+      return;
+    }
+    if (!mounted) return;
+    final connection = ref.read(serversProvider).connectionFor(widget.server);
+    if (connection == null) return;
+    final now = ref.read(clockProvider).toLocal();
+    final fileName = 'soliton-${_safeName(widget.server.name)}-${_stamp(now)}.db';
+    final client = ref.read(apiClientFactoryProvider)(connection);
+    final progress = ValueNotifier<(int, int?)?>(null);
+    var cancelled = false;
+    var open = true;
+    setState(() => _busy = true);
+    final navigator = Navigator.of(context, rootNavigator: true);
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        useRootNavigator: true,
+        builder: (_) => _BackupProgress(
+          progress: progress,
+          onCancel: () {
+            cancelled = true;
+            client.close();
+          },
+        ),
+      ).whenComplete(() => open = false),
+    );
+    void closeDialog() {
+      if (open) navigator.pop();
+      open = false;
+    }
+
+    try {
+      final download = await client.downloadBackup();
+      var received = 0;
+      progress.value = (0, download.length);
+      final counted = download.bytes.map((chunk) {
+        received += chunk.length;
+        progress.value = (received, download.length);
+        return chunk;
+      });
+      final said = await saver.save(fileName, counted, origin: origin);
+      closeDialog();
+      if (said != null) _say(said);
+    } catch (error) {
+      closeDialog();
+      if (!cancelled) {
+        _say(switch (error) {
+          ApiException() => describeError(error).message,
+          TimeoutException() => 'The download stalled; nothing was saved. Try again.',
+          _ => "Couldn't save the backup; nothing was kept.",
+        });
+      }
+    } finally {
+      client.close();
+      progress.dispose();
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  static String _safeName(String name) {
+    final cleaned = name
+        .replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '-')
+        .replaceAll(RegExp(r'^[.-]+|-+$'), '');
+    return cleaned.isEmpty ? 'server' : cleaned;
+  }
+
+  static String _stamp(DateTime t) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${t.year}-${two(t.month)}-${two(t.day)}-${two(t.hour)}${two(t.minute)}${two(t.second)}';
+  }
+
   Future<T?> _call<T>(Future<T> Function(ApiClient client) action) async {
     final list = ref.read(serversProvider);
     final connection = list.connectionFor(widget.server);
@@ -273,6 +375,7 @@ class _ServerStorageState extends ConsumerState<_ServerStorage> {
       await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
+          scrollable: true, // Long questions on a short window.
           title: Text(title),
           content: Text(message),
           actions: [
@@ -282,6 +385,43 @@ class _ServerStorageState extends ConsumerState<_ServerStorage> {
         ),
       ) ??
       false;
+}
+
+/// While a backup downloads: the server making its copy, then how much has
+/// arrived; Cancel stops it and keeps nothing.
+class _BackupProgress extends StatelessWidget {
+  const _BackupProgress({required this.progress, required this.onCancel});
+
+  final ValueNotifier<(int, int?)?> progress;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Downloading a backup'),
+    content: ValueListenableBuilder<(int, int?)?>(
+      valueListenable: progress,
+      builder: (context, value, _) {
+        final (received, total) = value ?? (0, null);
+        final fraction = total == null || total == 0 ? null : (received / total).clamp(0.0, 1.0);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              value == null
+                  ? 'The server is making the copy…'
+                  : total == null
+                  ? '${formatBytes(received)} so far'
+                  : '${formatBytes(received)} of ${formatBytes(total)}',
+            ),
+            const SizedBox(height: 12),
+            LinearProgressIndicator(value: value == null ? null : fraction),
+          ],
+        );
+      },
+    ),
+    actions: [TextButton(onPressed: onCancel, child: const Text('Cancel'))],
+  );
 }
 
 /// One run: its name, what it keeps, a bar of its size against the largest,

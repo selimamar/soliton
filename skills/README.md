@@ -4,7 +4,8 @@ Install one of these and your coding agent adds Soliton monitoring whenever
 it writes, edits or submits a computation (a training script, a simulation,
 a solver run, a job script for Sherlock, Modal or anywhere else), so you
 can follow it in the app. Asked to analyse or plot those runs later, it reads
-them back with `soliton.runs()`. Neither is active until you install it.
+them back with `soliton.runs()`; asked to back them up, it uses
+`soliton-server --backup`. Neither is active until you install it.
 
 | Folder | For | Follows |
 |---|---|---|

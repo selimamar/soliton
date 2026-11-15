@@ -243,6 +243,15 @@ doesn't belong on a network filesystem) and is copied to
 A node failure loses what changed since that job started. Stop the server
 with `scancel <job id>` (it saves the database first).
 
+`$SCRATCH` is never backed up, and Sherlock deletes files there that
+haven't changed for 90 days, so the copy there must not be the only one.
+Each time the server job stops, it also saves a backup in
+`$HOME/soliton-server/backups` (backed up by Sherlock, never purged,
+readable by you only), keeping the 10 latest. **Download a backup** in the
+app (Settings → Storage), while the tunnel is open, saves one on your
+computer too. To restore one, copy it to `$SCRATCH/soliton-server/soliton.db`
+before the next server job starts. Tested on 2026-11-15.
+
 Inside Sherlock the job token and the data travel over plain HTTP on the
 cluster's network, and other Sherlock users can reach the server's port
 (they still need a token). That is why jobs only get the job token, and the

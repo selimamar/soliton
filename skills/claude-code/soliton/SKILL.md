@@ -415,3 +415,8 @@ figure needs every point. It needs the main
 token (the job token raises a `PermissionError` that says so): never put the
 main token in a job script or ask for it in the chat; if the shell has the
 job token, ask the user to run it where the main token is set.
+
+Asked to back up the runs, use `soliton-server --backup <folder>` on the
+server's machine (safe while the server runs, never overwrites a file), or
+point the user to Settings → Storage → Download a backup; never `cp` the
+live `soliton.db`, and keep the copy private (it holds everything logged).

@@ -244,6 +244,13 @@ offline runs). The full logger API is in [logger/README.md](../logger/README.md)
   run takes on the server. Thin out old ended runs there: they look the same
   in the app (each curve keeps 1,000 points, each field its latest snapshot)
   but take a fraction of the space. Then "Give back" returns it to the disk.
+- **Back up the server**: every run lives in its one database. Settings →
+  Storage → **Download a backup** saves a copy (Downloads on a Mac, the
+  share sheet on a phone); on the server's machine,
+  `soliton-server --backup <folder>` does the same, e.g. every day from
+  cron. Keep a copy off that machine, and keep it private: it holds
+  everything your runs logged. [Backups](../server/README.md#backups) says
+  how to restore one.
 - **Right-size the next job**: copy the options from an ended job's
   Resources card into the next sbatch.
 - **Stop a run cleanly**: the stop button on a live run's page. If its

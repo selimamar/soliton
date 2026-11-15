@@ -46,14 +46,34 @@ class ServerErrorException extends ApiException {
   String toString() => 'ServerErrorException: HTTP $statusCode';
 }
 
+/// The server can't do what was asked, and says why in words meant for
+/// people (e.g. not enough disk space for a backup).
+class ServerRefusedException extends ApiException {
+  const ServerRefusedException(this.reason);
+
+  final String reason;
+}
+
+/// A backup coming from the server: its bytes as they arrive, and its size
+/// in bytes (null if the server didn't say).
+typedef BackupDownload = ({Stream<List<int>> bytes, int? length});
+
 /// Raw HTTP access to the Soliton server. Returns decoded JSON; mapping it
 /// to models is the repository's job.
 class ApiClient {
-  ApiClient(this.connection, {http.Client? httpClient, this.timeout = const Duration(seconds: 20)})
-    : _http = httpClient ?? http.Client();
+  ApiClient(
+    this.connection, {
+    http.Client? httpClient,
+    this.timeout = const Duration(seconds: 20),
+    this.stallLimit = const Duration(minutes: 1),
+  }) : _http = httpClient ?? http.Client();
 
   final ServerConnection connection;
   final Duration timeout;
+
+  /// A download (a backup) that gets no bytes for this long has lost its
+  /// connection; null never gives up.
+  final Duration? stallLimit;
   final http.Client _http;
 
   Future<Object?> getJson(String path, {Map<String, String>? query}) =>
@@ -188,6 +208,56 @@ class ApiClient {
       return ((before['bytes'] as num?)?.toInt(), (after['bytes'] as num?)?.toInt());
     }
     throw const ServerErrorException(200);
+  }
+
+  /// A backup of the server's whole database (`GET /api/storage/backup`,
+  /// main token only). The server first makes the copy, which can take a
+  /// while on a big database; then the bytes come as they are read (a pause
+  /// of [stallLimit] counts as a lost connection). Closing this client stops it.
+  Future<BackupDownload> downloadBackup() async {
+    final request = http.Request('GET', connection.api('/storage/backup'))
+      ..headers['Authorization'] = 'Bearer ${connection.token}';
+    final http.StreamedResponse response;
+    try {
+      response = await _http.send(request).timeout(const Duration(minutes: 10));
+    } on TimeoutException {
+      throw ServerUnreachableException(connection.address);
+    } on http.ClientException {
+      throw ServerUnreachableException(connection.address);
+    }
+    if (response.statusCode == 200) {
+      return (
+        bytes: switch (stallLimit) {
+          final limit? => response.stream.timeout(limit),
+          null => response.stream,
+        },
+        length: response.contentLength,
+      );
+    }
+    String body;
+    try {
+      body = await response.stream.bytesToString().timeout(timeout);
+    } catch (_) {
+      body = '';
+    }
+    throw switch (response.statusCode) {
+      401 => const UnauthorizedException(),
+      403 => UnauthorizedException(jobToken: body.contains('job token')),
+      404 => const ServerRefusedException(
+        'This server is too old to make backups: update soliton-server.',
+      ),
+      409 => ServerRefusedException(_detail(body) ?? "The server couldn't make a backup."),
+      _ => ServerErrorException(response.statusCode),
+    };
+  }
+
+  static String? _detail(String body) {
+    try {
+      if (jsonDecode(body) case {'detail': final String detail}) return detail;
+    } on FormatException {
+      return null;
+    }
+    return null;
   }
 
   void close() => _http.close();

@@ -99,6 +99,11 @@ save() {
     "$PYTHON" -c 'import sqlite3, sys; c = sqlite3.connect(sys.argv[1]); c.execute("PRAGMA wal_checkpoint(TRUNCATE)"); c.close()' \
         "$WORK/soliton.db" && cp "$WORK/soliton.db" "$DATA/soliton.db.new" \
         && mv "$DATA/soliton.db.new" "$DATA/soliton.db" && echo "database saved to $DATA"
+    # And a backup in $HOME, which Sherlock backs up and never purges
+    # ($SCRATCH is neither): one per server job, the 10 latest kept.
+    (umask 077; mkdir -p "$APP/backups") \
+        && "$PYTHON" -c 'from soliton_server.cli import main; main()' --backup "$APP/backups/" \
+        && ls -1t "$APP/backups"/soliton-*.db | tail -n +11 | xargs -r rm -f --
 }
 trap 'save; exit 0' USR1 TERM
 wait "$SERVER"

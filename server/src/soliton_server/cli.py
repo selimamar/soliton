@@ -7,7 +7,7 @@ import os
 import sys
 
 from . import __version__
-from .config import Settings, TokenTooWeak, secure_data_dir
+from .config import Settings, TokenTooWeak, database_url_from_env, secure_data_dir
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -29,6 +29,11 @@ def main(argv: list[str] | None = None) -> None:
         "--show-token", action="store_true", help="Print the API token and exit."
     )
     parser.add_argument(
+        "--backup", metavar="PATH",
+        help="Copy the database to PATH (a folder, for a dated file name, or a new file) "
+        "and exit. Safe while the server runs. SQLite only: use pg_dump for PostgreSQL.",
+    )
+    parser.add_argument(
         "--tls-cert", default=os.environ.get("SOLITON_TLS_CERT"),
         help="Serve https with this certificate (PEM; default: $SOLITON_TLS_CERT).",
     )
@@ -43,6 +48,8 @@ def main(argv: list[str] | None = None) -> None:
     # Everything the server writes (the database, its journal, the token)
     # is readable by you only: it holds everything the runs logged.
     os.umask(0o077)
+    if args.backup is not None:
+        sys.exit(backup(args.backup))
     try:
         settings = Settings.from_env()
     except TokenTooWeak as error:
@@ -73,6 +80,34 @@ def main(argv: list[str] | None = None) -> None:
         print("  Push notifications: on (ntfy)", file=sys.stderr)
     uvicorn.run(create_app(settings), host=args.host, port=args.port, log_level="info",
                 ssl_certfile=args.tls_cert, ssl_keyfile=args.tls_key)
+
+
+def backup(destination: str) -> int:
+    """`--backup`: copies the database; the exit status."""
+    from .backup import BackupError, back_up_file, sqlite_file
+
+    url = database_url_from_env()
+    database = sqlite_file(url)
+    if database is None:
+        print("soliton-server: this server keeps its data in PostgreSQL: back it up with "
+              "pg_dump (see the server README)", file=sys.stderr)
+        return 1
+    try:
+        path, size = back_up_file(database, destination)
+    except BackupError as error:
+        print(f"soliton-server: {error}", file=sys.stderr)
+        return 1
+    print(f"Backed up {database} to {path} ({_size(size)}).")
+    print("It holds everything the runs logged and is readable by you only: keep it that way.")
+    return 0
+
+
+def _size(size: int) -> str:
+    for unit in ("bytes", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{size:.0f} {unit}" if unit == "bytes" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size} bytes"
 
 
 if __name__ == "__main__":
