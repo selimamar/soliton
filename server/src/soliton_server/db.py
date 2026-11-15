@@ -247,6 +247,18 @@ class RunResumeRow(Base):
     sim_time: Mapped[float | None] = mapped_column(Double, nullable=True)
 
 
+class RunStopRow(Base):
+    """A stop asked for from the app, until the run ends: its logger hears
+    of it on its next upload (run.should_stop())."""
+
+    __tablename__ = "run_stop"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    requested_at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
 class ServerSettingRow(Base):
     """Settings made from the app, e.g. the job token's hash. New tables are
     created on start, so existing databases get this one too."""

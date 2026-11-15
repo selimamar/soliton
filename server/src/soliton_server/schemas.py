@@ -104,6 +104,9 @@ class RunIn(_In):
     # A Slurm job still waiting in the queue (`soliton sbatch`): its system
     # describes the job (startedAt is when it was submitted).
     queued: bool = False
+    # Only update the run if it exists (`soliton queue` refreshing a queued
+    # job): a job that has started since may have replaced it.
+    updateOnly: bool = False
 
 
 class RunNotesIn(_In):

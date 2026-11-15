@@ -45,8 +45,11 @@ class ApiClient:
     def put_dataset(self, dataset_id: str, body: dict) -> None:
         self._request("PUT", f"/api/datasets/{dataset_id}", body)
 
-    def post_events(self, run_id: str, events: List[dict]) -> None:
-        self._request("POST", f"/api/runs/{run_id}/events", {"events": events})
+    def post_events(self, run_id: str, events: List[dict]) -> Optional[dict]:
+        """Sends events; returns the server's reply (e.g. {"stop": true}
+        when the run was asked from the app to stop)."""
+        reply = self._request("POST", f"/api/runs/{run_id}/events", {"events": events})
+        return reply if isinstance(reply, dict) else None
 
     def get_runs(self, status: Optional[str] = None) -> list:
         """The server's runs; with [status], only those (a job token may only
@@ -67,7 +70,12 @@ class ApiClient:
         try:
             with urllib.request.urlopen(request, timeout=self._timeout) as response:
                 data = response.read()
-            return json.loads(data) if method == "GET" else None
+            if not data:
+                return None
+            try:
+                return json.loads(data)
+            except ValueError:
+                return None
         except urllib.error.HTTPError as error:
             detail = error.read().decode(errors="replace")[:300]
             if error.code in (408, 425, 429) or error.code >= 500:
@@ -138,8 +146,10 @@ class RunFiles:
         return records
 
 
-def upload_pending(files: RunFiles, client: ApiClient, warn: Callable[[str], None]) -> int:
+def upload_pending(files: RunFiles, client: ApiClient, warn: Callable[[str], None],
+                   on_reply: Optional[Callable[[dict], None]] = None) -> int:
     """Uploads what the server doesn't have yet. Returns the records sent.
+    [on_reply] gets the server's reply to each batch of events.
 
     Raises RetryLater (try again later) or UploadError (give up).
     """
@@ -161,16 +171,19 @@ def upload_pending(files: RunFiles, client: ApiClient, warn: Callable[[str], Non
         nonlocal batch, batch_bytes, sent
         if not batch:
             return
+        reply = None
         try:
-            client.post_events(run_id, batch)
+            reply = client.post_events(run_id, batch)
         except LookupError:
             # The server doesn't know the run (e.g. it was deleted): recreate it.
             client.put_run(run_id, run_body)
-            client.post_events(run_id, batch)
+            reply = client.post_events(run_id, batch)
         except UploadError as error:
             if "HTTP 422" not in str(error):
                 raise
             warn(f"skipped {len(batch)} records the server rejected: {error}")
+        if on_reply is not None and reply:
+            on_reply(reply)
         sent += len(batch)
         files.set_uploaded(client.server, batch_end)
         batch, batch_bytes = [], 0
@@ -211,11 +224,13 @@ class Uploader(threading.Thread):
         client: ApiClient,
         warn: Callable[[str], None],
         interval: float = 2.0,
+        on_reply: Optional[Callable[[dict], None]] = None,
     ) -> None:
         super().__init__(name="soliton-uploader", daemon=True)
         self._files = files
         self._client = client
         self._warn = warn
+        self._on_reply = on_reply
         self._interval = interval
         self._wake = threading.Event()
         self._stopping = threading.Event()
@@ -236,7 +251,7 @@ class Uploader(threading.Thread):
             self._wake.wait(delay)
             self._wake.clear()
             try:
-                upload_pending(self._files, self._client, self._warn)
+                upload_pending(self._files, self._client, self._warn, self._on_reply)
                 delay = self._interval
                 if self._reported_offline:
                     self._warn("connection to the server is back; uploading")

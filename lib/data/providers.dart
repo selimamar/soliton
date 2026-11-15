@@ -222,6 +222,25 @@ class RunNotesEditor {
   }
 }
 
+/// Asks live runs to stop (the Stop button on a run's page).
+final runStopperProvider = Provider<RunStopper>(RunStopper.new);
+
+class RunStopper {
+  RunStopper(this._ref);
+
+  final Ref _ref;
+
+  /// Asks [runId] to stop, then refreshes what shows it. Throws what the
+  /// repository throws.
+  Future<Run> stop(String runId) async {
+    final run = await _ref.read(runRepositoryProvider).requestStop(runId);
+    _ref
+      ..invalidate(allRunsProvider)
+      ..invalidate(runProvider(runId));
+    return run;
+  }
+}
+
 /// Deletes runs, simulations and datasets from the server.
 final deleterProvider = Provider<Deleter>(Deleter.new);
 

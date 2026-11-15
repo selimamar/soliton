@@ -307,3 +307,26 @@ def test_a_crashed_runs_output_and_traceback_reach_the_server(tmp_path, database
         assert got["lines"][-1] == "RuntimeError: CUDA out of memory"
         assert got["total"] == len(got["lines"])
         assert server.get(f"/api/runs/{run.id}")["status"] == "crashed"
+
+
+def test_the_apps_stop_button_reaches_the_training_loop(tmp_path, database_url):
+    with LiveServer(database_url) as server:
+        run = soliton.init("stoppable", server=server.url, token=TOKEN, dir=str(tmp_path / "runs"),
+                           total_steps=10_000, host="test", system_metrics=False)
+        run.log({"train/loss": 1.0}, step=0)
+        server.wait_for_step(run.id, 0)
+        response = httpx.post(f"{server.url}/api/runs/{run.id}/stop",
+                              headers={"Authorization": f"Bearer {TOKEN}"})
+        assert response.status_code == 200
+        deadline = time.monotonic() + 15
+        step = 0
+        while not run.should_stop():  # As a training loop would.
+            assert time.monotonic() < deadline, "the stop never arrived"
+            step += 1
+            run.log({"train/loss": 1.0 / step}, step=step)
+            time.sleep(0.1)
+        run.finish()
+        stored = server.get(f"/api/runs/{run.id}")
+        assert stored["status"] == "finished"
+        assert stored["statusMessage"].startswith("Stopped from the app at step")
+        assert stored["stopRequestedAt"] is None

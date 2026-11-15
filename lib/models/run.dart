@@ -31,6 +31,7 @@ class Run {
     this.flow,
     this.endedAt,
     this.statusMessage,
+    this.stopRequestedAt,
     this.tags = const [],
     this.notes = '',
     this.system,
@@ -61,6 +62,10 @@ class Run {
     flow: ModelFlow.fromArchitectureJson(json['architecture']! as Map<String, Object?>),
     lossPreview: List.unmodifiable([for (final v in json['lossPreview']! as List) decodeDouble(v)]),
     statusMessage: json['statusMessage'] as String?,
+    stopRequestedAt: switch (json['stopRequestedAt']) {
+      final String s => DateTime.parse(s),
+      _ => null,
+    },
     // Older servers don't send these.
     tags: List.unmodifiable([for (final tag in (json['tags'] as List?) ?? const []) tag as String]),
     notes: json['notes'] as String? ?? '',
@@ -113,6 +118,10 @@ class Run {
 
   /// Optional explanation, e.g. why the run crashed.
   final String? statusMessage;
+
+  /// When it was asked to stop from the app (its Stop button), while it
+  /// runs; its script stops at its next `run.should_stop()` check.
+  final DateTime? stopRequestedAt;
 
   /// Labels to organise runs by, e.g. `baseline`; edited in the app.
   final List<String> tags;
@@ -237,6 +246,7 @@ class Run {
     'architecture': {...architecture.toJson(), ...?flow?.toArchitectureJson()},
     'lossPreview': [for (final v in lossPreview) encodeDouble(v)],
     'statusMessage': statusMessage,
+    'stopRequestedAt': stopRequestedAt?.toIso8601String(),
     'tags': tags,
     'notes': notes,
     'system': system?.toJson(),
@@ -264,6 +274,7 @@ class Run {
       other.flow == flow &&
       sameDoubles(other.lossPreview, lossPreview) &&
       other.statusMessage == statusMessage &&
+      other.stopRequestedAt == stopRequestedAt &&
       deepListEquals(other.tags, tags) &&
       other.notes == notes &&
       other.system == system &&
@@ -290,6 +301,7 @@ class Run {
     flow,
     Object.hashAll(lossPreview.map(doubleHash)),
     statusMessage,
+    stopRequestedAt,
     Object.hashAll(tags),
     notes,
     system,

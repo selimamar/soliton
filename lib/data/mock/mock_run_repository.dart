@@ -52,6 +52,17 @@ class MockRunRepository implements RunRepository {
     _datasets = _buildDatasets();
   }
 
+  /// Runs asked to stop, and when (demo data: they keep "running").
+  final _stopRequested = <String, DateTime>{};
+
+  @override
+  Future<Run> requestStop(String runId) async {
+    await Future<void>.delayed(latency);
+    _find(runId);
+    _stopRequested[runId] ??= DateTime.now();
+    return _withEdits(_find(runId).run);
+  }
+
   @override
   Future<void> deleteDataset(String datasetId) async {
     await Future<void>.delayed(latency);
@@ -103,8 +114,13 @@ class MockRunRepository implements RunRepository {
 
   Run _withEdits(Run run) {
     final edit = _edited[run.id];
-    if (edit == null) return run;
-    return Run.fromJson({...run.toJson(), 'tags': edit.tags, 'notes': edit.notes});
+    final stop = _stopRequested[run.id];
+    if (edit == null && stop == null) return run;
+    return Run.fromJson({
+      ...run.toJson(),
+      if (edit != null) ...{'tags': edit.tags, 'notes': edit.notes},
+      if (stop != null) 'stopRequestedAt': stop.toIso8601String(),
+    });
   }
 
   @override

@@ -20,7 +20,7 @@ import os
 import subprocess
 import sys
 from datetime import datetime, timezone, tzinfo
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Mapping, Optional, Sequence, Tuple
 
 OWN_OPTIONS = ("--name", "--project", "--id", "--server", "--token")
 
@@ -200,45 +200,73 @@ def ended_status(state: Optional[str]) -> Optional[Tuple[str, str]]:
 
 
 def refresh(client, run: Runner = subprocess.run, now: Optional[datetime] = None,
-            say: Callable[[str], None] = print) -> int:
+            say: Callable[[str], None] = print, skip: Sequence[str] = ()) -> int:
     """`soliton queue`: updates every run the server shows as queued from
     one squeue call (your jobs on this cluster); a job no longer there ends
-    as sacct says, if it was this cluster's. Returns how many it looked at."""
+    as sacct says, if it was this cluster's. Jobs in [skip] are left alone.
+    Returns how many it looked at."""
     waiting = [r for r in client.get_runs(status="queued")
                if r.get("status") == "queued"
-               and ((r.get("system") or {}).get("slurm") or {}).get("jobId")]
+               and ((r.get("system") or {}).get("slurm") or {}).get("jobId")
+               and base_job_id(r["system"]["slurm"]["jobId"]) not in skip]
     if not waiting:
         say("soliton: no queued jobs on the server")
         return 0
     jobs = queued_jobs(run)
     for r in waiting:
-        slurm = dict(r["system"]["slurm"])
-        job = base_job_id(slurm["jobId"])
-        # squeue lists an ended job for a few minutes more (CANCELLED,
-        # COMPLETING...): sacct says how it ended.
-        if job in jobs and jobs[job]["state"] in WAITING_STATES:
-            slurm.update(describe_job(jobs[job], now))
-            client.put_run(r["id"], {**queued_run(slurm, r["name"], r.get("project", ""),
-                                                  r.get("host")),
-                                     "startedAt": slurm.get("submitTime") or r.get("startedAt")})
-            reason = f" ({slurm['reason']})" if slurm.get("reason") else ""
-            say(f"{r['name']} (job {job}): {slurm.get('state', 'PENDING').lower()}{reason}")
-            continue
-        cluster, state = job_state(job, run)
-        if cluster is None or (slurm.get("cluster") and slurm["cluster"] != cluster):
-            say(f"{r['name']} (job {job}): not a job of this cluster's, left as it is")
-            continue
-        ended = ended_status(state)
-        if ended is None:
-            say(f"{r['name']} (job {job}): not in the queue, and sacct says {state}")
-            continue
-        status, message = ended
-        event = {"type": "status", "status": status, "message": message}
-        if state and state.startswith("CANCELLED"):
-            event["notify"] = False  # You cancelled it: nothing to alert you about.
-        client.post_events(r["id"], [event])
-        say(f"{r['name']} (job {job}): {message}")
+        try:
+            _refresh_one(client, r, jobs, run, now, say)
+        except LookupError:
+            pass  # Gone meanwhile: its job started and its run took its place.
     return len(waiting)
+
+
+def _refresh_one(client, r: dict, jobs: Dict[str, Dict[str, str]], run: Runner,
+                 now: Optional[datetime], say: Callable[[str], None]) -> None:
+    """Updates one queued run, or ends it if its job left the queue."""
+    slurm = dict(r["system"]["slurm"])
+    job = base_job_id(slurm["jobId"])
+    # squeue lists an ended job for a few minutes more (CANCELLED,
+    # COMPLETING...): sacct says how it ended.
+    if job in jobs and jobs[job]["state"] in WAITING_STATES:
+        slurm.update(describe_job(jobs[job], now))
+        client.put_run(r["id"], {**queued_run(slurm, r["name"], r.get("project", ""),
+                                              r.get("host")),
+                                 "startedAt": slurm.get("submitTime") or r.get("startedAt"),
+                                 "updateOnly": True})
+        reason = f" ({slurm['reason']})" if slurm.get("reason") else ""
+        say(f"{r['name']} (job {job}): {slurm.get('state', 'PENDING').lower()}{reason}")
+        return
+    cluster, state = job_state(job, run)
+    if cluster is None or (slurm.get("cluster") and slurm["cluster"] != cluster):
+        say(f"{r['name']} (job {job}): not a job of this cluster's, left as it is")
+        return
+    ended = ended_status(state)
+    if ended is None:
+        say(f"{r['name']} (job {job}): not in the queue, and sacct says {state}")
+        return
+    status, message = ended
+    event = {"type": "status", "status": status, "message": message}
+    if state and state.startswith("CANCELLED"):
+        event["notify"] = False  # You cancelled it: nothing to alert you about.
+    client.post_events(r["id"], [event])
+    say(f"{r['name']} (job {job}): {message}")
+
+
+def refresh_at_job_start(client, env: Mapping[str, str] = os.environ,
+                         run: Runner = subprocess.run) -> bool:
+    """A job's logger refreshing the queue as the job starts (see
+    `_refresh_queue_once`): its own job is skipped (its run takes its
+    place), and in an array only the first task does it. Returns whether
+    it did."""
+    if not env.get("SLURM_JOB_ID") or env.get("SOLITON_REFRESH_QUEUE", "").strip() == "0":
+        return False
+    task, first = env.get("SLURM_ARRAY_TASK_ID"), env.get("SLURM_ARRAY_TASK_MIN")
+    if task is not None and first is not None and task != first:
+        return False
+    own = {base_job_id(env[key]) for key in ("SLURM_JOB_ID", "SLURM_ARRAY_JOB_ID") if env.get(key)}
+    refresh(client, run, say=lambda _: None, skip=sorted(own))
+    return True
 
 
 def sbatch_main(args, client_or_none, run: Runner = subprocess.run,

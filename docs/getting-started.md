@@ -63,6 +63,8 @@ built app may ask once to use the keychain.
 for your job scripts and cluster files: it can only add and update runs and
 data, not read your runs, change tags and notes or delete anything. Use it as
 `SOLITON_TOKEN` on clusters and keep the main token on your own devices.
+If the main token may have leaked, **New main token** there replaces it: the
+old one stops working everywhere, and this device switches to the new one.
 
 ## 4. Make your computations report
 
@@ -145,7 +147,7 @@ exec python3 train.py                      # exec, for the same reason
 
 Submit with `soliton sbatch` in place of `sbatch` (same options) to see the
 job while it waits in the queue, and `soliton queue` to update what Slurm
-says of waiting jobs:
+says of waiting jobs (each starting Soliton job also does it once):
 
 ```bash
 python3 -m soliton sbatch -p gpu -G 1 train.sbatch
@@ -197,6 +199,10 @@ offline runs). The full logger API is in [logger/README.md](../logger/README.md)
   once after picking them.
 - **Right-size the next job**: copy the options from an ended job's
   Resources card into the next sbatch.
+- **Stop a run cleanly**: the stop button on a live run's page. If its
+  script checks `run.should_stop()` (the agent skills add it), it saves a
+  checkpoint and ends as "Stopped from the app"; otherwise it is stopped as
+  by scancel. Continue it later in a new job with `soliton sbatch --id`.
 - **Offline runs** (no server, or it was unreachable) upload later:
   `soliton sync $SOLITON_DIR` (on Sherlock: `python3 -m soliton sync
   $SCRATCH/soliton-runs`, by hand on a login node).
@@ -210,7 +216,8 @@ offline runs). The full logger API is in [logger/README.md](../logger/README.md)
 | Crashed at the time limit with no message, or only after 10 minutes | The job script runs `python` without `exec`, or lacks `--signal=B:TERM@60` |
 | "The server rejected the token" | The token changed or was mistyped: Settings → Server |
 | "That's the job token" | The app needs the server's main token; the job token is for job scripts |
-| A queued job doesn't move on | What Slurm says is as of `soliton sbatch` or the last `soliton queue`: run `soliton queue`. The wait itself counts up by itself |
+| A queued job doesn't move on | What Slurm says is as of `soliton sbatch`, the last `soliton queue`, or the last Soliton job that started: run `soliton queue`. The wait itself counts up by itself |
+| "Asked to stop" stays | The script doesn't log often, or checks `run.should_stop()` rarely: it stops at its next check (or next log, for a script that never checks) |
 | No time-limit alert | It comes once the run has gone 10 minutes and 2% of the way, and only if it would miss the limit by more than 5 minutes; it needs `total_steps` (or a simulation's `t_end`) |
 | The Mac app asks to use the keychain | Once after the app was rebuilt (it is signed without a developer team): Always Allow |
 | Nothing updates | The tunnel to the Sherlock test server is closed, or its job ended: start them again |

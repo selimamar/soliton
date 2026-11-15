@@ -47,7 +47,8 @@ exec python3 train.py                    # exec: Python must be the job script t
   while it waits, and the run its script starts takes its place. A job
   continuing a run passes that run's id first: `soliton sbatch --id <run
   id> ...`. `python3 -m soliton queue` updates what Slurm says of queued
-  jobs: run it once when you check, never in a loop or `watch`.
+  jobs: run it once when you check, never in a loop or `watch`. Each
+  Soliton job also refreshes the other queued jobs once as it starts.
 - Give `total_steps` (or a simulation's `t_end`): the app then warns the
   user, once per job, when the run won't finish before its time limit.
 - When a job ends, the app's Resources card suggests `--mem`, `-c`, `-G`

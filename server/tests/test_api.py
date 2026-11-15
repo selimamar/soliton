@@ -12,7 +12,7 @@ RUN_KEYS = {
     "id", "name", "project", "host", "status", "startedAt", "endedAt", "currentStep",
     "totalSteps", "currentEpoch", "totalEpochs", "hyperparameters", "architecture",
     "lossPreview", "statusMessage", "tags", "notes", "system", "simulation",
-    "datasets", "resumedAtStep",
+    "datasets", "resumedAtStep", "stopRequestedAt",
 }
 LAYER_KEYS = {
     "layerName", "activationMean", "activationStd", "gradNorm", "activationHistogram",
@@ -982,3 +982,96 @@ def test_each_series_has_its_mean_over_every_point(client):
     send(client, [metrics(step, system__cpu=10.0 if step % 10 else 90.0) for step in range(100)])
     series = {s["name"]: s for s in client.get("/api/runs/tiny-1/metrics", params={"maxPoints": 10}).json()}
     assert series["system/cpu"]["mean"] == pytest.approx(18.0), "not (10 + 90) / 2 as the points suggest"
+
+
+# Rotating the main token -------------------------------------------------------
+
+def test_rotating_the_main_token_retires_the_old_one(app, client):
+    new = client.post("/api/token/rotate").json()["token"]
+    assert client.get("/api/runs").status_code == 401, "the old token stops working at once"
+    with job_client(app, new) as fresh:
+        assert fresh.get("/api/runs").status_code == 200
+
+
+def test_a_rotated_token_survives_a_restart_even_with_the_old_one_still_configured(app, client):
+    from soliton_server.app import create_app
+
+    new = client.post("/api/token/rotate").json()["token"]
+    restarted = create_app(app.state.settings, stale_check_seconds=0)  # Still configured: the old one.
+    with job_client(restarted, TOKEN) as old, job_client(restarted, new) as fresh:
+        assert old.get("/api/runs").status_code == 401
+        assert fresh.get("/api/runs").status_code == 200
+
+
+def test_a_token_the_admin_sets_on_purpose_replaces_a_rotated_one(app, client):
+    from dataclasses import replace as with_fields
+
+    from soliton_server.app import create_app
+
+    rotated = client.post("/api/token/rotate").json()["token"]
+    chosen = create_app(with_fields(app.state.settings, token="set-by-hand"), stale_check_seconds=0)
+    with job_client(chosen, "set-by-hand") as by_hand, job_client(chosen, rotated) as old:
+        assert by_hand.get("/api/runs").status_code == 200
+        assert old.get("/api/runs").status_code == 401
+
+
+def test_rotating_rewrites_the_token_file_privately(app, client, tmp_path):
+    import os
+    import stat
+    from dataclasses import replace as with_fields
+
+    from soliton_server.app import create_app
+
+    token_file = tmp_path / "token"
+    token_file.write_text(TOKEN + "\n")
+    served = create_app(with_fields(app.state.settings, token_file=token_file), stale_check_seconds=0)
+    with TestClient(served, headers=AUTH) as c:
+        new = c.post("/api/token/rotate").json()["token"]
+    assert token_file.read_text().strip() == new
+    assert stat.S_IMODE(os.stat(token_file).st_mode) == 0o600
+
+
+def test_live_connections_made_with_the_old_token_are_closed(client):
+    with client.websocket_connect("/api/live") as ws:
+        ws.send_json({"type": "auth", "token": TOKEN})
+        assert ws.receive_json()["type"] == "ready"
+        client.post("/api/token/rotate")
+        assert ws.receive_json() == {"type": "error", "message": "The token changed"}
+
+
+def test_the_job_token_cannot_rotate_the_main_token(app, client):
+    job = client.post("/api/job-token").json()["token"]
+    with job_client(app, job) as c:
+        assert c.post("/api/token/rotate").status_code == 403
+
+
+# Stopping a run from the app ---------------------------------------------------
+
+def test_a_stop_from_the_app_reaches_the_logger_until_the_run_ends(app, client, clock):
+    create_run(client)
+    assert "stop" not in send(client, [metrics(1, train__loss=1.0)])
+    run = client.post("/api/runs/tiny-1/stop").json()
+    assert run["stopRequestedAt"] == "2026-11-12T09:00:00Z"
+    assert send(client, [metrics(2, train__loss=0.9)])["stop"] is True
+    send(client, [{"type": "status", "status": "finished", "message": "Stopped from the app"}])
+    assert client.get("/api/runs/tiny-1").json()["stopRequestedAt"] is None
+    assert client.post("/api/runs/tiny-1/stop").status_code == 409, "only a live run"
+    # A later job continuing it starts without the old request.
+    clock.advance(minutes=5)
+    run = create_run(client, startedAt="2026-11-12T09:05:00Z")
+    assert run["status"] == "live" and run["stopRequestedAt"] is None
+
+
+def test_only_the_main_token_can_stop_a_run(app, client):
+    create_run(client)
+    job = client.post("/api/job-token").json()["token"]
+    with job_client(app, job) as c:
+        assert c.post("/api/runs/tiny-1/stop").status_code == 403
+
+
+def test_a_refresh_doesnt_bring_back_a_queued_job_that_started(client):
+    """`soliton queue` (or a job refreshing the queue) only updates."""
+    response = client.put("/api/runs/queued-999", json={
+        "name": "x", "queued": True, "updateOnly": True, "system": {"slurm": {"jobId": "999"}},
+    })
+    assert response.status_code == 404

@@ -14,6 +14,7 @@ import 'tabs/layers_tab.dart';
 import 'tabs/metrics_tab.dart';
 import 'tabs/overview_tab.dart';
 import 'tabs/system_tab.dart';
+import 'widgets/stop_button.dart';
 
 /// The run detail tabs, in order; their names are what `?tab=` takes in a
 /// run's link (e.g. `/runs/fno-navier-stokes?tab=fields`).
@@ -78,6 +79,7 @@ class RunDetailScreen extends ConsumerWidget {
             if (loadedRun != null) ...[
               StatusChip(status: loadedRun.status, inHeader: true),
               const SizedBox(width: 4),
+              StopButton(run: loadedRun),
               DeleteButton(
                 kind: DeleteKind.run,
                 item: (

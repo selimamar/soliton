@@ -17,6 +17,9 @@ class Settings:
 
     token: str
     """API token. The logger and the app both send it as a bearer token."""
+    token_file: Path | None = None
+    """The file the token was read from (None: SOLITON_TOKEN). Rotating the
+    token from the app rewrites it, so `--show-token` stays right."""
 
     stale_after: timedelta = timedelta(minutes=10)
     """A live run that sends nothing for this long is marked as crashed
@@ -48,6 +51,7 @@ class Settings:
             data_dir.mkdir(parents=True, exist_ok=True)
             url = f"sqlite:///{(data_dir / 'soliton.db').resolve()}"
         token = env.get("SOLITON_TOKEN") or load_or_create_token(data_dir)
+        token_file = None if env.get("SOLITON_TOKEN") else data_dir / "token"
         origins = tuple(
             o.strip() for o in env.get("SOLITON_CORS_ORIGINS", "*").split(",") if o.strip()
         )
@@ -59,6 +63,7 @@ class Settings:
         return cls(
             database_url=url,
             token=token,
+            token_file=token_file,
             stale_after=timedelta(minutes=float(env.get("SOLITON_STALE_MINUTES", "10"))),
             cors_origins=origins,
             ntfy_url=env.get("SOLITON_NTFY_URL") or None,
@@ -88,6 +93,14 @@ def load_or_create_token(data_dir: Path) -> str:
     except FileExistsError:  # Another server process made it just now.
         return path.read_text().strip()
     return token
+
+
+def replace_private(path: Path, text: str) -> None:
+    """Replaces [path]'s contents in one step, with a file readable by its
+    owner only from the start."""
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(4)}")
+    write_private(temporary, text)
+    os.replace(temporary, path)
 
 
 def write_private(path: Path, text: str) -> None:

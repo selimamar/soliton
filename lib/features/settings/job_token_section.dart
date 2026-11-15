@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../app/theme.dart';
 import '../../data/providers.dart';
 import '../../data/services/api_client.dart';
+import '../../data/services/server_connection.dart';
 import '../../shared/widgets/async_value_view.dart';
 
 /// Whether the connected server has a job token: null while not connected,
@@ -20,7 +21,8 @@ final jobTokenProvider = FutureProvider<bool?>((ref) async {
   }
 });
 
-/// Settings → Advanced security: a separate token for jobs on clusters,
+/// Settings → Advanced security: a new main token if it may have leaked,
+/// and a separate token for jobs on clusters,
 /// which can only add and update runs and data (what a logger does), so a
 /// leaked job script or env file can't read, retag or delete what is on the
 /// server. It can still overwrite a run it knows the id of. Off by default: one
@@ -56,7 +58,9 @@ class _JobTokenSectionState extends ConsumerState<JobTokenSection> {
                   "server's main token stays on your devices.",
           }),
           value: enabled ?? false,
-          onChanged: supported && !_busy ? (on) => on ? _create(replacing: false) : _turnOff() : null,
+          onChanged: supported && !_busy
+              ? (on) => on ? _create(replacing: false) : _turnOff()
+              : null,
         ),
         if (enabled ?? false)
           ListTile(
@@ -66,7 +70,45 @@ class _JobTokenSectionState extends ConsumerState<JobTokenSection> {
             enabled: !_busy,
             onTap: () => _create(replacing: true),
           ),
+        ListTile(
+          leading: const Icon(Icons.lock_reset),
+          title: const Text('New main token'),
+          subtitle: const Text(
+            'If the main token may have leaked: it stops working everywhere, and this device '
+            'switches to the new one.',
+          ),
+          enabled: supported && !_busy,
+          onTap: _rotateMainToken,
+        ),
       ],
+    );
+  }
+
+  Future<void> _rotateMainToken() async {
+    if (!await _confirm(
+      title: 'Make a new main token?',
+      message:
+          'The current main token stops working at once: on your other devices and in any job '
+          'script still using it, until you enter the new one. This device switches by itself.',
+      action: 'Make new token',
+    )) {
+      return;
+    }
+    final connection = ref.read(connectionProvider);
+    final token = await _call((client) => client.rotateToken());
+    if (token == null || connection == null || !mounted) return;
+    final rotated = ServerConnection.parse(connection.address, token);
+    if (rotated != null) ref.read(connectionProvider.notifier).connect(rotated);
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _TokenDialog(
+        title: 'New main token',
+        token: token,
+        message:
+            'This device now uses it. Enter it on your other devices (Settings → Server), and '
+            'wherever else the old one was (the token file of a server you start by hand, a job '
+            "script without the job token): the old one doesn't work anymore.",
+      ),
     );
   }
 
@@ -81,7 +123,17 @@ class _JobTokenSectionState extends ConsumerState<JobTokenSection> {
     }
     final token = await _call((client) => client.createJobToken());
     if (token == null || !mounted) return;
-    await showDialog<void>(context: context, builder: (_) => _JobTokenDialog(token: token));
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _TokenDialog(
+        title: 'Job token',
+        token: token,
+        message:
+            'Use it in place of SOLITON_TOKEN on your clusters and in job scripts, for example in '
+            '~/.soliton_env. Then remove the main token from those files: it can still do '
+            'everything.',
+      ),
+    );
   }
 
   Future<void> _turnOff() async {
@@ -138,17 +190,20 @@ class _JobTokenSectionState extends ConsumerState<JobTokenSection> {
       false;
 }
 
-/// The new job token, shown this once (the server keeps only its hash).
-class _JobTokenDialog extends StatelessWidget {
-  const _JobTokenDialog({required this.token});
+/// A new token, shown this once (the server keeps only its hash), with
+/// where to use it.
+class _TokenDialog extends StatelessWidget {
+  const _TokenDialog({required this.title, required this.token, required this.message});
 
+  final String title;
   final String token;
+  final String message;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return AlertDialog(
-      title: const Text('Job token'),
+      title: Text(title),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -156,11 +211,7 @@ class _JobTokenDialog extends StatelessWidget {
           children: [
             SelectableText(token, style: AppText.mono(context).copyWith(fontSize: 13)),
             const SizedBox(height: 12),
-            const Text(
-              'Use it in place of SOLITON_TOKEN on your clusters and in job scripts, for '
-              'example in ~/.soliton_env. Then remove the main token from those files: it can '
-              'still do everything.',
-            ),
+            Text(message),
             const SizedBox(height: 8),
             Text(
               "It's shown only this once. If you lose it, make a new one.",

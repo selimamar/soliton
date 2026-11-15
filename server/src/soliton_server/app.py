@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import json
 import secrets
 import logging
 from collections.abc import Callable, Iterable
@@ -19,12 +20,20 @@ from fastapi.responses import JSONResponse, Response
 from starlette.websockets import WebSocketDisconnect
 
 from . import __version__
-from .config import Settings
+from .config import Settings, replace_private
 from .db import make_engine, make_sessionmaker
 from .live import Broadcaster
 from .notify import NtfyNotifier
 from .schemas import RUN_ID_PATTERN, DatasetIn, EventsIn, RunIn, RunNotesIn
-from .store import Change, DatasetNotFound, FieldNotFound, RunNotFound, Store, utcnow
+from .store import (
+    Change,
+    DatasetNotFound,
+    FieldNotFound,
+    RunNotFound,
+    RunNotLive,
+    Store,
+    utcnow,
+)
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +41,8 @@ RunId = Annotated[str, Path(pattern=RUN_ID_PATTERN)]
 MaxPoints = Annotated[int, Query(ge=4, le=20_000)]
 
 JOB_TOKEN_KEY = "jobTokenHash"
+MAIN_TOKEN_KEY = "mainTokenHash"
+RETIRED_TOKENS_KEY = "retiredTokenHashes"
 JOB_TOKEN_REFUSED = (
     "This is the job token: it can only add and update runs and data. "
     "Use the server's main token here."
@@ -92,9 +103,24 @@ def create_app(
         allow_headers=["*"],
     )
 
+    # The main token: the configured one (SOLITON_TOKEN or the token file),
+    # unless it was rotated from the app since. Only hashes are kept: the
+    # current one, and every token rotated away (never accepted again, even
+    # if a config still holds it). A configured token that is neither is one
+    # the admin set on purpose, and replaces a rotated one.
+    retired = set(json.loads(store.setting(RETIRED_TOKENS_KEY) or "[]"))
+    rotated, configured = store.setting(MAIN_TOKEN_KEY), _token_hash(settings.token)
+    if rotated is not None and rotated != configured and configured not in retired:
+        store.set_setting(MAIN_TOKEN_KEY, None)
+        rotated = None
+    elif rotated is not None and rotated != configured:
+        log.warning("The main token was rotated from the app; the configured one is no "
+                    "longer accepted (update SOLITON_TOKEN or the token file).")
+    main_token = {"hash": rotated or configured, "generation": 0}
+
     def token_ok(candidate: object) -> bool:
         return isinstance(candidate, str) and hmac.compare_digest(
-            candidate.encode(), settings.token.encode()
+            _token_hash(candidate), main_token["hash"]
         )
 
     # The optional job token (the app's Settings → Advanced security): for
@@ -163,6 +189,21 @@ def create_app(
         job token is set."""
         return {"ok": True, "version": __version__, "jobToken": job_token["hash"] is not None}
 
+    @app.post("/api/token/rotate", dependencies=auth)
+    def rotate_token():
+        """A new main token, shown this once; the current one stops working,
+        and live connections made with it are closed."""
+        token = secrets.token_urlsafe(32)
+        retired.add(main_token["hash"])
+        store.set_setting(RETIRED_TOKENS_KEY, json.dumps(sorted(retired)))
+        store.set_setting(MAIN_TOKEN_KEY, _token_hash(token))
+        main_token["hash"] = _token_hash(token)
+        main_token["generation"] += 1
+        if settings.token_file is not None and settings.token_file.exists():
+            replace_private(settings.token_file, token + "\n")
+        broadcaster.publish({"type": "ping"})  # Wakes live connections, to close old ones.
+        return {"token": token}
+
     @app.post("/api/job-token", dependencies=auth)
     def create_job_token():
         """A new job token, replacing any earlier one: shown this once."""
@@ -206,6 +247,17 @@ def create_app(
         publish([change])
         return run
 
+    @app.post("/api/runs/{run_id}/stop", dependencies=auth)
+    def stop_run(run_id: RunId):
+        """Asks a live run to stop (the app's Stop button): its logger hears
+        of it on its next upload, through run.should_stop()."""
+        try:
+            run, change = store.request_stop(run_id)
+        except RunNotLive:
+            raise HTTPException(status_code=409, detail="Only a live run can be stopped")
+        publish([change])
+        return run
+
     @app.delete("/api/runs/{run_id}", dependencies=auth)
     def delete_run(run_id: RunId):
         publish([store.delete_run(run_id)])
@@ -214,7 +266,9 @@ def create_app(
     @app.post("/api/runs/{run_id}/events", dependencies=writers)
     def post_events(run_id: RunId, body: EventsIn):
         publish(store.ingest(run_id, body.events))
-        return {"accepted": len(body.events)}
+        # The logger's cue for run.should_stop().
+        stop = store.stop_requested(run_id)
+        return {"accepted": len(body.events), **({"stop": True} if stop else {})}
 
     @app.get("/api/runs/{run_id}/metrics", dependencies=auth)
     def metrics(run_id: RunId, maxPoints: MaxPoints = 1000):
@@ -307,6 +361,7 @@ def create_app(
             await websocket.close(code=4401)
             return
         await websocket.send_json({"type": "ready", "version": __version__})
+        generation = main_token["generation"]
 
         with broadcaster.subscribe() as queue:
             reader = asyncio.create_task(_read_until_closed(websocket))
@@ -316,6 +371,11 @@ def create_app(
                     done, _ = await asyncio.wait(
                         {getter, reader}, timeout=_PING_INTERVAL, return_when=asyncio.FIRST_COMPLETED
                     )
+                    if main_token["generation"] != generation:  # The token was rotated.
+                        getter.cancel()
+                        await websocket.send_json({"type": "error", "message": "The token changed"})
+                        await websocket.close(code=4401)
+                        return
                     if getter in done:
                         await websocket.send_json(getter.result())
                         continue

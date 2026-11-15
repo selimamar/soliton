@@ -132,6 +132,9 @@ class Run:
             ][:20]
         # Added to the final status record, e.g. that a simulation diverged.
         self._status_extra: dict = {}
+        # Asked from the app to stop (see should_stop()).
+        self._stop = threading.Event()
+        self._checks_stop = False
         self._files = RunFiles(self.directory)
         self._lock = threading.RLock()
         self._last_step = -1
@@ -149,8 +152,10 @@ class Run:
 
         self._files.append(self._description)
         if mode == "online":
-            self._uploader = Uploader(self._files, ApiClient(server, token), _say)
+            self._uploader = Uploader(self._files, ApiClient(server, token), _say,
+                                      on_reply=self._on_server_reply)
             self._uploader.start()
+            _refresh_queue_once(ApiClient(server, token))
         else:
             _say(f"saving run {run_id} to {self.directory} (offline); upload it with "
                  "`soliton sync`")
@@ -490,12 +495,36 @@ class Run:
 
     # Ending ---------------------------------------------------------------
 
+    def should_stop(self) -> bool:
+        """True once the run was asked to stop from the app (its Stop
+        button): save a checkpoint and leave the loop, and the run ends as
+        "Stopped from the app". The logger hears of it on its next upload
+        (every few seconds while the run logs). Check it in the loop: a
+        script that never calls it is stopped as by scancel (SIGTERM)."""
+        self._checks_stop = True
+        return self._stop.is_set()
+
+    def _on_server_reply(self, reply: dict) -> None:
+        """The server's answer to an upload: {"stop": true} after the app's
+        Stop button."""
+        if not reply.get("stop") or self._stop.is_set() or self._finished:
+            return
+        self._stop.set()
+        if self._checks_stop:
+            _say("asked to stop from the app: the script stops at its next should_stop() check")
+            return
+        _say("asked to stop from the app; the script doesn't check run.should_stop(), so it is "
+             "stopped as by scancel (SIGTERM)")
+        os.kill(os.getpid(), signal.SIGTERM)
+
     def finish(self, status: str = "finished", message: Optional[str] = None,
                timeout: float = 60) -> None:
         """Marks the run as finished (or "crashed") and uploads what's left,
         waiting up to [timeout] seconds."""
         if status not in ("finished", "crashed"):
             raise ValueError("status must be 'finished' or 'crashed'")
+        if status == "finished" and not message and self._stop.is_set():
+            message = f"Stopped from the app at step {max(self._last_step, 0):,}."
         output = self._output
         if output is not None and not self._finished:
             output.stop()  # The last lines, before the status (outside the lock).
@@ -690,9 +719,41 @@ def _finish_all() -> None:
 
 def _on_sigterm(signum, _frame) -> None:
     for run in list(_active):
-        run.finish("crashed", _sigterm_reason(run._description.get("system")), timeout=15)
+        reason = (STOPPED_BY_SIGTERM_FROM_APP if run._stop.is_set()
+                  else _sigterm_reason(run._description.get("system")))
+        run.finish("crashed", reason, timeout=15)
     signal.signal(signum, signal.SIG_DFL)
     os.kill(os.getpid(), signum)
+
+
+STOPPED_BY_SIGTERM_FROM_APP = (
+    "Stopped from the app. The script doesn't check run.should_stop(), so it was stopped as "
+    "by scancel; check it in the loop to save a checkpoint first."
+)
+
+_queue_refreshed = False
+
+
+def _refresh_queue_once(client: ApiClient) -> None:
+    """Once per process, as a Slurm job starts logging: updates the user's
+    other queued jobs (soliton sbatch) in the background, so the app's
+    queue stays fresh without anything polling Slurm from a login node.
+    Quiet; never slows or breaks the run. SOLITON_REFRESH_QUEUE=0 turns it
+    off."""
+    global _queue_refreshed
+    if _queue_refreshed or not os.environ.get("SLURM_JOB_ID"):
+        return
+    _queue_refreshed = True
+
+    def refresh() -> None:
+        try:
+            from ._queue import refresh_at_job_start
+
+            refresh_at_job_start(client)
+        except Exception:
+            pass
+
+    threading.Thread(target=refresh, name="soliton-queue", daemon=True).start()
 
 
 # SIGTERM this close to the job's time limit is the limit (the job may ask

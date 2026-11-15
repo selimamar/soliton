@@ -58,6 +58,10 @@ class ApiClient {
   Future<Object?> getJson(String path, {Map<String, String>? query}) =>
       _send(() => _http.get(connection.api(path, query), headers: _headers));
 
+  /// Asks the server to do something (no body); returns its answer.
+  Future<Object?> postJson(String path) =>
+      _send(() => _http.post(connection.api(path), headers: _headers));
+
   /// Changes part of a resource; returns the server's answer.
   Future<Object?> patchJson(String path, Map<String, Object?> body) => _send(
     () => _http.patch(
@@ -125,8 +129,14 @@ class ApiClient {
   /// A new job token, replacing any earlier one. The server keeps only its
   /// hash: this is the one time it can be read.
   Future<String> createJobToken() async {
-    final body = await _send(() => _http.post(connection.api('/job-token'), headers: _headers));
-    if (body case {'token': final String token}) return token;
+    if (await postJson('/job-token') case {'token': final String token}) return token;
+    throw const ServerErrorException(200);
+  }
+
+  /// A new main token, replacing the current one, which stops working at
+  /// once (on every device and in every script using it). Shown this once.
+  Future<String> rotateToken() async {
+    if (await postJson('/token/rotate') case {'token': final String token}) return token;
     throw const ServerErrorException(200);
   }
 

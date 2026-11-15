@@ -21,9 +21,7 @@ void main() {
   Future<void> openSettings(WidgetTester tester, {bool connected = true}) async {
     await tester.pumpWidget(
       buildApp(
-        store: MemorySettingsStore({
-          if (connected) 'serverAddress': 'https://runs.example.com',
-        }),
+        store: MemorySettingsStore({if (connected) 'serverAddress': 'https://runs.example.com'}),
         tokens: connected ? MemoryTokenStore('secret') : null,
         overrides: [apiClientFactoryProvider.overrideWithValue(server.clientFor)],
       ),
@@ -75,11 +73,31 @@ void main() {
     expect(find.text('New job token'), findsNothing);
   });
 
+  testWidgets('a new main token retires the old one, and this device switches to it', (
+    tester,
+  ) async {
+    await openSettings(tester);
+    await tester.tap(find.text('New main token'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Make new token'));
+    await tester.pumpAndSettle();
+    expect(find.text('rotated-1'), findsOneWidget, reason: 'shown once, to copy');
+    expect(server.token, 'rotated-1');
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    expect(containerOf(tester).read(connectionProvider)?.token, 'rotated-1');
+    expect(jobSwitch(tester).onChanged, isNotNull, reason: 'still connected, with the new token');
+  });
+
   testWidgets('an older server says it needs updating', (tester) async {
     server.jobToken = null;
     await openSettings(tester);
     expect(find.text('Needs a newer server.'), findsOneWidget);
     expect(jobSwitch(tester).onChanged, isNull);
+    expect(
+      tester.widget<ListTile>(find.widgetWithText(ListTile, 'New main token')).enabled,
+      isFalse,
+    );
   });
 
   testWidgets('only while connected to a server', (tester) async {

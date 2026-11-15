@@ -32,6 +32,7 @@ the computation + soliton logger  ──HTTP──►  soliton-server  ◄──
 | In the computation | In the app |
 |---|---|
 | `soliton.init(name, project=, config=, train_samples=, val_samples=, loss=, total_steps=, total_epochs=, tags=, notes=)` | A card under **Runs**: name, project, host, tags, loss sparkline, progress. Overview: hyperparameters (samples and loss first), progress, time left, cost, tags and notes |
+| `run.should_stop()` in the loop | The **Stop** button on a live run's page: it turns `True` within seconds; save a checkpoint and leave the loop, and the run ends "Stopped from the app" |
 | `run.log({...}, step=, epoch=)` | **Metrics** tab: one chart per known name, the rest under "Other metrics"; log scale and step/epoch axis options |
 | `run.watch(model)` (PyTorch) | **Layers** tab (activation histograms, dead units, gradient norms per layer) and the network diagram on the Overview |
 | `run.log_field`, `log_rollout`, `capture_layers`, `log_eval`, `log_curve` | **Fields** tab: prediction, truth and error maps, rollouts, 3D views, worst validation samples, error against resolution or a parameter |
@@ -63,6 +64,7 @@ and NaN or infinity (shown as such).
 | SIGTERM (Slurm time limit, `scancel`) | Crashed: "Stopped by its Slurm time limit" (or "by SIGTERM"). In a job script Python must get the signal: `exec python ...` and `#SBATCH --signal=B:TERM@60` |
 | Killed outright (out of memory, node failure), or the signal never reached Python | Crashed by the server: "Stopped by its Slurm time limit" a minute after the limit, else "Lost contact" after 10 minutes of silence. It turns live again if data arrives |
 | A later job continues it (`init(id=...)`, the wrapper's `--id`), e.g. from a checkpoint | Live again, whatever the earlier job ended with; its pace (time left, the time-limit alert) counts from where it resumed |
+| The app's Stop button | Finished, "Stopped from the app at step N", once the script sees `run.should_stop()` and leaves its loop; a script that never checks it is ended as by scancel (crashed, "Stopped from the app") |
 | A queued job (`soliton sbatch`) leaves the queue without starting | After `soliton queue`: crashed, with what `sacct` says ("Cancelled before it started.", no alert for a cancel; failed, out of memory...) |
 
 ## Where the data goes
@@ -102,6 +104,7 @@ work around it; check uploads as in "Checking that it works" below.
 | `SOLITON_CAPTURE_OUTPUT` | `1` | `0`: don't send what the script prints |
 | `SOLITON_PRICE_PER_HOUR` | estimated | `0` hides the cost estimate |
 | `SOLITON_HOST` | detected | The host shown in the app |
+| `SOLITON_REFRESH_QUEUE` | `1` | `0`: a starting Slurm job doesn't refresh the user's other queued jobs |
 
 ## Adding monitoring to a computation
 
@@ -110,7 +113,9 @@ work around it; check uploads as in "Checking that it works" below.
    or `run.finish()`. Give `total_steps` (progress, time left),
    `train_samples`, `val_samples` and `loss`. `step` is the global
    optimizer step and never resets; resuming from a checkpoint, save
-   `run.id` in it and pass `id=` to `init`. With DDP, rank 0 only.
+   `run.id` in it and pass `id=` to `init`. With DDP, rank 0 only. Where the
+   script can checkpoint, check `run.should_stop()` in the loop (save, then
+   break), so the app's Stop button stops it cleanly.
 2. **A Python simulation:** `soliton.simulate(name, t_end=..., setup={...},
    monitor=...)`, `sim.log({...}, t=t, dt=dt)` every few steps,
    `sim.log_field` every few hundred, `with sim:`. A steady solve gives
@@ -133,7 +138,8 @@ work around it; check uploads as in "Checking that it works" below.
    It submits, prints sbatch's job id, and shows the job as Queued. A job
    continuing a run passes that run's id: `soliton sbatch --id <run id> ...`.
    `soliton queue` is one `squeue` call: run it when you check, never in a
-   loop (on Sherlock, no polling from login nodes).
+   loop (on Sherlock, no polling from login nodes). Each Soliton job also
+   refreshes the user's other queued jobs once as it starts.
 
 The [skill](../skills/claude-code/soliton/SKILL.md) has a code example for each, job
 script templates for Sherlock, Modal and cloud machines, and how to find
@@ -180,7 +186,8 @@ Every computation in this project reports to Soliton, so I can follow it in
 the Soliton app. Follow /path/to/soliton/docs/for-agents.md (Claude Code or
 Codex: the `soliton` skill, from /path/to/soliton/skills). In short:
 
-- Training scripts: `soliton.init(...)`, `run.log(...)`, `run.watch(model)`.
+- Training scripts: `soliton.init(...)`, `run.log(...)`, `run.watch(model)`,
+  and `if run.should_stop(): save a checkpoint; break` (the app's Stop button).
   Python simulations: `soliton.simulate(...)`, `sim.log(..., t=t)`. Other
   programs: launch them through `monitor_solver.py`. Data: `register_dataset`.
 - The logger is at /path/to/soliton/logger: `pip install` it, or put

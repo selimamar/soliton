@@ -63,6 +63,10 @@ abstract interface class RunRepository {
   /// server. Already gone counts as done.
   Future<void> deleteRun(String runId);
 
+  /// Asks a live run to stop (the Stop button): its script stops at its
+  /// next `run.should_stop()` check. Returns the run as it now is.
+  Future<Run> requestStop(String runId);
+
   /// Forgets a dataset: its description goes, its files aren't touched.
   /// Already gone counts as done.
   Future<void> deleteDataset(String datasetId);

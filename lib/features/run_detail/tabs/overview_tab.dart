@@ -24,6 +24,7 @@ import '../widgets/job_times.dart';
 import '../widgets/output_card.dart';
 import '../widgets/queue_card.dart';
 import '../widgets/resources_card.dart';
+import '../widgets/stop_button.dart';
 
 /// Key facts about a run: size, timing, progress, tags and notes,
 /// hyperparameters and architecture.
@@ -47,6 +48,8 @@ class OverviewTab extends StatelessWidget {
       children: [
         if (run.statusMessage case final message?)
           StatusBanner(message: message, isError: run.status == RunStatus.crashed),
+        if (run.stopRequestedAt != null && run.status == RunStatus.live)
+          StopRequestedBanner(run: run),
         // A crashed run's traceback first: it's why it stopped.
         if (run.status == RunStatus.crashed) OutputCard(run: run),
         if (run.latestLoss != null) _LossHero(run: run),

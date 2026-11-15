@@ -19,6 +19,7 @@ import '../run_detail/widgets/job_times.dart';
 import '../run_detail/widgets/output_card.dart';
 import '../run_detail/widgets/queue_card.dart';
 import '../run_detail/widgets/resources_card.dart';
+import '../run_detail/widgets/stop_button.dart';
 
 /// Where a simulation is (simulated time, or iterations for a steady
 /// solve), how long it has taken and has left, its cost, and its setup.
@@ -37,6 +38,8 @@ class SimulationOverviewTab extends StatelessWidget {
       children: [
         if (run.statusMessage case final message?)
           StatusBanner(message: message, isError: run.status == RunStatus.crashed),
+        if (run.stopRequestedAt != null && run.status == RunStatus.live)
+          StopRequestedBanner(run: run),
         if (run.status == RunStatus.crashed) OutputCard(run: run),
         _Progress(simulation: run),
         _Timing(simulation: run),

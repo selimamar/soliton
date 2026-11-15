@@ -107,7 +107,12 @@ What it does:
   Priority, Resources, in plain words), when Slurm expects to start it, and
   what it asked for. When its script calls `soliton.init()`, the run takes
   its place. `soliton queue` updates what Slurm says of queued jobs, and ends
-  those that left without starting (cancelled, failed).
+  those that left without starting (cancelled, failed); each starting
+  Soliton job also refreshes them once.
+- **Stop** on a live run's page: its script stops at its next
+  `run.should_stop()` check, after saving a checkpoint, and the run ends
+  "Stopped from the app" (a script that doesn't check is stopped as by
+  scancel). No SSH or `scancel` needed.
 - **Resources** on an ended Slurm job's Overview: memory, CPUs, GPUs, GPU
   memory and time it used against what it asked for, with the sbatch options
   to ask for next time (e.g. `--mem=16G -c 4 --time=03:00:00`, to copy) when
@@ -172,7 +177,9 @@ What it does:
 - **Advanced security** (Settings, optional): a separate token for jobs on
   clusters that can only add and update runs and data, so a leaked job
   script or env file can't read your runs, change tags and notes, or delete
-  anything; the main token stays on your devices. See the server README.
+  anything; the main token stays on your devices. And **New main token**, if
+  the main token may have leaked: the old one stops working everywhere. See
+  the server README.
 - **Chart options**: log scale (loss, learning rate, gradient norm), and
   steps or epochs on the x-axis. Saved, like all settings.
 - **Alerts** while the app is open when a run finishes or crashes, or when a

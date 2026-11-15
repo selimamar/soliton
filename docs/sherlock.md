@@ -127,7 +127,10 @@ soliton queue                        # whenever you check: what Slurm says now
 The app shows it as Queued: how long it has waited, why (Priority, Resources,
 a QOS limit...), when Slurm expects to start it if it says, and what it asked
 for. `soliton queue` is a single `squeue` call, not a service, so nothing
-polls Slurm from the login node. A live run that, at its pace, won't finish
+polls Slurm from the login node; each Soliton job also refreshes your other
+queued jobs once, from its compute node, as it starts. A live run's Stop
+button in the app stops it cleanly if the script checks `run.should_stop()`
+(see the logger README), without `scancel`. A live run that, at its pace, won't finish
 before its time limit sends an alert once (also through ntfy), and when a
 job ends its Overview compares what it used with what it asked for, with the
 `--mem`, `-c`, `-G` and `--time` to ask for next time.
@@ -198,6 +201,11 @@ use it. Your phone can't reach it, and it stops at the job's time limit
 
 5. In the app, Settings → Server: address `http://localhost:8100`, and the
    token (`ssh sherlock cat soliton-server/token`).
+
+After **New main token** in the app (Settings → Advanced security), put the
+new token in `$HOME/soliton-server/token` (readable by you only): the old one
+in that file is no longer accepted, and the next server job would hand it to
+jobs through `env.sh`.
 
 The database lives on the node's local disk while the server runs (SQLite
 doesn't belong on a network filesystem) and is copied to

@@ -16,7 +16,8 @@ import 'package:soliton/models/run.dart';
 class FakeServer {
   FakeServer({this.token = 'secret', this.runIds = const {'resnet50-cifar', 'unet-seg'}});
 
-  final String token;
+  /// The main token; rotating it (POST /token/rotate) changes it.
+  String token;
   final Set<String> runIds;
 
   /// Simulates a network failure for every request.
@@ -26,6 +27,7 @@ class FakeServer {
   /// server too old to have them.
   bool? jobToken = false;
   var jobTokensMade = 0;
+  var tokensRotated = 0;
   var requests = 0;
 
   /// The bodies of the edits (PATCH requests) it received.
@@ -61,6 +63,10 @@ class FakeServer {
             notes: body['notes'] as String?,
           )).toJson(),
         );
+      }
+      if (path.sublist(1) case ['token', 'rotate'] when request.method == 'POST') {
+        token = 'rotated-${++tokensRotated}';
+        return _json({'token': token});
       }
       if (path.sublist(1) case ['job-token'] when jobToken != null) {
         if (request.method == 'POST') {

@@ -67,5 +67,8 @@ class EmptyRunRepository implements RunRepository {
   Future<void> deleteRun(String runId) async {}
 
   @override
+  Future<Run> requestStop(String runId) => Future.error(RunNotFoundException(runId));
+
+  @override
   Future<void> deleteDataset(String datasetId) async {}
 }

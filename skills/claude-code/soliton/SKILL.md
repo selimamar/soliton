@@ -71,6 +71,9 @@ with soliton.init(
                         step=step, epoch=epoch)
             optimizer.step(); step += 1
         run.log({"val/loss": val_loss, "val/accuracy": val_acc}, step=step)
+        if run.should_stop():               # the app's Stop button
+            save_checkpoint(model, optimizer, step, run.id)
+            break
 ```
 
 - **Names with their own charts:** `train/loss`, `val/loss`, `val/accuracy`,
@@ -80,6 +83,11 @@ with soliton.init(
   metrics".
 - `step` is the global optimizer step: it never resets. Resuming from a
   checkpoint: save `run.id` in the checkpoint and pass `id=` to `init`.
+- `run.should_stop()` turns `True` when the user presses Stop in the app:
+  check it where the script can save a checkpoint (the end of an epoch, or
+  every N steps) and leave the loop. Use the script's own checkpoint code;
+  if it has none, just `break`. A script that never checks is ended as by
+  scancel.
 - Always give `total_steps` when it's known: without it there's no progress
   bar or time left.
 - DDP: only rank 0 calls `init`, `watch` and `log`.
@@ -109,6 +117,8 @@ Names containing "residual" or "error" are drawn on a log scale; a value
 named `cfl` is drawn with `cfl_limit`. Conserved quantities (mass, energy)
 show how far they drifted. Pass `stop_on_divergence=True` to stop the solver
 at the first NaN (it raises `soliton.Diverged`).
+`sim.should_stop()` is the app's Stop button, as for training: check it where
+the solver can write a restart file, then leave the loop.
 
 ## 2c. Any other program: `scripts/monitor_solver.py`
 
@@ -292,7 +302,8 @@ exec python3 train.py                    # exec: Python must be the job script t
   while it waits, and the run its script starts takes its place. A job
   continuing a run passes that run's id first: `soliton sbatch --id <run
   id> ...`. `python3 -m soliton queue` updates what Slurm says of queued
-  jobs: run it once when you check, never in a loop or `watch`.
+  jobs: run it once when you check, never in a loop or `watch`. Each
+  Soliton job also refreshes the other queued jobs once as it starts.
 - Give `total_steps` (or a simulation's `t_end`): the app then warns the
   user, once per job, when the run won't finish before its time limit.
 - When a job ends, the app's Resources card suggests `--mem`, `-c`, `-G`

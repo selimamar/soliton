@@ -449,6 +449,26 @@ straight to the terminal isn't. Turn it off with `capture_output=False` or
 `SOLITON_CAPTURE_OUTPUT=0`, e.g. when the script prints things that shouldn't
 leave the machine.
 
+## Stopping from the app: `run.should_stop()`
+
+A live run's page in the app has a Stop button. The logger hears of it on
+its next upload (every few seconds while the run logs), and
+`run.should_stop()` turns `True`: save a checkpoint and leave the loop, and
+the run ends as finished, "Stopped from the app at step N".
+
+```python
+for step in range(start, total_steps):
+    ...
+    run.log({"train/loss": loss}, step=step)
+    if run.should_stop():
+        save_checkpoint(model, optimizer, step, run.id)
+        break
+```
+
+Simulations have it too (`sim.should_stop()`). A script that never calls it
+is stopped as by `scancel` instead: the logger sends its own process
+`SIGTERM` (see below), and the run ends as crashed, "Stopped from the app".
+
 ## Stopped jobs
 
 - An exception or Ctrl-C marks the run as crashed, with the error message.
@@ -486,6 +506,12 @@ ones, and ends those that left the queue without starting, with what `sacct`
 says (cancelled, failed). It doesn't keep running: run it when you check.
 Slurm often has no start estimate ("Not estimated") until a job nears the
 front of the queue.
+
+Jobs also refresh the queue themselves: as a Slurm job starts logging, its
+logger does what `soliton queue` does once, in the background, for your other
+queued jobs (not its own, which its run replaces; in an array, only the first
+task). So while you have jobs starting, the queue stays fresh with nothing
+polling Slurm from a login node. `SOLITON_REFRESH_QUEUE=0` turns it off.
 
 ## Try it
 

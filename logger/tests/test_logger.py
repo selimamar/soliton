@@ -545,3 +545,32 @@ def test_the_pde_leads_the_hyperparameters(tmp_path):
     assert hyperparameters["PDE"] == "Darcy flow 2D"
     assert hyperparameters["modes"] == "12"
     run.finish()
+
+
+# Stopping from the app ---------------------------------------------------------
+
+
+def test_a_stop_from_the_app_reaches_should_stop_and_ends_the_run_as_finished(tmp_path):
+    run = offline(tmp_path)
+    run.log({"train/loss": 1.0}, step=41)
+    assert run.should_stop() is False
+    run._on_server_reply({"accepted": 1})
+    assert run.should_stop() is False
+    run._on_server_reply({"accepted": 1, "stop": True})
+    assert run.should_stop() is True
+    run.finish()
+    assert records(run)[-1]["message"] == "Stopped from the app at step 41."
+
+
+def test_a_script_that_never_checks_should_stop_is_stopped_as_by_scancel(tmp_path, monkeypatch):
+    import soliton._run as run_module
+
+    killed = []
+    monkeypatch.setattr(run_module.os, "kill", lambda pid, sig: killed.append(sig))
+    run = offline(tmp_path)
+    run._on_server_reply({"stop": True})
+    assert killed == [run_module.signal.SIGTERM]
+    run._on_server_reply({"stop": True})
+    assert len(killed) == 1, "once"
+    run.finish("crashed", run_module.STOPPED_BY_SIGTERM_FROM_APP)
+    assert records(run)[-1]["message"].startswith("Stopped from the app.")

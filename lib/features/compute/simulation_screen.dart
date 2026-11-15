@@ -16,6 +16,7 @@ import '../run_detail/tabs/system_tab.dart';
 import 'diagnostics_tab.dart';
 import 'simulation_overview_tab.dart';
 import 'simulation_text.dart';
+import '../run_detail/widgets/stop_button.dart';
 
 /// A simulation's tabs, in order; their names are what `?tab=` takes in its
 /// link (e.g. `/compute/kelvin-helmholtz-2048?tab=fields`).
@@ -82,6 +83,7 @@ class SimulationScreen extends ConsumerWidget {
                 label: simulationStatusLabel(loaded),
               ),
               const SizedBox(width: 4),
+              StopButton(run: loaded),
               DeleteButton(
                 kind: DeleteKind.simulation,
                 item: (id: loaded.id, name: loaded.name, live: loaded.status == RunStatus.live),

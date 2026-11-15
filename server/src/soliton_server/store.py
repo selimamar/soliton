@@ -29,6 +29,7 @@ from .db import (
     RunResumeRow,
     RunRow,
     RunSimulationRow,
+    RunStopRow,
     RunSystemRow,
     ServerSettingRow,
 )
@@ -55,6 +56,10 @@ _CHUNK = 500  # Rows per INSERT statement.
 
 class RunNotFound(Exception):
     pass
+
+
+class RunNotLive(Exception):
+    """Only a live run can be asked to stop."""
 
 
 class DatasetNotFound(Exception):
@@ -277,6 +282,8 @@ class Store:
         changes: list[Change] = []
         with self._sessions.begin() as session:
             row = session.get(RunRow, run_id)
+            if row is None and body.updateOnly:
+                raise RunNotFound(run_id)
             if row is not None and body.queued:
                 return self._requeue(session, row, body, now)
             event = "updated"
@@ -349,9 +356,27 @@ class Store:
                 changes = self._take_over_queued(session, run_id, body.system)
             return self._run_json(session, row), [_change(row, event), *changes]
 
+    def request_stop(self, run_id: str) -> tuple[dict, Change]:
+        """Asks a live run to stop (from the app): its logger hears of it on
+        its next upload. Raises RunNotLive for a run that isn't live."""
+        with self._sessions.begin() as session:
+            row = self._find(session, run_id)
+            if row.status != "live":
+                raise RunNotLive(run_id)
+            if session.get(RunStopRow, run_id) is None:
+                session.add(RunStopRow(run_id=run_id, requested_at=self._clock()))
+            session.flush()
+            return self._run_json(session, row), _change(row, "updated")
+
+    def stop_requested(self, run_id: str) -> bool:
+        with self._sessions() as session:
+            return session.get(RunStopRow, run_id) is not None
+
     @classmethod
     def _mark_resume(cls, session: Session, row: RunRow) -> None:
-        """Notes where [row] stands as a new process takes it over."""
+        """Notes where [row] stands as a new process takes it over (and
+        forgets a stop asked of an earlier one)."""
+        session.execute(delete(RunStopRow).where(RunStopRow.run_id == row.id))
         resume = session.get(RunResumeRow, row.id)
         if resume is None:
             resume = RunResumeRow(run_id=row.id)
@@ -494,7 +519,7 @@ class Store:
             change = _change(row, "deleted")
             for table in (MetricPointRow, LayerPointRow, LayerRow, FieldRow, RunItemRow,
                           RunNotesRow, RunSystemRow, RunSimulationRow, DatasetUseRow,
-                          RunOutputRow, RunResumeRow):
+                          RunOutputRow, RunResumeRow, RunStopRow):
                 session.execute(delete(table).where(table.run_id == run_id))
             session.delete(row)
             return change
@@ -524,6 +549,7 @@ class Store:
                         row.status_message = event.message
                         row.ended_at = time
                         row.lost_contact = False
+                        session.execute(delete(RunStopRow).where(RunStopRow.run_id == run_id))
                         change = _change(row, event.status)
                         changes.append(change if event.notify else replace(change, notify=False))
                     if event.diverged and event.status == "crashed":
@@ -933,6 +959,7 @@ class Store:
         notes = session.get(RunNotesRow, row.id)
         system = session.get(RunSystemRow, row.id)
         resume = session.get(RunResumeRow, row.id)
+        stop = session.get(RunStopRow, row.id)
         return {
             "id": row.id,
             "name": row.name,
@@ -951,6 +978,8 @@ class Store:
             "architecture": row.architecture,
             "lossPreview": [encode_float(v) for v in preview],
             "statusMessage": row.status_message,
+            # Asked from the app to stop (until it ends).
+            "stopRequestedAt": iso(stop.requested_at) if stop else None,
             "tags": list(notes.tags) if notes else [],
             "notes": notes.notes if notes else "",
             "system": system.info if system else None,

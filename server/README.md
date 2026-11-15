@@ -97,6 +97,18 @@ own devices. The server keeps only its SHA-256 hash (in the database, so
 it survives restarts); "New job token" replaces it, and turning the setting
 off makes jobs need the main token again.
 
+## Rotating the main token
+
+If the main token may have leaked, **Settings → Advanced security → New main
+token** in the app (or `POST /api/token/rotate`) makes a new one, shown once:
+the old one stops working at once, live connections made with it are
+closed, and the app you did it from switches over. The server keeps the new
+token's hash in its database, with the hashes of every token rotated away,
+which are never accepted again. If the token came from the data folder's
+`token` file, the file is rewritten (so `--show-token` stays right). If it
+came from `SOLITON_TOKEN`, that variable is now stale: set it to the new
+token (a different value you set on purpose replaces the rotated one).
+
 ## API
 
 Every endpoint except `/api/health` needs `Authorization: Bearer <token>`:
@@ -110,14 +122,16 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
 |---|---|
 | `GET /api/health` | `{"status": "ok", "version": ...}`, public |
 | `GET /api/session` | Checks the token; `jobToken`: whether a job token is set |
+| `POST /api/token/rotate` | A new main token, `{"token": ...}`, shown this once; the old one stops working |
 | `POST /api/job-token` | Makes a new job token (replacing any), `{"token": ...}`, shown this once |
 | `DELETE /api/job-token` | Removes the job token |
 | `GET /api/runs?status=` | All runs (or those with that status), newest first, each with a 60-point loss preview. Job token: `status=queued` only |
 | `GET /api/runs/{id}` | One run (404 if unknown) |
-| `PUT /api/runs/{id}` | Creates or updates a run's description (the logger does this). Job token too |
+| `PUT /api/runs/{id}` | Creates or updates a run's description (the logger does this). `queued: true` for a job still waiting (`soliton sbatch`); with `updateOnly: true`, 404 instead of creating it. Job token too |
+| `POST /api/runs/{id}/stop` | Asks a live run to stop (the app's Stop button); 409 if it isn't live. Its logger's next upload hears `{"stop": true}` |
 | `PATCH /api/runs/{id}` | Sets its `tags` and/or `notes` (the app does this; below) |
 | `DELETE /api/runs/{id}` | Deletes a run and its data |
-| `POST /api/runs/{id}/events` | A batch of events from the logger (below). Job token too |
+| `POST /api/runs/{id}/events` | A batch of events from the logger (below); answers `{"accepted": n}`, plus `"stop": true` once the run was asked to stop. Job token too |
 | `GET /api/runs/{id}/metrics?maxPoints=1000` | Every metric, downsampled keeping spikes and NaN |
 | `GET /api/runs/{id}/layers?maxPoints=500` | Per-layer statistics, in model order |
 | `GET /api/runs/{id}/grad-norms` | Each layer's latest gradient norm |

@@ -193,3 +193,36 @@ def test_how_jobs_that_left_the_queue_end():
     assert ended_status("COMPLETED")[0] == "finished"
     assert ended_status("RUNNING") is None
     assert ended_status(None) is None
+
+
+def test_a_starting_job_refreshes_the_queue_but_not_its_own_job():
+    from soliton._queue import refresh_at_job_start
+
+    server = FakeServer([queued("waiting", "52340117"), queued("mine", "52340300")])
+    assert refresh_at_job_start(server, {"SLURM_JOB_ID": "52340300"}, FakeSlurm()) is True
+    assert [run_id for run_id, _ in server.puts] == ["waiting"], "its own run takes its place"
+    assert server.puts[0][1]["updateOnly"] is True
+
+
+def test_only_the_first_task_of_an_array_refreshes_and_it_can_be_turned_off():
+    from soliton._queue import refresh_at_job_start
+
+    server = FakeServer([queued("waiting", "52340117")])
+    array = {"SLURM_JOB_ID": "9", "SLURM_ARRAY_JOB_ID": "8", "SLURM_ARRAY_TASK_ID": "3",
+             "SLURM_ARRAY_TASK_MIN": "1"}
+    assert refresh_at_job_start(server, array, FakeSlurm()) is False
+    assert refresh_at_job_start(server, {"SLURM_JOB_ID": "9", "SOLITON_REFRESH_QUEUE": "0"},
+                                FakeSlurm()) is False
+    assert refresh_at_job_start(server, {}, FakeSlurm()) is False
+    assert server.puts == []
+
+
+def test_a_queued_run_that_was_replaced_meanwhile_is_skipped():
+    class Replaced(FakeServer):
+        def put_run(self, run_id, body):
+            raise LookupError("gone")
+
+    server = Replaced([queued("waiting", "52340117"), queued("cancelled", "52339999")])
+    slurm = FakeSlurm(sacct={"52339999": "sherlock|CANCELLED by 1\n"})
+    assert refresh(server, slurm, now=NOW, say=lambda _: None) == 2
+    assert server.events[0][0] == "cancelled", "the others still go on"

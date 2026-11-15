@@ -136,6 +136,17 @@ class ApiRunRepository implements RunRepository {
   Future<void> deleteRun(String runId) => _client.delete(_runPath(runId));
 
   @override
+  Future<Run> requestStop(String runId) async {
+    try {
+      return Run.fromJson(
+        await _client.postJson('${_runPath(runId)}/stop') as Map<String, Object?>,
+      );
+    } on NotFoundException {
+      throw RunNotFoundException(runId);
+    }
+  }
+
+  @override
   Future<void> deleteDataset(String datasetId) =>
       _client.delete('/datasets/${Uri.encodeComponent(datasetId)}');
 
