@@ -3,12 +3,28 @@ name = "soliton-server"
 version = "0.1.0"
 description = "Soliton server: stores training runs and serves them to the app."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.115",
   "uvicorn[standard]>=0.30",
   "sqlalchemy>=2.0",
 ]
+keywords = ["deep learning", "training", "monitoring", "simulation", "fastapi"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Framework :: FastAPI",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: System :: Monitoring",
+]
+
+[project.urls]
+Homepage = "https://github.com/selimamar/soliton"
+Documentation = "https://github.com/selimamar/soliton/blob/main/server/README.md"
+Issues = "https://github.com/selimamar/soliton/issues"
 
 [project.optional-dependencies]
 postgres = ["psycopg[binary]>=3.2"]

@@ -60,3 +60,7 @@ soliton-runs/
 soliton-data/
 # Local launch config with machine-specific paths
 /.claude/launch.json
+# Signing keys and their passwords (docs/releasing.md), wherever they are
+key.properties
+*.jks
+*.keystore

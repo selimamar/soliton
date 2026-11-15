@@ -430,3 +430,8 @@ first start and deletes the old copy. Disconnecting deletes it everywhere.
     backup)~~
 16. Next ideas: accounts for several people,
     native push (APNs/FCM), signing the Apple apps with a developer team
+
+## License
+
+MIT: see [LICENSE](LICENSE). The bundled fonts keep their own licence, the
+SIL Open Font License (`assets/fonts/OFL-*.txt`).

@@ -17,9 +17,31 @@ It has three parts:
 your job + logger  ──►  server  ◄──  the app (phone, tablet, Mac, browser)
 ```
 
-## 1. Open the app
+## 1. Install the app
 
-From this repository, after the one-time setup in the
+**On a Mac**, with [Homebrew](https://brew.sh):
+
+```bash
+brew install --cask selimamar/tap/soliton
+```
+
+`brew upgrade` installs new versions. Soliton isn't notarised by Apple, so
+macOS blocks it the first time: open it once, then choose **System Settings →
+Privacy & Security → Open Anyway**. After each update, macOS also asks once
+whether Soliton may use its keychain (where it keeps the server's token):
+choose **Always Allow**. Without Homebrew, download
+`Soliton-<version>.zip` from the
+[latest release](https://github.com/selimamar/soliton/releases/latest),
+unzip it and move `Soliton.app` to Applications.
+
+**On Android**, open the
+[latest release](https://github.com/selimamar/soliton/releases/latest) on the
+phone and download `Soliton-<version>.apk`. Opening it asks you to allow
+installing apps from your browser (or file manager) once. A newer APK
+installs over the old one and keeps your settings.
+
+**From this repository** (iPhone, iPad, the browser, or a build of your
+own), after the one-time setup in the
 [README](../README.md#setting-up-everything-stays-in-this-folder):
 
 ```bash
@@ -28,9 +50,11 @@ tool/run_web.sh          # in a browser, at http://localhost:8787
 ```
 
 `flutter run -d macos` opens it as a Mac app, and `flutter run` puts it on a
-connected phone. With no server connected, the app is empty and says "Not
-connected to a server". To look around first, turn on **Settings → Demo
-data**: made-up runs to explore every screen.
+connected phone.
+
+With no server connected, the app is empty and says "Not connected to a
+server". To look around first, turn on **Settings → Demo data**: made-up
+runs to explore every screen.
 
 ## 2. Have a server
 
