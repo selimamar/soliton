@@ -96,8 +96,9 @@ the database.
   `SOLITON_DATABASE_URL`) and creates nothing else.
 - **From the app**: Settings → Storage → **Download a backup**
   (`GET /api/storage/backup`, main token only) sends the same copy: to the
-  Downloads folder on a Mac, the share sheet on a phone (Save to Files,
-  AirDrop, Drive), a download in a browser. The server makes it next to the
+  Downloads folder on a Mac, the share sheet on an iPhone (Save to Files,
+  AirDrop), Android's "Save to…" screen (Downloads, Drive), a download in
+  a browser. The app's own temporary copy is removed once it is saved. The server makes it next to the
   database, refuses if the disk hasn't room for it, and removes it from the
   disk as it sends it, so nothing is left behind even if the download stops.
 

@@ -220,7 +220,7 @@ What it does:
   (SQLite). The server can also thin runs by itself
   (`SOLITON_THIN_AFTER_DAYS`). A thinned run says so on its Overview.
   **Download a backup** of the whole database (to Downloads on a Mac, the
-  share sheet on a phone), or make one on the server with
+  share sheet on an iPhone, Android's "Save to…" screen), or make one on the server with
   `soliton-server --backup <folder>`, safe while it runs
   ([Backups](server/README.md#backups)).
 - **Several servers**: Settings → Server keeps a list (a lab server, the

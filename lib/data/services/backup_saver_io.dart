@@ -1,7 +1,7 @@
 import 'dart:io';
-
 import 'dart:ui' show Rect;
 
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:share_plus/share_plus.dart';
 
 import 'backup_saver.dart';
@@ -13,12 +13,16 @@ class _IoBackupSaver extends BackupSaver {
 
   static bool get _shares => Platform.isIOS || Platform.isAndroid;
 
+  /// Android's "Save to…" screen (MainActivity.kt).
+  static const _android = MethodChannel('soliton/save_file');
+
   @override
   String get destination =>
       _shares ? "you'll choose where it goes" : 'it goes to your Downloads folder';
 
   @override
   Future<String?> save(String fileName, Stream<List<int>> bytes, {Rect? origin}) async {
+    if (Platform.isAndroid) return _saveOnAndroid(fileName, bytes);
     if (_shares) return _share(fileName, bytes, origin);
     final downloads = _downloads();
     if (!downloads.existsSync()) throw const FileSystemException('No Downloads folder');
@@ -32,6 +36,30 @@ class _IoBackupSaver extends BackupSaver {
       rethrow;
     }
     return 'Saved to Downloads as ${target.uri.pathSegments.last}.';
+  }
+
+  /// A copy in the app's own temporary folder (private to the app), copied
+  /// by Android to where the person picks, then removed. The share sheet
+  /// would keep another copy in the app's cache until the next share.
+  Future<String?> _saveOnAndroid(String fileName, Stream<List<int>> bytes) async {
+    final folder = await Directory.systemTemp.createTemp('soliton-backup-');
+    try {
+      final file = File('${folder.path}/$fileName');
+      await _write(file, bytes);
+      final saved = await _android.invokeMethod<String>('save', {
+        'path': file.path,
+        'name': fileName,
+        'mimeType': 'application/vnd.sqlite3',
+      });
+      if (saved == null) return 'Backup not saved.';
+      return saved.isEmpty ? 'Backup saved.' : 'Saved as $saved.';
+    } finally {
+      try {
+        await folder.delete(recursive: true);
+      } on FileSystemException {
+        // The system cleans its temporary folder by itself.
+      }
+    }
   }
 
   /// A copy in the app's own temporary folder (private to the app), shared,

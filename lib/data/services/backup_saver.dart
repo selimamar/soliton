@@ -8,11 +8,11 @@ import 'backup_saver_io.dart' if (dart.library.js_interop) 'backup_saver_web.dar
 /// the person can keep it:
 ///
 /// - Mac: the Downloads folder.
-/// - iPhone, iPad and Android: the share sheet (Save to Files, AirDrop,
-///   Drive…), from a copy in the app's own temporary folder, removed after.
-///   On Android the share sheet also keeps its own copy in the app's
-///   private cache (the app chosen may still be reading it), replaced by
-///   the next share and cleared by the system when space runs low.
+/// - iPhone and iPad: the share sheet (Save to Files, AirDrop…), from a copy
+///   in the app's own temporary folder, removed after.
+/// - Android: its "Save to…" screen (Downloads, Drive…), from such a copy
+///   too (MainActivity.kt). Not the share sheet: it would keep another copy
+///   in the app's cache until the next share.
 /// - Web: the browser's download.
 ///
 /// A backup holds everything the server stores, so it is never left
