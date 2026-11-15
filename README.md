@@ -157,7 +157,9 @@ What it does:
   Fourier modes × width) or a scatter of two metrics (error against cost).
 - **Live updates**: charts and the list refresh as the server receives data.
 - **Compare**: pick up to six runs on the runs list to overlay their curves,
-  and see the fields they share side by side on one colour scale.
+  see only the settings that differ between them (the rest fold away), and
+  see the fields they share side by side on one colour scale.
+
 - **Output**: the end of what a run's script printed, on its Overview; for
   a crashed run, first thing, with the traceback, folded away until the
   arrow on the card shows it (for every crashed run, until hidden again).

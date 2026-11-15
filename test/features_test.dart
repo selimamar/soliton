@@ -28,6 +28,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(Uri.parse(locationOf(tester)).queryParameters['runs'], 'resnet50-cifar,gpt-tiny');
       expect(find.text('Summary'), findsOneWidget);
+      expect(find.text('Settings that differ'), findsOneWidget);
+      // Below the settings: scroll to the curves.
+      await tester.scrollUntilVisible(find.text('Train loss'), 200, scrollable: visibleList());
       expect(find.text('Train loss'), findsOneWidget);
       final chart = tester.widget<LineChartCard>(find.byType(LineChartCard).first);
       expect(chart.lines.map((l) => l.label), ['resnet50-cifar', 'gpt-tiny']);

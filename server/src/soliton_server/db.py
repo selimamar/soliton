@@ -1,8 +1,8 @@
 """Database tables. Works with SQLite (local) and PostgreSQL (server).
 
-Tables are created on startup. There are no migrations yet: after a change
-to an existing table, start from a fresh database (new tables are fine:
-they are created in an existing database too).
+Tables are created on startup, and existing databases are brought up to
+date by migrations (see migrations.py): a change to an existing table here
+needs one there.
 """
 
 from __future__ import annotations
@@ -259,6 +259,15 @@ class RunStopRow(Base):
     requested_at: Mapped[datetime] = mapped_column(UtcDateTime)
 
 
+class SchemaVersionRow(Base):
+    """Which migration the database is at (one row; see migrations.py)."""
+
+    __tablename__ = "schema_version"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    version: Mapped[int] = mapped_column(Integer)
+
+
 class ServerSettingRow(Base):
     """Settings made from the app, e.g. the job token's hash. New tables are
     created on start, so existing databases get this one too."""
@@ -286,5 +295,8 @@ def make_engine(url: str) -> Engine:
 
 
 def make_sessionmaker(engine: Engine) -> sessionmaker:
-    Base.metadata.create_all(engine)
+    """Brings the database up to date (migrations.py), then sessions on it."""
+    from .migrations import migrate
+
+    migrate(engine)
     return sessionmaker(engine, expire_on_commit=False)

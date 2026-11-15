@@ -199,7 +199,8 @@ offline runs). The full logger API is in [logger/README.md](../logger/README.md)
 ## 6. Everyday things
 
 - **Compare runs**: pick up to six on the runs list (the pick button, or a
-  long press) and open Compare.
+  long press) and open Compare: their curves together, and "Settings that
+  differ", only the hyperparameters that changed between them.
 - **Organize**: tag runs and write notes on their Overview; group the list
   by project, model, dataset, tag or host; order it by a metric.
 - **Sweeps**: the grid button on the runs list shows a project's runs over

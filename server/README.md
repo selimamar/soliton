@@ -252,6 +252,21 @@ up in logs), get `{"type": "ready"}`, then one message per change:
 The server sends `{"type": "ping"}` when idle, to keep proxies from closing
 the connection. Interactive API docs are at `/docs` while the server runs.
 
+## Database migrations
+
+Updating the server keeps everything already stored. On every start it
+creates any new tables and runs the migrations (`src/soliton_server/migrations.py`)
+that the database hasn't had yet, in order; the database records its version
+in a `schema_version` table. A database from before migrations existed counts
+as version 0. A database a newer server already upgraded is refused, with a
+message to update the server, rather than used with a layout this one doesn't
+know.
+
+To change an existing table: change its model in `db.py`, and append a
+`Migration` with the next version doing the same to existing databases (for
+example `add_column(connection, "runs", Column("color", String(16), server_default="none"))`).
+Never edit or reorder released migrations. A new table needs none.
+
 ## Tests
 
 ```bash

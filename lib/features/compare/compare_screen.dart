@@ -24,6 +24,7 @@ import '../../shared/widgets/spaced_list_view.dart';
 import '../../shared/widgets/exportable.dart';
 import '../../shared/widgets/status_chip.dart';
 import '../run_detail/widgets/field_heatmap.dart';
+import 'settings_diff.dart';
 
 /// Two or more runs side by side: a summary, then their loss and accuracy
 /// curves in the same charts. Open it from the runs list ("Compare runs").
@@ -125,6 +126,12 @@ class _Comparison extends ConsumerWidget {
     return SpacedListView(
       children: [
         _Summary(runs: runs),
+        if (runs.length > 1)
+          SettingsDiffCard(
+            runs: [for (final r in runs) r.run],
+            labels: [for (final r in runs) r.label],
+            colors: [for (final r in runs) r.color],
+          ),
         // Epoch counts differ between runs, so the x-axis is always steps.
         const ChartControls(showXAxis: false),
         LineChartCard(title: 'Train loss', logScale: log, lines: linesFor(MetricKeys.trainLoss)),
