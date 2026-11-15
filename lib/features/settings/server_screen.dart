@@ -6,12 +6,15 @@ import '../../app/routes.dart';
 import '../../data/providers.dart';
 import '../../data/services/api_client.dart';
 import '../../data/services/live_updates.dart';
+import '../../data/services/saved_servers.dart';
 import '../../data/services/server_connection.dart';
 import '../../shared/widgets/section_card.dart';
 import '../../shared/widgets/spaced_list_view.dart';
 
-/// Connect to a Soliton server (the app's "login"), or go back to demo
-/// data. The address and token are checked before they are saved.
+/// The Soliton servers the app knows: switch between them, rename or remove
+/// them, or add one (its address and token are checked before they are
+/// saved). Adding a server already in the list (the same address) replaces
+/// its token.
 class ServerScreen extends ConsumerStatefulWidget {
   const ServerScreen({super.key});
 
@@ -20,15 +23,16 @@ class ServerScreen extends ConsumerStatefulWidget {
 }
 
 class _ServerScreenState extends ConsumerState<ServerScreen> {
-  late final ServerConnection? _initial = ref.read(connectionProvider);
-  late final _address = TextEditingController(text: _initial?.address ?? '');
-  late final _token = TextEditingController(text: _initial?.token ?? '');
+  final _name = TextEditingController();
+  final _address = TextEditingController();
+  final _token = TextEditingController();
   var _hideToken = true;
   var _checking = false;
   String? _error;
 
   @override
   void dispose() {
+    _name.dispose();
     _address.dispose();
     _token.dispose();
     super.dispose();
@@ -69,14 +73,14 @@ class _ServerScreenState extends ConsumerState<ServerScreen> {
       });
       return;
     }
-    ref.read(connectionProvider.notifier).connect(connection);
+    ref.read(serversProvider.notifier).connect(connection, name: _name.text);
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text('Connected to ${connection.address}')));
     context.go(AppRoutes.runs);
   }
 
   void _disconnect() {
-    ref.read(connectionProvider.notifier).disconnect();
+    ref.read(serversProvider.notifier).disconnect();
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Disconnected.')));
     context.go(AppRoutes.runs);
   }
@@ -84,23 +88,39 @@ class _ServerScreenState extends ConsumerState<ServerScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final connection = ref.watch(connectionProvider);
+    final list = ref.watch(serversProvider);
     final typed = ServerConnection.parse(_address.text, 'x');
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Server')),
+      appBar: AppBar(title: const Text('Servers')),
       body: LayoutBuilder(
         builder: (context, constraints) => ListView(
           padding: centeredPadding(constraints.maxWidth, const EdgeInsets.all(16)),
           children: [
-            if (connection != null) ...[
-              _ConnectedCard(connection: connection, onDisconnect: _disconnect),
+            if (list.servers.isNotEmpty) ...[
+              _ServerListCard(list: list, onDisconnect: _disconnect),
               const SizedBox(height: 24),
             ],
             Text(
+              list.servers.isEmpty ? 'Connect a server' : 'Add a server',
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
               'Run the Soliton server, then enter its address and token. On the server, '
-              'print the token with: soliton-server --show-token',
+              'print the token with: soliton-server --show-token. A server already in the list '
+              '(the same address) gets the new token.',
               style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _name,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Name (optional)',
+                hintText: 'e.g. Sherlock test, Lab server',
+                border: OutlineInputBorder(),
+              ),
             ),
             const SizedBox(height: 16),
             TextField(
@@ -157,7 +177,7 @@ class _ServerScreenState extends ConsumerState<ServerScreen> {
                       dimension: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : Text(connection == null ? 'Connect' : 'Save and reconnect'),
+                  : const Text('Connect'),
             ),
           ],
         ),
@@ -166,10 +186,12 @@ class _ServerScreenState extends ConsumerState<ServerScreen> {
   }
 }
 
-class _ConnectedCard extends ConsumerWidget {
-  const _ConnectedCard({required this.connection, required this.onDisconnect});
+/// The servers the app knows: tap one to show it; rename or remove it from
+/// its menu. The current one says how its live updates are doing.
+class _ServerListCard extends ConsumerWidget {
+  const _ServerListCard({required this.list, required this.onDisconnect});
 
-  final ServerConnection connection;
+  final ServerList list;
   final VoidCallback onDisconnect;
 
   @override
@@ -181,18 +203,134 @@ class _ConnectedCard extends ConsumerWidget {
       LiveStatus.rejected => 'The server rejected the token',
       LiveStatus.off => 'Not connected',
     };
+    final servers = ref.read(serversProvider.notifier);
     return SectionCard(
-      title: 'Connected server',
+      title: list.servers.length == 1 ? 'Server' : 'Servers',
+      padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(connection.address, style: theme.textTheme.titleMedium),
-          const SizedBox(height: 4),
-          Text(status, style: theme.textTheme.bodySmall),
-          const SizedBox(height: 12),
-          OutlinedButton(onPressed: onDisconnect, child: const Text('Disconnect')),
+          if (list.servers.length > 1)
+            ListTile(
+              leading: Icon(
+                list.showsAll ? Icons.radio_button_checked : Icons.radio_button_off,
+                color: list.showsAll ? theme.colorScheme.primary : null,
+              ),
+              title: const Text('All servers'),
+              subtitle: Text(
+                list.showsAll
+                    ? 'Every server\'s runs together\n$status'
+                    : 'Every server\'s runs together',
+              ),
+              isThreeLine: list.showsAll,
+              onTap: list.showsAll
+                  ? null
+                  : () {
+                      servers.switchTo(ServerList.allId);
+                      ScaffoldMessenger.of(context)
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(const SnackBar(content: Text('Showing all servers')));
+                    },
+            ),
+          for (final server in list.servers)
+            ListTile(
+              leading: Icon(
+                server.id == list.currentId ? Icons.radio_button_checked : Icons.radio_button_off,
+                color: server.id == list.currentId ? theme.colorScheme.primary : null,
+              ),
+              title: Text(server.name),
+              subtitle: Text(
+                server.id == list.currentId ? '${server.address}\n$status' : server.address,
+              ),
+              isThreeLine: server.id == list.currentId,
+              onTap: server.id == list.currentId
+                  ? null
+                  : () {
+                      servers.switchTo(server.id);
+                      ScaffoldMessenger.of(context)
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(SnackBar(content: Text('Showing ${server.name}')));
+                    },
+              trailing: PopupMenuButton<String>(
+                tooltip: 'More for ${server.name}',
+                onSelected: (action) => action == 'rename'
+                    ? _rename(context, servers, server)
+                    : _remove(context, servers, server),
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'rename', child: Text('Rename')),
+                  PopupMenuItem(value: 'remove', child: Text('Remove')),
+                ],
+              ),
+            ),
+          if (list.currentId != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton(onPressed: onDisconnect, child: const Text('Disconnect')),
+              ),
+            ),
         ],
       ),
     );
   }
+
+  Future<void> _rename(BuildContext context, Servers servers, SavedServer server) async {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => _RenameDialog(initial: server.name),
+    );
+    if (name != null) servers.rename(server.id, name);
+  }
+
+  Future<void> _remove(BuildContext context, Servers servers, SavedServer server) async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Remove ${server.name}?'),
+        content: const Text(
+          'The app forgets its address and token on this device. Its runs stay on the server.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Remove')),
+        ],
+      ),
+    );
+    if (yes == true) servers.remove(server.id);
+  }
+}
+
+class _RenameDialog extends StatefulWidget {
+  const _RenameDialog({required this.initial});
+
+  final String initial;
+
+  @override
+  State<_RenameDialog> createState() => _RenameDialogState();
+}
+
+class _RenameDialogState extends State<_RenameDialog> {
+  late final _name = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Rename server'),
+    content: TextField(
+      controller: _name,
+      autofocus: true,
+      decoration: const InputDecoration(labelText: 'Name'),
+      onSubmitted: (value) => Navigator.pop(context, value),
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+      TextButton(onPressed: () => Navigator.pop(context, _name.text), child: const Text('Save')),
+    ],
+  );
 }

@@ -11,6 +11,7 @@ import 'package:soliton/data/providers.dart';
 import 'package:soliton/data/run_repository.dart';
 import 'package:soliton/data/services/api_client.dart';
 import 'package:soliton/data/services/live_updates.dart';
+import 'package:soliton/data/services/saved_servers.dart';
 import 'package:soliton/data/services/server_connection.dart';
 import 'package:soliton/data/services/settings_store.dart';
 import 'package:soliton/data/services/token_store.dart';
@@ -196,8 +197,8 @@ void main() {
       expect(locationOf(tester), '/');
       expect(find.text('All · 2'), findsOneWidget);
       expect(find.textContaining('Demo data.'), findsNothing);
-      expect(store.getString('serverAddress'), 'https://runs.example.com');
-      expect(tokens.token, 'secret');
+      expect(store.getString('servers'), contains('https://runs.example.com'));
+      expect(ServerList.decodeTokens(tokens.token).values, ['secret']);
       expect(store.getString('serverToken'), isNull, reason: 'the token is kept apart');
       expect(sockets.opened.single.uri.toString(), 'wss://runs.example.com/api/live');
 
@@ -218,7 +219,7 @@ void main() {
 
       expect(find.text('The server rejected this token.'), findsOneWidget);
       expect(locationOf(tester), '/settings/server');
-      expect(store.getString('serverAddress'), isNull);
+      expect(store.getString('servers'), isNull);
     });
 
     testWidgets('an unreachable server is reported', (tester) async {
@@ -234,7 +235,9 @@ void main() {
       expect(find.textContaining('Enter an address like'), findsOneWidget);
     });
 
-    testWidgets('disconnecting shows nothing, with demo data off', (tester) async {
+    testWidgets('disconnecting shows nothing, with demo data off, and keeps the server', (
+      tester,
+    ) async {
       final store = loggedIn();
       final tokens = MemoryTokenStore('secret');
       await tester.pumpWidget(app(store, tokens));
@@ -243,7 +246,7 @@ void main() {
 
       routerOf(tester).go('/settings/server');
       await tester.pumpAndSettle();
-      expect(find.text('Connected server'), findsOneWidget);
+      expect(find.text('runs.example.com'), findsOneWidget, reason: 'named after its host');
       await tester.tap(find.text('Disconnect'));
       await tester.pumpAndSettle();
 
@@ -254,8 +257,9 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('Not connected to a server.'), findsOneWidget, reason: section);
       }
-      expect(store.getString('serverAddress'), isNull);
-      expect(tokens.token, isNull);
+      expect(store.getString('currentServer'), isNull);
+      expect(store.getString('servers'), contains('https://runs.example.com'), reason: 'kept');
+      expect(ServerList.decodeTokens(tokens.token).values, ['secret']);
       expect(sockets.opened.single.closed, isTrue);
     });
 
@@ -333,7 +337,7 @@ void main() {
       expect(await loadServerToken(_BrokenTokenStore(), MemorySettingsStore()), isNull);
     });
 
-    test('connecting saves it apart; disconnecting deletes it everywhere', () async {
+    test('connecting saves it apart; removing the server forgets it everywhere', () async {
       // As if moving an old token failed at startup: it's still in the settings.
       final settings = MemorySettingsStore({'serverToken': 'old'});
       final tokens = MemoryTokenStore();
@@ -344,21 +348,21 @@ void main() {
         ],
       );
       addTearDown(container.dispose);
-      final notifier = container.read(connectionProvider.notifier);
+      final notifier = container.read(serversProvider.notifier);
 
       notifier.connect(connection());
       await pumpEventQueue();
-      expect(tokens.token, 'secret');
+      expect(ServerList.decodeTokens(tokens.token).values, ['secret']);
       expect(settings.getString('serverToken'), isNull);
-      expect(settings.getString('serverAddress'), 'https://runs.example.com');
+      expect(settings.getString('servers'), contains('https://runs.example.com'));
 
       settings.setString('serverToken', 'old').ignore();
-      notifier.disconnect();
+      notifier.remove(container.read(serversProvider).currentId!);
       await pumpEventQueue();
       expect(container.read(connectionProvider), isNull);
       expect(tokens.token, isNull);
       expect(settings.getString('serverToken'), isNull);
-      expect(settings.getString('serverAddress'), isNull);
+      expect(settings.getString('servers'), '[]');
     });
 
     test('a keyring that never answers gives up, so the app still starts', () async {
@@ -373,7 +377,7 @@ void main() {
         overrides: [tokenStoreProvider.overrideWithValue(_BrokenTokenStore())],
       );
       addTearDown(container.dispose);
-      container.read(connectionProvider.notifier).connect(connection());
+      container.read(serversProvider.notifier).connect(connection());
       await pumpEventQueue();
       expect(container.read(connectionProvider)?.token, 'secret');
     });

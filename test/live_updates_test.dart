@@ -202,10 +202,11 @@ void main() {
   testWidgets('a new login closes the old connection', (tester) async {
     final container = loggedIn();
     await tester.pump();
-    container.read(connectionProvider.notifier).disconnect();
+    container.read(serversProvider.notifier).disconnect();
     await tester.pump();
-    expect(sockets.opened.single.closed, isTrue);
+    // The status first: it settles the change from the server list.
     expect(container.read(liveUpdatesProvider), LiveStatus.off);
+    expect(sockets.opened.single.closed, isTrue);
     await done(tester);
   });
 }

@@ -17,6 +17,7 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
     final connection = ref.watch(connectionProvider);
+    final servers = ref.watch(serversProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -53,13 +54,23 @@ class SettingsScreen extends ConsumerWidget {
             for (final style in AppStyle.values) _StyleTile(style: style),
             const _SectionHeader('Data source'),
             ListTile(
-              leading: Icon(connection == null ? Icons.cloud_off_outlined : Icons.dns_outlined),
-              title: Text(connection == null ? 'Not connected' : 'Server'),
-              subtitle: Text(
-                connection == null
-                    ? 'Connect to your server to see your runs.'
-                    : connection.address,
+              leading: Icon(
+                connection == null && !servers.showsAll
+                    ? Icons.cloud_off_outlined
+                    : Icons.dns_outlined,
               ),
+              title: Text(switch (servers.current) {
+                final server? => server.name,
+                null when servers.showsAll => 'All servers',
+                null => 'Not connected',
+              }),
+              subtitle: Text(switch ((connection, servers.servers.length)) {
+                (null, final n) when servers.showsAll => "$n servers' runs together",
+                (final connection?, 1) => connection.address,
+                (final connection?, final n) => '${connection.address} · $n servers saved',
+                (null, 0) => 'Connect to your server to see your runs.',
+                (null, final n) => n == 1 ? '1 server saved' : '$n servers saved',
+              }),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => context.go(AppRoutes.server),
             ),

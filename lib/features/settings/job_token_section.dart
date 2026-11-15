@@ -98,7 +98,7 @@ class _JobTokenSectionState extends ConsumerState<JobTokenSection> {
     final token = await _call((client) => client.rotateToken());
     if (token == null || connection == null || !mounted) return;
     final rotated = ServerConnection.parse(connection.address, token);
-    if (rotated != null) ref.read(connectionProvider.notifier).connect(rotated);
+    if (rotated != null) ref.read(serversProvider.notifier).connect(rotated);
     await showDialog<void>(
       context: context,
       builder: (_) => _TokenDialog(

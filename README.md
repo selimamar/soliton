@@ -174,6 +174,10 @@ What it does:
   everything it logged from the server; a run that is still running comes
   back with what it logs next. Deleting a dataset only forgets its
   description: the files aren't touched.
+- **Several servers**: Settings → Server keeps a list (a lab server, the
+  Sherlock test server, a local one), each with its own token; tap one to
+  show its runs, or **All servers** to see every server's runs together,
+  live, each marked with its server's name.
 - **Advanced security** (Settings, optional): a separate token for jobs on
   clusters that can only add and update runs and data, so a leaked job
   script or env file can't read your runs, change tags and notes, or delete

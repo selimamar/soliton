@@ -9,54 +9,117 @@ import '../models/run.dart';
 import '../models/run_insights.dart';
 import '../models/run_output.dart';
 import 'api_run_repository.dart';
+import 'combined_run_repository.dart';
 import 'empty_run_repository.dart';
 import 'mock/mock_run_repository.dart';
 import 'run_repository.dart';
 import 'services/api_client.dart';
+import 'services/saved_servers.dart';
 import 'services/server_connection.dart';
 import 'services/settings_store.dart';
 import 'services/token_store.dart';
 
-/// The server the app is connected to, or null for demo data. Saved on the
-/// device: the address in the settings, the token in secure storage
-/// ([SecureTokenStore]; not secure on the web).
-final connectionProvider = NotifierProvider<ConnectionSetting, ServerConnection?>(
-  ConnectionSetting.new,
+/// The servers the app knows, which one it shows, and their tokens. Saved
+/// on the device: the list in the settings, the tokens in secure storage
+/// ([SecureTokenStore]; not secure on the web). Changing the current server
+/// changes [connectionProvider], which everything else follows.
+final serversProvider = NotifierProvider<Servers, ServerList>(Servers.new);
+
+/// The server the app shows, or null (demo data, or nothing).
+final connectionProvider = Provider<ServerConnection?>(
+  (ref) => ref.watch(serversProvider).connection,
 );
 
-class ConnectionSetting extends Notifier<ServerConnection?> {
-  static const _addressKey = 'serverAddress';
-
+class Servers extends Notifier<ServerList> {
   @override
-  ServerConnection? build() {
-    final address = ref.watch(settingsStoreProvider).getString(_addressKey);
-    final token = ref.watch(savedTokenProvider);
-    if (address == null || token == null) return null;
-    return ServerConnection.parse(address, token);
+  ServerList build() {
+    final settings = ref.watch(settingsStoreProvider);
+    return ServerList.load(
+      servers: settings.getString(ServerList.serversKey),
+      current: settings.getString(ServerList.currentKey),
+      legacyAddress: settings.getString(ServerList.legacyAddressKey),
+      savedTokens: ref.watch(savedTokenProvider),
+    );
   }
 
-  void connect(ServerConnection connection) {
-    state = connection;
-    final settings = ref.read(settingsStoreProvider);
-    settings.setString(_addressKey, connection.address).ignore();
-    _save(ref.read(tokenStoreProvider).write(connection.token));
-    // In case moving an old token out of the settings failed at startup.
-    settings.setString(legacyTokenKey, null).ignore();
+  /// Shows [connection]'s server, adding it to the list (named [name], or
+  /// after its host) unless it is there; its token is replaced either way.
+  void connect(ServerConnection connection, {String? name}) {
+    final known = state.servers.where((s) => s.address == connection.address).firstOrNull;
+    final server =
+        known?.copyWith(name: name?.trim().isEmpty ?? true ? null : name!.trim()) ??
+        SavedServer(
+          id: 's${DateTime.now().microsecondsSinceEpoch}',
+          name: name?.trim().isNotEmpty ?? false
+              ? name!.trim()
+              : ServerList.hostOf(connection.address),
+          address: connection.address,
+        );
+    _save(
+      state.copyWith(
+        servers: [
+          for (final s in state.servers) s.id == server.id ? server : s,
+          if (known == null) server,
+        ],
+        currentId: () => server.id,
+        tokens: {...state.tokens, server.id: connection.token},
+      ),
+    );
   }
 
-  /// Back to demo data.
-  void disconnect() {
-    state = null;
+  /// Shows [id]'s server instead ([ServerList.allId]: every server's runs).
+  void switchTo(String id) {
+    if (state.servers.any((s) => s.id == id) ||
+        (id == ServerList.allId && state.servers.isNotEmpty)) {
+      _save(state.copyWith(currentId: () => id));
+    }
+  }
+
+  /// Stops showing a server (demo data, or nothing); the list stays.
+  void disconnect() => _save(state.copyWith(currentId: () => null));
+
+  void rename(String id, String name) {
+    if (name.trim().isEmpty) return;
+    _save(
+      state.copyWith(
+        servers: [for (final s in state.servers) s.id == id ? s.copyWith(name: name.trim()) : s],
+      ),
+    );
+  }
+
+  /// Forgets a server and its token.
+  void remove(String id) => _save(
+    state.copyWith(
+      servers: [
+        for (final s in state.servers)
+          if (s.id != id) s,
+      ],
+      currentId: () => switch (state.currentId) {
+        final current when current == id => null,
+        // "All servers" with one left is just that server's runs: stop.
+        ServerList.allId when state.servers.length <= 2 => null,
+        final current => current,
+      },
+      tokens: {...state.tokens}..remove(id),
+    ),
+  );
+
+  void _save(ServerList list) {
+    state = list;
     final settings = ref.read(settingsStoreProvider);
-    settings.setString(_addressKey, null).ignore();
+    settings.setString(ServerList.serversKey, list.encodeServers()).ignore();
+    settings.setString(ServerList.currentKey, list.currentId).ignore();
+    // What an older app saved, now in the list.
+    settings.setString(ServerList.legacyAddressKey, null).ignore();
     settings.setString(legacyTokenKey, null).ignore();
-    _save(ref.read(tokenStoreProvider).delete());
+    final tokens = ref.read(tokenStoreProvider);
+    _report(list.tokens.isEmpty ? tokens.delete() : tokens.write(list.encodeTokens()));
   }
 
   /// Secure storage can fail (a keychain prompt was refused, say); the
-  /// connection still works until the app quits.
-  void _save(Future<void> saving) => saving.catchError((Object error) {
-    debugPrint('Could not save the server token ($error).');
+  /// servers still work until the app quits.
+  void _report(Future<void> saving) => saving.catchError((Object error) {
+    debugPrint('Could not save the server tokens ($error).');
   }).ignore();
 }
 
@@ -73,10 +136,55 @@ final demoDataProvider = NotifierProvider<Setting<bool>, bool>(
   () => Setting.boolean('demoData', false),
 );
 
-/// Which [RunRepository] the app uses: the server if connected, else demo
-/// data (or nothing, with [demoDataProvider] off). Everything below
-/// refetches when this changes.
+/// The servers whose live updates the app follows, each with the prefix its
+/// runs' ids get in the app (null: one server, ids as they are; see
+/// [CombinedRunRepository]).
+final liveConnectionsProvider = Provider<List<(String?, ServerConnection)>>((ref) {
+  final list = ref.watch(serversProvider);
+  if (list.showsAll) {
+    return [for (final (server, connection) in list.connections) (server.id, connection)];
+  }
+  final connection = ref.watch(connectionProvider);
+  return connection == null ? const [] : [(null, connection)];
+});
+
+/// With "All servers": the names of servers that couldn't be reached the
+/// last time the lists loaded (their runs aren't shown).
+final unreachableServersProvider = NotifierProvider<UnreachableServers, List<String>>(
+  UnreachableServers.new,
+);
+
+class UnreachableServers extends Notifier<List<String>> {
+  @override
+  List<String> build() {
+    ref.watch(serversProvider);
+    return const [];
+  }
+
+  void set(List<String> names) {
+    if (!listEquals(names, state)) state = List.unmodifiable(names);
+  }
+}
+
+/// Which [RunRepository] the app uses: the server if connected, every
+/// server together with "All servers", else demo data (or nothing, with
+/// [demoDataProvider] off). Everything below refetches when this changes.
 final runRepositoryProvider = Provider<RunRepository>((ref) {
+  final list = ref.watch(serversProvider);
+  if (list.showsAll) {
+    final factory = ref.watch(apiClientFactoryProvider);
+    final sources = [
+      for (final (server, connection) in list.connections) (server, factory(connection)),
+    ];
+    ref.onDispose(() {
+      for (final (_, client) in sources) {
+        client.close();
+      }
+    });
+    return CombinedRunRepository([
+      for (final (server, client) in sources) (server, ApiRunRepository(client)),
+    ], onUnreachable: (names) => ref.read(unreachableServersProvider.notifier).set(names));
+  }
   final connection = ref.watch(connectionProvider);
   if (connection == null) {
     return ref.watch(demoDataProvider) ? MockRunRepository() : const EmptyRunRepository();

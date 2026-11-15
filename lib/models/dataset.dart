@@ -130,6 +130,33 @@ class Dataset {
 
   /// "ns2d-vorticity · v3".
   String get title => version.isEmpty ? name : '$name · $version';
+
+  /// The same dataset with its id, and the ids of the runs it names, passed
+  /// through [id] (and another [host]): for showing several servers'
+  /// datasets together.
+  Dataset withIds(String Function(String id) id, {String? host}) => Dataset(
+    id: id(this.id),
+    name: name,
+    version: version,
+    description: description,
+    samples: samples,
+    splits: splits,
+    sampleShape: sampleShape,
+    sizeBytes: sizeBytes,
+    files: files,
+    format: format,
+    location: location,
+    host: host ?? this.host,
+    source: source,
+    fingerprint: fingerprint,
+    system: system,
+    madeBy: madeBy?.withId(id(madeBy!.id)),
+    usedBy: List.unmodifiable([for (final user in usedBy) user.withId(id(user.id))]),
+    variables: variables,
+    previews: previews,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+  );
 }
 
 /// A run or simulation, as a dataset names it.
@@ -157,6 +184,9 @@ class DatasetUser {
   /// Null if the server doesn't have the run (yet).
   final RunStatus? status;
   final bool simulation;
+
+  DatasetUser withId(String id) =>
+      DatasetUser(id: id, name: name, project: project, status: status, simulation: simulation);
 }
 
 /// An array in a dataset, e.g. the vorticity `w`, with its range over the

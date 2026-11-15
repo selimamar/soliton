@@ -52,8 +52,17 @@ its address. From your computer, open a tunnel while you use the app
 ## 3. Connect the app
 
 **Settings → Server** (or **Connect server** on the runs list): the
-server's address and its token. The app checks them, remembers them, and
-shows the server's runs from then on, updating live. The token is kept in
+server's address and its token, and a name if you like. The app checks
+them, remembers them, and shows the server's runs from then on, updating
+live. Add more servers the same way (a lab server, the Sherlock test
+server, one on your laptop): they're listed on that screen, and tapping one
+shows its runs instead. Each keeps its own token; rename or remove them from
+their menu. With two or more, **All servers** at the top of that list shows
+every server's runs together, live: each run's host starts with its server's
+name ("Lab · Sherlock"), and stopping, deleting or tagging a run goes to its
+own server. A server that can't be reached is named above the list, and its
+runs are left out until it's back. Advanced security (tokens) is per server:
+pick one to manage it. The token is kept in
 the Keychain (iPhone, iPad, Mac) or the Android Keystore, not with the other
 settings; in a browser there is no secure place for it. On a Mac, a newly
 built app may ask once to use the keychain.

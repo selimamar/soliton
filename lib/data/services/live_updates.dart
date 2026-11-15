@@ -79,80 +79,116 @@ class RunAlerts extends Notifier<RunAlert?> {
   void show(RunAlert alert) => state = alert;
 }
 
-/// Keeps a WebSocket open to the server and refreshes whatever changed.
+/// Keeps a WebSocket open to the server (to every server, with "All
+/// servers") and refreshes whatever changed.
 ///
 /// The server pushes a message for every change to a run; the affected
 /// providers are invalidated (at most every [refreshDelay], so a busy run
 /// doesn't refetch on every batch) and screens update by themselves.
-/// Reconnects with backoff when the connection drops.
+/// Reconnects with backoff when a connection drops. The status is live once
+/// every connection is, and rejected if any server rejects its token.
 final liveUpdatesProvider = NotifierProvider<LiveUpdates, LiveStatus>(LiveUpdates.new);
+
+/// One server's connection: its socket, its retries, and the prefix its runs'
+/// ids get in the app (see `CombinedRunRepository`).
+class _Link {
+  _Link(this.prefix, this.connection);
+
+  final String? prefix;
+  final ServerConnection connection;
+  LiveSocket? socket;
+  StreamSubscription<String>? subscription;
+  Timer? retryTimer;
+  var attempt = 0;
+  var wasLive = false;
+  var status = LiveStatus.connecting;
+
+  String id(String raw) => prefix == null ? raw : '$prefix~$raw';
+
+  void close() {
+    subscription?.cancel().ignore();
+    subscription = null;
+    socket?.close();
+    socket = null;
+  }
+}
 
 class LiveUpdates extends Notifier<LiveStatus> {
   static const refreshDelay = Duration(milliseconds: 750);
 
-  LiveSocket? _socket;
-  StreamSubscription<String>? _subscription;
-  Timer? _retryTimer;
+  var _links = <_Link>[];
   Timer? _refreshTimer;
   final _changedRuns = <String>{};
   var _refreshList = false;
-  var _attempt = 0;
-  var _wasLive = false;
-  var _generation = 0; // Ignores sockets from a previous connection.
+  var _generation = 0; // Ignores sockets from a previous set of connections.
 
   @override
   LiveStatus build() {
-    final connection = ref.watch(connectionProvider);
+    final connections = ref.watch(liveConnectionsProvider);
     final generation = ++_generation;
+    final links = [for (final (prefix, connection) in connections) _Link(prefix, connection)];
+    _links = links;
     ref.onDispose(() {
       _generation++;
-      _retryTimer?.cancel();
+      for (final link in links) {
+        link.retryTimer?.cancel();
+        link.close();
+      }
       _refreshTimer?.cancel();
       _refreshTimer = null;
-      _closeSocket();
     });
-    _attempt = 0;
-    _wasLive = false;
-    if (connection == null) return LiveStatus.off;
-    _open(connection, generation);
+    if (links.isEmpty) return LiveStatus.off;
+    for (final link in links) {
+      _open(link, generation);
+    }
     return LiveStatus.connecting;
   }
 
-  Future<void> _open(ServerConnection connection, int generation) async {
+  /// The status of all connections together.
+  void _update() {
+    state = _links.any((l) => l.status == LiveStatus.rejected)
+        ? LiveStatus.rejected
+        : _links.every((l) => l.status == LiveStatus.live)
+        ? LiveStatus.live
+        : LiveStatus.connecting;
+  }
+
+  Future<void> _open(_Link link, int generation) async {
     try {
-      final socket = await ref.read(liveSocketConnectorProvider)(connection.liveUri);
+      final socket = await ref.read(liveSocketConnectorProvider)(link.connection.liveUri);
       if (generation != _generation) {
         socket.close();
         return;
       }
-      _socket = socket;
-      _subscription = socket.messages.listen(
-        _onMessage,
-        onError: (Object _) => _lost(connection, generation),
-        onDone: () => _lost(connection, generation),
+      link.socket = socket;
+      link.subscription = socket.messages.listen(
+        (text) => _onMessage(link, text),
+        onError: (Object _) => _lost(link, generation),
+        onDone: () => _lost(link, generation),
         cancelOnError: true,
       );
-      socket.send(jsonEncode({'type': 'auth', 'token': connection.token}));
+      socket.send(jsonEncode({'type': 'auth', 'token': link.connection.token}));
     } catch (_) {
-      if (generation == _generation) _retryLater(connection, generation);
+      if (generation == _generation) _retryLater(link, generation);
     }
   }
 
-  void _lost(ServerConnection connection, int generation) {
-    if (generation != _generation || state == LiveStatus.rejected) return;
-    _closeSocket();
-    _retryLater(connection, generation);
+  void _lost(_Link link, int generation) {
+    if (generation != _generation || link.status == LiveStatus.rejected) return;
+    link.close();
+    _retryLater(link, generation);
   }
 
-  void _retryLater(ServerConnection connection, int generation) {
-    state = LiveStatus.connecting;
-    final delay = Duration(seconds: math.min(60, 1 << math.min(_attempt, 6))); // 1 s … 60 s
-    _attempt++;
-    _retryTimer?.cancel();
-    _retryTimer = Timer(delay, () => _open(connection, generation));
+  void _retryLater(_Link link, int generation) {
+    link.status = LiveStatus.connecting;
+    _update();
+    final delay = Duration(seconds: math.min(60, 1 << math.min(link.attempt, 6))); // 1 s … 60 s
+    link.attempt++;
+    link.retryTimer?.cancel();
+    link.retryTimer = Timer(delay, () => _open(link, generation));
   }
 
-  void _onMessage(String text) {
+  void _onMessage(_Link link, String text) {
     final Object? message;
     try {
       message = jsonDecode(text);
@@ -162,25 +198,28 @@ class LiveUpdates extends Notifier<LiveStatus> {
     if (message is! Map<String, Object?>) return;
     switch (message['type']) {
       case 'ready':
-        _attempt = 0;
+        link.attempt = 0;
         // After a reconnect, changes may have been missed: refresh the list.
-        if (_wasLive) _scheduleRefresh(list: true);
-        _wasLive = true;
-        state = LiveStatus.live;
+        if (link.wasLive) _scheduleRefresh(list: true);
+        link.wasLive = true;
+        link.status = LiveStatus.live;
+        _update();
       case 'error':
-        state = LiveStatus.rejected;
-        _closeSocket();
+        link.status = LiveStatus.rejected;
+        link.close();
+        _update();
       case 'dataset':
         ref.invalidate(datasetsProvider);
-        if (message['datasetId'] case final String id) ref.invalidate(datasetProvider(id));
+        if (message['datasetId'] case final String id) ref.invalidate(datasetProvider(link.id(id)));
       case 'run':
-        _onRunChange(message);
+        _onRunChange(link, message);
     }
   }
 
-  void _onRunChange(Map<String, Object?> message) {
-    final runId = message['runId'];
-    if (runId is! String) return;
+  void _onRunChange(_Link link, Map<String, Object?> message) {
+    final raw = message['runId'];
+    if (raw is! String) return;
+    final runId = link.id(raw);
     _changedRuns.add(runId);
     _scheduleRefresh(list: true);
     // Datasets list the runs that used them.
@@ -199,7 +238,7 @@ class LiveUpdates extends Notifier<LiveStatus> {
           .show(
             RunAlert(
               runId: runId,
-              name: message['name'] as String? ?? runId,
+              name: message['name'] as String? ?? raw,
               status: status,
               message: message['statusMessage'] as String?,
               timeLimit: message['event'] == 'time-limit',
@@ -229,12 +268,5 @@ class LiveUpdates extends Notifier<LiveStatus> {
     }
     _changedRuns.clear();
     _refreshList = false;
-  }
-
-  void _closeSocket() {
-    _subscription?.cancel().ignore();
-    _subscription = null;
-    _socket?.close();
-    _socket = null;
   }
 }
