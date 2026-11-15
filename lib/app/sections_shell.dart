@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../shared/widgets/section_icons.dart';
 import 'routes.dart';
 
 /// The app's sections, switched between at the bottom of a phone's screen
@@ -18,14 +19,29 @@ class SectionsShell extends StatelessWidget {
   static const railWidth = 840.0;
 
   static const _sections = [
-    (route: AppRoutes.runs, label: 'Runs', icon: Icons.show_chart, selected: Icons.show_chart),
-    (route: AppRoutes.compute, label: 'Compute', icon: Icons.waves_outlined, selected: Icons.waves),
-    (route: AppRoutes.data, label: 'Data', icon: Icons.storage_outlined, selected: Icons.storage),
+    (
+      route: AppRoutes.runs,
+      label: 'Runs',
+      icon: SectionIcon.runs(),
+      selected: SectionIcon.runs(bold: true),
+    ),
+    (
+      route: AppRoutes.compute,
+      label: 'Compute',
+      icon: SectionIcon.compute(),
+      selected: SectionIcon.compute(bold: true),
+    ),
+    (
+      route: AppRoutes.data,
+      label: 'Data',
+      icon: Icon(Icons.storage_outlined),
+      selected: Icon(Icons.storage),
+    ),
     (
       route: AppRoutes.board,
       label: 'Board',
-      icon: Icons.view_kanban_outlined,
-      selected: Icons.view_kanban,
+      icon: Icon(Icons.view_kanban_outlined),
+      selected: Icon(Icons.view_kanban),
     ),
   ];
 
@@ -57,8 +73,8 @@ class SectionsShell extends StatelessWidget {
                 destinations: [
                   for (final s in _sections)
                     NavigationRailDestination(
-                      icon: Icon(s.icon),
-                      selectedIcon: Icon(s.selected),
+                      icon: s.icon,
+                      selectedIcon: s.selected,
                       label: Text(s.label),
                     ),
                 ],
@@ -78,11 +94,7 @@ class SectionsShell extends StatelessWidget {
           onDestinationSelected: open,
           destinations: [
             for (final s in _sections)
-              NavigationDestination(
-                icon: Icon(s.icon),
-                selectedIcon: Icon(s.selected),
-                label: s.label,
-              ),
+              NavigationDestination(icon: s.icon, selectedIcon: s.selected, label: s.label),
           ],
         ),
       ),

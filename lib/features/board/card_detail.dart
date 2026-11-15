@@ -11,6 +11,7 @@ import '../../models/board_card.dart';
 import '../../models/run.dart';
 import '../../shared/formatters.dart';
 import '../../shared/widgets/async_value_view.dart';
+import '../../shared/widgets/section_icons.dart';
 import 'board_dialogs.dart';
 import 'board_screen.dart';
 
@@ -467,7 +468,9 @@ class _LinkRow extends ConsumerWidget {
               height: 8,
               decoration: BoxDecoration(color: run.status.color(scheme), shape: BoxShape.circle),
             )
-          : Icon(dataset ? Icons.storage_outlined : Icons.show_chart, size: 18),
+          : dataset
+          ? const Icon(Icons.storage_outlined, size: 18)
+          : const SectionIcon.runs(size: 18),
       minLeadingWidth: 18,
       title: Text(run?.name ?? link.id, style: AppText.mono(context)),
       subtitle: Text(status),

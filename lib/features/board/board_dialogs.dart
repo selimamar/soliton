@@ -7,6 +7,7 @@ import '../../models/board_card.dart';
 import '../../models/dataset.dart';
 import '../../models/run.dart';
 import '../../shared/widgets/async_value_view.dart';
+import '../../shared/widgets/section_icons.dart';
 
 /// Asks for a new card's title (and project, column and server), adds it,
 /// and returns its key; null if cancelled or saving failed (with a message).
@@ -304,7 +305,7 @@ class _LinkPickerState extends ConsumerState<_LinkPicker> {
                 !widget.taken.contains(run.id) &&
                 _matches([run.name, run.project, run.host, ...run.tags]))
               ListTile(
-                leading: Icon(simulations ? Icons.waves_outlined : Icons.show_chart),
+                leading: simulations ? const SectionIcon.compute() : const SectionIcon.runs(),
                 title: Text(run.name),
                 subtitle: Text(
                   [
