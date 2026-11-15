@@ -15,6 +15,8 @@ SSH session), run `python3 -m soliton setup --server <address>` (logger on
 `PYTHONPATH`) and ask them to paste the token at its hidden prompt, from the
 app (Settings → Advanced security → Separate token for jobs). Never ask for
 the token in the chat. It checks the token, then writes the file privately.
+A "redirects to" error means the logger refused to send the token
+elsewhere: use that address only if the user confirms it is their server.
 
 In the job script:
 

@@ -87,7 +87,9 @@ in (for a cluster, over their SSH session), and ask them to paste the token
 at its hidden prompt, from the app (Settings → Advanced security → Separate
 token for jobs; or the server's main token). Never ask for the token in the
 chat or put it on a command line. It checks the token and writes the file,
-readable by them only.
+readable by them only. If it (or an upload) says the server "redirects to"
+another address, the logger refused to follow, so the token wasn't sent:
+use that address only if the user confirms it is their server.
 
 Where the server is depends on the user's setup:
 

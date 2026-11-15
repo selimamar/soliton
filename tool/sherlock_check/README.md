@@ -56,5 +56,11 @@ within about 2%, and job times matched `scontrol` to the second. The
 app's memory reads lower than `seff`'s "Memory Utilized" (see
 [docs/sherlock.md](../../docs/sherlock.md#4-a-job-script)).
 
+Run again on 2026-11-15, with training health, pictures and the CORS
+default: every scenario ended as in the table, and
+GPU memory, utilization and power matched `nvidia-smi` (3.8 GB, 100%,
+320 W). The `train` and `crash` runs get a "divergence" warning near step
+540: their loss really climbs back to where it started there, then recovers.
+
 Clean up when done: `rm -r $SCRATCH/soliton-appcheck/runs` (the server
 keeps the runs) and delete the `appcheck-*` runs in the app.

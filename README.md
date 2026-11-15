@@ -238,7 +238,9 @@ What it does:
   runs, touch the ones it didn't start, or delete anything; the main token
   stays on your devices. And **New main token**, if
   the main token may have leaked: the old one stops working everywhere. See
-  the server README.
+  the server README. Always on: in a browser, only pages from your own
+  computer (or the web app's address, `SOLITON_CORS_ORIGINS`) can read the
+  server, and the logger never sends its token through a redirect.
 - **Chart options**: log scale (loss, learning rate, gradient norm), and
   steps or epochs on the x-axis. Saved, like all settings.
 - **Training health**: the logger watches what a run logs and says when
@@ -424,5 +426,7 @@ first start and deletes the old copy. Disconnecting deletes it everywhere.
 13. ~~Storage: each run's share of the database, thinning old runs, giving
     the space back~~
 14. ~~Logging pictures the job draws (`run.log_image`)~~
-15. Next ideas: backing up the server's data, accounts for several people,
+15. ~~Backing up the server's data (`soliton-server --backup`, Download a
+    backup)~~
+16. Next ideas: accounts for several people,
     native push (APNs/FCM), signing the Apple apps with a developer team

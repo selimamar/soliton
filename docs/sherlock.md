@@ -39,7 +39,9 @@ python3 -m soliton setup --server https://runs.example.com
 ```
 
 It asks for the token without showing it (paste it from the app), checks it
-with the server, and writes `~/.soliton_env`, readable by you only. By hand,
+with the server, and writes `~/.soliton_env`, readable by you only. It
+never follows a redirect, so the token goes only to the address you gave
+(it says where a server redirects, if one does). By hand,
 the file is just:
 
 ```bash
