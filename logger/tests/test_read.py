@@ -128,3 +128,13 @@ def test_an_older_server_is_named_as_the_problem(server, tmp_path, monkeypatch):
     monkeypatch.setattr(_read.urllib.request, "urlopen", refuse)
     with pytest.raises(RuntimeError, match="older than this logger"):
         run.metric("train/loss")
+
+
+def test_a_thinned_run_says_so(server, tmp_path):
+    made = train(server, "a", losses=[1.0 / (i + 1) for i in range(50)], tmp_path=tmp_path)
+    assert soliton.get_run(made.id, server=server.url, token=TOKEN).thinned_at is None
+    httpx.post(f"{server.url}/api/runs/{made.id}/thin", params={"maxPoints": 10},
+               headers={"Authorization": f"Bearer {TOKEN}"}).raise_for_status()
+    run = soliton.get_run(made.id, server=server.url, token=TOKEN)
+    assert run.thinned_at is not None and run.thinned_to == 10
+    assert len(run.metric("train/loss")) <= 10

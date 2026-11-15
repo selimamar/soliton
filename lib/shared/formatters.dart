@@ -225,6 +225,12 @@ const _months = [
   'Dec',
 ];
 
+/// A day, local time: "Nov 15".
+String formatShortDate(DateTime time) {
+  final local = time.toLocal();
+  return '${_months[local.month - 1]} ${local.day}';
+}
+
 /// "just now", "5m ago", "3h ago", "2d ago".
 String formatTimeAgo(DateTime time, {DateTime? now}) {
   final d = (now ?? DateTime.now()).difference(time);

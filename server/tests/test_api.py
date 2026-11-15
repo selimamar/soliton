@@ -12,7 +12,7 @@ RUN_KEYS = {
     "id", "name", "project", "host", "status", "startedAt", "endedAt", "currentStep",
     "totalSteps", "currentEpoch", "totalEpochs", "hyperparameters", "architecture",
     "lossPreview", "statusMessage", "tags", "notes", "system", "simulation",
-    "datasets", "resumedAtStep", "stopRequestedAt", "jobs", "health",
+    "datasets", "resumedAtStep", "stopRequestedAt", "jobs", "health", "thinnedAt", "thinnedTo",
 }
 LAYER_KEYS = {
     "layerName", "activationMean", "activationStd", "gradNorm", "activationHistogram",
@@ -834,6 +834,86 @@ def test_a_runs_metrics_summarised(client):
                                      "finalStep": 10, "min": 0.5, "minStep": 5,
                                      "max": 2.0, "maxStep": 0}
     assert (summary["val/accuracy"]["max"], summary["val/accuracy"]["maxStep"]) == (0.9, 9)
+
+
+# Storage ---------------------------------------------------------------------------
+
+def big_run(client, run_id, steps=3000, fields=3, status="finished"):
+    create_run(client, run_id)
+    events = [metrics(step, train__loss=1.0 / (step + 1)) for step in range(steps)]
+    if steps > 1500:
+        events[1500] = metrics(1500, train__loss="NaN")  # A spike that must survive.
+    events += [field(s) for s in range(fields)]
+    for start in range(0, len(events), 4000):
+        send(client, events[start:start + 4000], run_id=run_id)
+    if status:
+        send(client, [{"type": "status", "status": status}], run_id=run_id)
+
+
+def test_storage_lists_runs_largest_first(client):
+    big_run(client, "big")
+    big_run(client, "small", steps=10, fields=1)
+    report = client.get("/api/storage").json()
+    assert [r["runId"] for r in report["runs"]] == ["big", "small"]
+    big = report["runs"][0]
+    assert (big["points"], big["snapshots"], big["thinnedAt"]) == (3000, 3, None)
+    assert big["thinnable"] and not report["runs"][1]["thinnable"], "small: nothing to thin"
+    assert big["bytes"] > report["runs"][1]["bytes"] > 0
+    assert report["database"]["engine"] in ("sqlite", "postgresql")
+    assert report["thinPoints"] == 1000
+
+
+def test_thinning_keeps_the_shape_and_the_latest_snapshot(client, notifications):
+    big_run(client, "big")
+    reply = client.post("/api/runs/big/thin").json()
+    assert reply["freed"] > 0 and reply["run"]["thinnedAt"] and reply["run"]["thinnedTo"] == 1000
+    curve = client.get("/api/runs/big/metrics/points", params={"name": "train/loss", "limit": 5000}).json()
+    assert len(curve["steps"]) <= 1000
+    assert curve["steps"][0] == 0 and curve["steps"][-1] == 2999, "the ends survive"
+    assert "NaN" in curve["values"], "so does the spike"
+    fields = client.get("/api/runs/big/fields").json()
+    assert [[st["step"] for st in f["steps"]] for f in fields] == [[2]]
+    row = next(r for r in client.get("/api/storage").json()["runs"] if r["runId"] == "big")
+    assert row["points"] == len(curve["steps"]) and row["snapshots"] == 1
+    assert not row["thinnable"], "nothing left to thin"
+    assert ("big", "updated") in [(c.run_id, c.event) for c in notifications]
+    again = client.post("/api/runs/big/thin").json()
+    assert again["freed"] == 0, "thinning twice changes nothing"
+
+
+def test_only_an_ended_run_can_be_thinned(client):
+    big_run(client, "live", steps=10, status=None)
+    assert client.post("/api/runs/live/thin").status_code == 409
+    assert client.post("/api/runs/missing/thin").status_code == 404
+
+
+def test_thinning_runs_that_ended_long_ago(client, clock):
+    big_run(client, "old")
+    clock.advance(days=40)
+    big_run(client, "recent")
+    big_run(client, "running", status=None)
+    reply = client.post("/api/storage/thin", params={"olderThanDays": 30}).json()
+    assert reply["thinned"] == 1 and reply["freed"] > 0
+    runs = {r["runId"]: r["thinnedAt"] for r in client.get("/api/storage").json()["runs"]}
+    assert runs["old"] and not runs["recent"] and not runs["running"]
+    assert client.post("/api/storage/thin", params={"olderThanDays": 30}).json()["thinned"] == 0
+
+
+def test_compacting_gives_space_back(client, database_url):
+    big_run(client, "big", steps=20_000)
+    client.post("/api/runs/big/thin")
+    reply = client.post("/api/storage/compact").json()
+    if database_url.startswith("sqlite"):
+        assert reply["after"]["free"] == 0
+        assert reply["after"]["bytes"] < reply["before"]["bytes"]
+
+
+def test_deleting_a_run_deletes_its_thinning(client):
+    big_run(client, "big", steps=10)
+    client.post("/api/runs/big/thin")
+    client.delete("/api/runs/big")
+    create_run(client, "big")
+    assert client.get("/api/runs/big").json()["thinnedAt"] is None
 
 
 def test_deleting_a_run_deletes_its_output(client):

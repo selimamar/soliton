@@ -458,6 +458,10 @@ table.to_csv("results.csv")                              # or .to_pandas()
   settings, and for each metric its final value, best and step of the best.
   `.to_csv(path)` or `.to_pandas()` (pandas isn't required otherwise).
 
+A run thinned out on the server to save space (Settings → Storage) has
+`thinned_at` set and keeps `thinned_to` points per curve (1,000), so
+`run.metric()` returns those, not every point it logged.
+
 It needs the server's **main token**, the one the app uses: the job token can
 only add runs, and gets a `PermissionError` saying so. Keep the main token
 on the machine you analyse on, never in job scripts. Metrics come a page of

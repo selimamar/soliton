@@ -33,6 +33,11 @@ class FakeServer {
   /// The bodies of the edits (PATCH requests) it received.
   final edits = <Map<String, Object?>>[];
 
+  /// Runs thinned out (`POST runs/<id>/thin`, `POST storage/thin`), and how
+  /// often it was compacted (`POST storage/compact`).
+  final thinned = <String>{};
+  var compacted = 0;
+
   /// The paths it was asked to delete (DELETE requests), e.g. `runs/x`.
   final deletes = <String>[];
   final _deleted = <String>{};
@@ -64,6 +69,33 @@ class FakeServer {
           )).toJson(),
         );
       }
+      if (request.method == 'POST') {
+        switch (path.sublist(1)) {
+          case ['runs', final id, 'thin']:
+            final run = await _run(id);
+            final freed = thinned.add(run.id) ? 4200000 : 0;
+            return _json({'run': run.toJson(), 'freed': freed});
+          case ['storage', 'thin']:
+            final days = double.parse(request.url.queryParameters['olderThanDays']!);
+            final now = DateTime.now();
+            var count = 0;
+            for (final run in await _data.fetchRuns()) {
+              if (runIds.contains(run.id) &&
+                  run.endedAt != null &&
+                  now.difference(run.endedAt!).inHours > days * 24 &&
+                  thinned.add(run.id)) {
+                count++;
+              }
+            }
+            return _json({'thinned': count, 'freed': count * 4200000});
+          case ['storage', 'compact']:
+            compacted++;
+            return _json({
+              'before': {'engine': 'sqlite', 'bytes': 9000000, 'free': 2500000},
+              'after': {'engine': 'sqlite', 'bytes': 6500000, 'free': 0},
+            });
+        }
+      }
       if (path.sublist(1) case ['token', 'rotate'] when request.method == 'POST') {
         token = 'rotated-${++tokensRotated}';
         return _json({'token': token});
@@ -86,6 +118,28 @@ class FakeServer {
       }
       return switch (path.sublist(1)) {
         ['session'] => _json({'ok': true, 'version': '0.1.0', 'jobToken': ?jobToken}),
+        ['storage'] => _json({
+          'database': {'engine': 'sqlite', 'bytes': 9000000, 'free': compacted > 0 ? 0 : 2500000},
+          'thinPoints': 1000,
+          'runs': [
+            for (final run in await _data.fetchRuns())
+              if (runIds.contains(run.id) && !_deleted.contains(run.id))
+                {
+                  'runId': run.id,
+                  'name': run.name,
+                  'project': run.project,
+                  'status': run.status.name,
+                  'endedAt': run.endedAt?.toIso8601String(),
+                  'bytes': thinned.contains(run.id) ? 300000 : 4500000,
+                  'points': thinned.contains(run.id) ? 1000 : 45000,
+                  'layerPoints': 0,
+                  'snapshots': thinned.contains(run.id) ? 1 : 12,
+                  'thinnedAt': thinned.contains(run.id) ? '2026-11-15T03:00:00Z' : null,
+                  'simulation': run.simulation != null,
+                  'thinnable': run.endedAt != null && !thinned.contains(run.id),
+                },
+          ],
+        }),
         ['runs'] => _json([
           for (final run in await _data.fetchRuns())
             if (runIds.contains(run.id) && !_deleted.contains(run.id)) run.toJson(),

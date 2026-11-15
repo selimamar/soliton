@@ -36,6 +36,8 @@ class Run {
     this.stopRequestedAt,
     this.jobs = const [],
     this.health = const [],
+    this.thinnedAt,
+    this.thinnedTo,
     this.tags = const [],
     this.notes = '',
     this.system,
@@ -75,6 +77,11 @@ class Run {
       for (final job in (json['jobs'] as List?) ?? const [])
         RunJob.fromJson(job as Map<String, Object?>),
     ]),
+    thinnedAt: switch (json['thinnedAt']) {
+      final String s => DateTime.tryParse(s),
+      _ => null,
+    },
+    thinnedTo: (json['thinnedTo'] as num?)?.toInt(),
     // Older servers don't send it.
     health: List.unmodifiable([
       for (final warning in (json['health'] as List?) ?? const [])
@@ -143,6 +150,12 @@ class Run {
   /// Training problems the logger saw (a NaN loss, a diverging loss,
   /// exploding gradients), newest first. Empty from an older server.
   final List<HealthWarning> health;
+
+  /// When it was thinned out on the server to save space (each curve keeps
+  /// [thinnedTo] points, each field its latest snapshot); null if it keeps
+  /// everything it logged.
+  final DateTime? thinnedAt;
+  final int? thinnedTo;
 
   /// When it was asked to stop from the app (its Stop button), while it
   /// runs; its script stops at its next `run.should_stop()` check.
@@ -274,6 +287,8 @@ class Run {
     'stopRequestedAt': stopRequestedAt?.toIso8601String(),
     'jobs': [for (final job in jobs) job.toJson()],
     'health': [for (final warning in health) warning.toJson()],
+    'thinnedAt': thinnedAt?.toIso8601String(),
+    'thinnedTo': thinnedTo,
     'tags': tags,
     'notes': notes,
     'system': system?.toJson(),
@@ -304,6 +319,8 @@ class Run {
       other.stopRequestedAt == stopRequestedAt &&
       deepListEquals(other.jobs, jobs) &&
       deepListEquals(other.health, health) &&
+      other.thinnedAt == thinnedAt &&
+      other.thinnedTo == thinnedTo &&
       deepListEquals(other.tags, tags) &&
       other.notes == notes &&
       other.system == system &&
@@ -333,6 +350,8 @@ class Run {
     stopRequestedAt,
     Object.hashAll(jobs),
     Object.hashAll(health),
+    thinnedAt,
+    thinnedTo,
     Object.hashAll(tags),
     notes,
     system,

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../models/storage_report.dart';
 import 'server_connection.dart';
 
 /// Why a request to the server failed. The UI turns these into words (see
@@ -59,8 +60,8 @@ class ApiClient {
       _send(() => _http.get(connection.api(path, query), headers: _headers));
 
   /// Asks the server to do something (no body); returns its answer.
-  Future<Object?> postJson(String path) =>
-      _send(() => _http.post(connection.api(path), headers: _headers));
+  Future<Object?> postJson(String path, {Map<String, String>? query}) =>
+      _send(() => _http.post(connection.api(path, query), headers: _headers));
 
   /// Changes part of a resource; returns the server's answer.
   Future<Object?> patchJson(String path, Map<String, Object?> body) => _send(
@@ -143,6 +144,42 @@ class ApiClient {
   /// Removes the job token: jobs need the main token again.
   Future<void> deleteJobToken() =>
       _send(() => _http.delete(connection.api('/job-token'), headers: _headers));
+
+  /// How much space the database takes, and each run's share.
+  Future<StorageReport> storage() async {
+    if (await getJson('/storage') case final Map<String, Object?> json) {
+      return StorageReport.fromJson(json);
+    }
+    throw const ServerErrorException(200);
+  }
+
+  /// Thins out an ended run (each curve keeps as many points as its charts
+  /// show, each field its latest snapshot); returns about how many bytes
+  /// that freed.
+  Future<int> thinRun(String runId) async {
+    final reply = await postJson('/runs/${Uri.encodeComponent(runId)}/thin');
+    return reply is Map && reply['freed'] is num ? (reply['freed'] as num).toInt() : 0;
+  }
+
+  /// Thins every run that ended more than [days] days ago; returns how many
+  /// and about how many bytes that freed.
+  Future<(int, int)> thinOlder(int days) async {
+    final reply = await postJson('/storage/thin', query: {'olderThanDays': '$days'});
+    if (reply case {'thinned': final num count, 'freed': final num freed}) {
+      return (count.toInt(), freed.toInt());
+    }
+    throw const ServerErrorException(200);
+  }
+
+  /// Gives freed space back to the disk (SQLite); returns the database's
+  /// size before and after.
+  Future<(int?, int?)> compact() async {
+    final reply = await postJson('/storage/compact');
+    if (reply case {'before': final Map before, 'after': final Map after}) {
+      return ((before['bytes'] as num?)?.toInt(), (after['bytes'] as num?)?.toInt());
+    }
+    throw const ServerErrorException(200);
+  }
 
   void close() => _http.close();
 }

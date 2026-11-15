@@ -52,7 +52,31 @@ All from environment variables:
 | `SOLITON_NTFY_DETAILS` | `1` | `0`: notifications don't name the run or quote its error ("A run crashed"), for a topic others may read |
 | `SOLITON_TLS_CERT`, `SOLITON_TLS_KEY` | off | Serve https with this certificate and key (PEM; also `--tls-cert`, `--tls-key`) |
 | `SOLITON_MAX_BODY_MB` | `128` | Larger requests are refused (413) |
+| `SOLITON_THIN_AFTER_DAYS` | off | Thin out runs this many days after they end (checked hourly; see Storage below) |
 | `SOLITON_NOTIFY_ON` | `finished,crashed,time-limit,health,job-started` | Which events send a push notification (`time-limit`: a live run that, at its pace, won't finish before its Slurm time limit, once per job; `health`: the logger saw training go wrong; `job-started`: a job queued with `soliton sbatch`, or one that waited 10 minutes or more, started) |
+
+## Storage
+
+The server keeps everything a run logged: about 100 bytes per logged value,
+more for layer statistics, and the size of each field snapshot (a 2D one is
+50 to 100 KB). Raw data never comes here, so it stays small next to what a
+computation writes, but long runs logging every step, or many field
+snapshots, add up. The app's **Settings → Storage** shows the database's
+size and each run's share (`GET /api/storage`), and keeps it in check:
+
+- **Thin out** an ended run (`POST /api/runs/{id}/thin`), or every run that
+  ended more than N days ago (`POST /api/storage/thin?olderThanDays=N`, or
+  by itself with `SOLITON_THIN_AFTER_DAYS`): each curve, metrics and layer
+  statistics, keeps 1,000 points chosen as the app's charts choose them
+  (spikes and NaN survive), and each field, curve and validation summary
+  its latest step only. It looks the same in the app; `soliton.runs()` gets
+  those 1,000 points instead of every one. It can't be undone. A live or
+  queued run is refused (409).
+- **Give back** the space (`POST /api/storage/compact`): deleted and thinned
+  data leaves free space inside the database file, which new data reuses,
+  but the file only shrinks when SQLite rewrites it (VACUUM). Uploads wait
+  while it runs, a minute or so on a large database. PostgreSQL reuses freed
+  space by itself, so there is nothing to do there.
 
 ## Push notifications (ntfy)
 
@@ -175,6 +199,10 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
 | `GET /api/metrics/latest?names=val/rel_l2,perf/inference_s` | For sweeps: `{run id: {metric: {latest, min}}}`, up to 20 names |
 | `GET /api/runs/{id}/metrics/points?name=train/loss&after=-1&limit=10000` | Every value of one metric, not downsampled, a page at a time (up to 50,000): `{name, steps, values, next}`; pass `next` as `after` for the next page (`null` on the last). For `soliton.runs()` |
 | `GET /api/runs/{id}/metrics/summary` | Each metric the run logged: `count`, `first`, `final` (with steps) and its finite `min` and `max` with their steps |
+| `GET /api/storage` | The database's size (`engine`, `bytes`, `free`: what a compact would give back) and each run's estimated `bytes`, `points`, `layerPoints`, `snapshots` and `thinnedAt`, largest first |
+| `POST /api/runs/{id}/thin?maxPoints=1000` | Thins out an ended run (see Storage): `{run, freed}`; 409 for a live or queued run |
+| `POST /api/storage/thin?olderThanDays=30` | Thins every run that ended longer ago: `{thinned, freed}` |
+| `POST /api/storage/compact` | Gives freed space back to the disk (SQLite): the database's size `before` and `after` |
 | `WS /api/live` | Live updates (below) |
 
 **Events** (`POST .../events` with `{"events": [...]}`, up to 5000 per batch):
@@ -297,8 +325,10 @@ Alerts are only raised for what just happened, not for a run uploaded later
 Besides what the logger sent, a run's JSON has `jobs` (each process that ran
 it: `jobId`, `submittedAt`, `startedAt`, `endedAt`, `status`, `message`,
 `startStep`, `endStep`), `resumedAtStep` (where its latest process took over),
-`stopRequestedAt` (the app's Stop button, until it ends) and `health` (the
-latest 10 training problems, newest first: `kind`, `step`, `message`, `at`).
+`stopRequestedAt` (the app's Stop button, until it ends), `health` (the
+latest 10 training problems, newest first: `kind`, `step`, `message`, `at`)
+and `thinnedAt` / `thinnedTo` (when it was thinned out, and to how many points
+per curve; null if it keeps everything).
 The server sends `{"type": "ping"}` when idle, to keep proxies from closing
 the connection. Interactive API docs are at `/docs` while the server runs.
 

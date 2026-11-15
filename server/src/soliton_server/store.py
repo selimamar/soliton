@@ -10,12 +10,13 @@ from __future__ import annotations
 import hashlib
 import hmac
 import math
+import os
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import Text, cast, delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from .db import (
@@ -36,6 +37,7 @@ from .db import (
     RunSimulationRow,
     RunStopRow,
     RunSystemRow,
+    RunThinRow,
     ServerSettingRow,
 )
 from .floats import decode_float, downsample, encode_float, from_columns, to_columns
@@ -65,6 +67,13 @@ QUEUE_WAIT_ALERT = timedelta(minutes=10)
 # (`soliton sync`).
 RECENT = timedelta(minutes=15)
 HEALTH_SHOWN = 10  # The latest problems in a run's description.
+# Thinning (Store.thin_run): points kept per curve, as many as the app's
+# charts show, so a thinned run looks the same in the app.
+THIN_POINTS = 1000
+# Rough bytes per stored row, index included (measured on SQLite), for the
+# storage report's estimates.
+METRIC_POINT_BYTES = 100
+ROW_BYTES = 60
 
 
 class RunNotFound(Exception):
@@ -73,6 +82,10 @@ class RunNotFound(Exception):
 
 class RunNotLive(Exception):
     """Only a live run can be asked to stop."""
+
+
+class RunNotEnded(Exception):
+    """Only a run that has ended (finished or crashed) can be thinned."""
 
 
 class RunKeyRefused(Exception):
@@ -654,10 +667,199 @@ class Store:
             for table in (MetricPointRow, LayerPointRow, LayerRow, FieldRow, RunItemRow,
                           RunNotesRow, RunSystemRow, RunSimulationRow, DatasetUseRow,
                           RunOutputRow, RunResumeRow, RunStopRow, RunJobRow, RunKeyRow,
-                          RunHealthRow):
+                          RunHealthRow, RunThinRow):
                 session.execute(delete(table).where(table.run_id == run_id))
             session.delete(row)
             return change
+
+    # Storage --------------------------------------------------------------
+
+    def storage(self) -> dict:
+        """How much space the database takes, and each run's share (an
+        estimate from what it stores), largest first."""
+        with self._sessions() as session:
+            sizes = self._run_sizes(session)
+            thinnable = self._thinnable(session, THIN_POINTS)
+            thinned = {row.run_id: row for row in session.scalars(select(RunThinRow))}
+            simulations = set(session.scalars(select(RunSimulationRow.run_id)))
+            runs = []
+            for row in session.scalars(select(RunRow)):
+                size = sizes.get(row.id, {})
+                thin = thinned.get(row.id)
+                runs.append({
+                    "runId": row.id, "name": row.name, "project": row.project,
+                    "simulation": row.id in simulations,
+                    "status": row.status, "startedAt": iso(row.started_at),
+                    "endedAt": iso(row.ended_at), "bytes": size.get("bytes", 0),
+                    "points": size.get("points", 0), "layerPoints": size.get("layerPoints", 0),
+                    "snapshots": size.get("snapshots", 0),
+                    "thinnedAt": iso(thin.at) if thin else None,
+                    # Whether thinning would free anything (see thin_run).
+                    "thinnable": row.status in ("finished", "crashed") and row.id in thinnable,
+                })
+        runs.sort(key=lambda r: r["bytes"], reverse=True)
+        return {"database": self._database_size(), "runs": runs,
+                "thinPoints": THIN_POINTS}
+
+    def _database_size(self) -> dict:
+        """{engine, bytes, free}: free is space a compact would give back
+        (SQLite only; PostgreSQL reuses it by itself)."""
+        engine = self._sessions.kw["bind"]
+        if engine.dialect.name == "sqlite":
+            path = engine.url.database
+            size = None
+            if path and path != ":memory:":
+                size = sum(os.path.getsize(p) for p in (path, path + "-wal") if os.path.exists(p))
+            with engine.connect() as connection:
+                free = (connection.exec_driver_sql("PRAGMA freelist_count").scalar()
+                        * connection.exec_driver_sql("PRAGMA page_size").scalar())
+            return {"engine": "sqlite", "bytes": size, "free": free}
+        with engine.connect() as connection:
+            size = connection.exec_driver_sql("SELECT pg_database_size(current_database())").scalar()
+        return {"engine": engine.dialect.name, "bytes": size, "free": None}
+
+    @staticmethod
+    def _run_sizes(session: Session, run_id: str | None = None) -> dict[str, dict]:
+        """Each run's estimated bytes, and how many points, layer points and
+        field snapshots it keeps."""
+        sizes: dict[str, dict] = defaultdict(lambda: {"bytes": 0, "points": 0,
+                                                      "layerPoints": 0, "snapshots": 0})
+
+        def rows(table, *columns):
+            query = select(table.run_id, func.count(), *columns).group_by(table.run_id)
+            if run_id is not None:
+                query = query.where(table.run_id == run_id)
+            return session.execute(query)
+
+        for rid, count in rows(MetricPointRow):
+            sizes[rid]["points"] = count
+            sizes[rid]["bytes"] += count * METRIC_POINT_BYTES
+        for rid, count, length in rows(LayerPointRow,
+                                       func.sum(func.length(cast(LayerPointRow.values, Text)))):
+            sizes[rid]["layerPoints"] = count
+            sizes[rid]["bytes"] += count * ROW_BYTES + int(length or 0)
+        for rid, count, length in rows(FieldRow, func.sum(
+                func.length(FieldRow.prediction) + func.coalesce(func.length(FieldRow.target), 0)
+                + func.length(cast(FieldRow.meta, Text)))):
+            sizes[rid]["snapshots"] = count
+            sizes[rid]["bytes"] += count * ROW_BYTES + int(length or 0)
+        for rid, count, length in rows(RunItemRow, func.sum(func.length(cast(RunItemRow.data, Text)))):
+            sizes[rid]["bytes"] += count * ROW_BYTES + int(length or 0)
+        for rid, count, length in rows(RunOutputRow, func.sum(func.length(RunOutputRow.line))):
+            sizes[rid]["bytes"] += count * ROW_BYTES + int(length or 0)
+        return dict(sizes)
+
+    @staticmethod
+    def _thinnable(session: Session, max_points: int) -> set[str]:
+        """Runs that keep more than [max_points] points of some curve, or more
+        than the latest step of some field or summary."""
+        found: set[str] = set()
+        for table, key in ((MetricPointRow, MetricPointRow.name), (LayerPointRow, LayerPointRow.layer)):
+            found.update(session.scalars(
+                select(table.run_id).group_by(table.run_id, key).having(func.count() > max_points)))
+        for table, keys in ((FieldRow, (FieldRow.name,)), (RunItemRow, (RunItemRow.type, RunItemRow.name))):
+            found.update(session.scalars(
+                select(table.run_id).group_by(table.run_id, *keys).having(func.count() > 1)))
+        return found
+
+    def thin_run(self, run_id: str, max_points: int = THIN_POINTS) -> tuple[dict, int, Change]:
+        """Thins out an ended run to save space: each curve (metrics, layer
+        statistics) keeps at most [max_points] points, chosen as the app's
+        charts choose them (spikes and NaN survive), and each field, curve
+        and validation summary only its latest step. Returns the run, about
+        how many bytes it freed, and the change. Raises RunNotEnded."""
+        now = self._clock()
+        with self._sessions.begin() as session:
+            row = self._find(session, run_id)
+            if row.status not in ("finished", "crashed"):
+                raise RunNotEnded(run_id)
+            before = self._run_sizes(session, run_id).get(run_id, {}).get("bytes", 0)
+            self._thin_points(session, run_id, max_points)
+            for table, keys in ((FieldRow, ("name",)), (RunItemRow, ("type", "name"))):
+                latest = (select(*[getattr(table, k) for k in keys], func.max(table.step))
+                          .where(table.run_id == run_id)
+                          .group_by(*[getattr(table, k) for k in keys]))
+                for *key, step in session.execute(latest).all():
+                    session.execute(delete(table).where(
+                        table.run_id == run_id, table.step < step,
+                        *[getattr(table, k) == v for k, v in zip(keys, key)]))
+            thin = session.get(RunThinRow, run_id)
+            if thin is None:
+                session.add(RunThinRow(run_id=run_id, at=now, max_points=max_points))
+            else:
+                thin.at, thin.max_points = now, min(thin.max_points, max_points)
+            session.flush()
+            after = self._run_sizes(session, run_id).get(run_id, {}).get("bytes", 0)
+            return self._run_json(session, row), max(before - after, 0), _change(row, "updated")
+
+    @staticmethod
+    def _thin_points(session: Session, run_id: str, max_points: int) -> None:
+        names = session.execute(
+            select(MetricPointRow.name).where(MetricPointRow.run_id == run_id)
+            .group_by(MetricPointRow.name).having(func.count() > max_points)
+        ).scalars().all()
+        for name in names:
+            points = session.execute(
+                select(MetricPointRow.step, MetricPointRow.value, MetricPointRow.code)
+                .where(MetricPointRow.run_id == run_id, MetricPointRow.name == name)
+                .order_by(MetricPointRow.step)
+            ).all()
+            kept = downsample(points, max_points, lambda p: from_columns(p[1], p[2]))
+            session.execute(delete(MetricPointRow).where(
+                MetricPointRow.run_id == run_id, MetricPointRow.name == name))
+            _upsert(session, MetricPointRow,
+                    [{"run_id": run_id, "name": name, "step": s, "value": v, "code": c}
+                     for s, v, c in kept], ("run_id", "name", "step"))
+        layers = session.execute(
+            select(LayerPointRow.layer).where(LayerPointRow.run_id == run_id)
+            .group_by(LayerPointRow.layer).having(func.count() > max_points)
+        ).scalars().all()
+        for layer in layers:
+            points = session.execute(
+                select(LayerPointRow.step, LayerPointRow.values)
+                .where(LayerPointRow.run_id == run_id, LayerPointRow.layer == layer)
+                .order_by(LayerPointRow.step)
+            ).all()
+            # Evenly spread: a layer has several values per step, no one curve.
+            stride = len(points) / max_points
+            kept = {points[min(int(i * stride), len(points) - 1)][0] for i in range(max_points)}
+            kept.add(points[-1][0])
+            session.execute(delete(LayerPointRow).where(
+                LayerPointRow.run_id == run_id, LayerPointRow.layer == layer,
+                LayerPointRow.step.not_in(kept)))
+
+    def thin_older(self, older_than: timedelta, max_points: int = THIN_POINTS) -> tuple[int, int, list[Change]]:
+        """Thins every run that ended more than [older_than] ago and isn't
+        thinned yet. Returns how many, the bytes freed and the changes."""
+        cutoff = self._clock() - older_than
+        with self._sessions() as session:
+            thinnable = self._thinnable(session, max_points)
+            ids = [run_id for run_id in session.scalars(
+                select(RunRow.id).where(RunRow.status.in_(("finished", "crashed")),
+                                        RunRow.ended_at.is_not(None), RunRow.ended_at < cutoff)
+            ) if run_id in thinnable]
+        freed, changes = 0, []
+        for run_id in ids:
+            try:
+                _, saved, change = self.thin_run(run_id, max_points)
+            except (RunNotFound, RunNotEnded):
+                continue  # Deleted or continued in the meantime.
+            freed += saved
+            changes.append(change)
+        return len(changes), freed, changes
+
+    def compact(self) -> dict:
+        """Gives the space freed by deletions and thinning back to the disk
+        (SQLite's VACUUM; it rewrites the file, so it takes a while on a big
+        database). PostgreSQL reuses freed space by itself: nothing to do."""
+        engine = self._sessions.kw["bind"]
+        before = self._database_size()
+        if engine.dialect.name == "sqlite":
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+                connection.exec_driver_sql("VACUUM")
+                connection.exec_driver_sql("PRAGMA wal_checkpoint(TRUNCATE)")
+        after = self._database_size()
+        return {"before": before, "after": after}
 
     # Ingest ---------------------------------------------------------------
 
@@ -1177,6 +1379,7 @@ class Store:
         jobs = session.scalars(
             select(RunJobRow).where(RunJobRow.run_id == row.id).order_by(RunJobRow.seq)
         ).all()
+        thin = session.get(RunThinRow, row.id)
         health = session.scalars(
             select(RunHealthRow).where(RunHealthRow.run_id == row.id)
             .order_by(RunHealthRow.at.desc(), RunHealthRow.step.desc()).limit(HEALTH_SHOWN)
@@ -1208,6 +1411,9 @@ class Store:
                  "startStep": j.start_step, "endStep": j.end_step}
                 for j in jobs
             ],
+            # Thinned out to save space (Store.thin_run), and how far.
+            "thinnedAt": iso(thin.at) if thin else None,
+            "thinnedTo": thin.max_points if thin else None,
             # Training problems the logger saw, newest first.
             "health": [
                 {"kind": h.kind, "step": h.step, "message": h.message, "at": iso(h.at)}

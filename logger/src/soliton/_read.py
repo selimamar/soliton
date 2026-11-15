@@ -181,6 +181,10 @@ class StoredRun:
         self.jobs: List[dict] = list(data.get("jobs") or [])
         self.health: List[dict] = list(data.get("health") or [])
         self.simulation: Optional[dict] = data.get("simulation")
+        # Thinned out on the server to save space: when, and to how many
+        # points per curve (its metrics then aren't every point logged).
+        self.thinned_at = _time(data.get("thinnedAt"))
+        self.thinned_to: Optional[int] = data.get("thinnedTo")
         self._curves: Dict[str, Curve] = {}
         self._summary: Optional[Dict[str, Summary]] = None
 

@@ -310,6 +310,20 @@ class RunHealthRow(Base):
     at: Mapped[datetime] = mapped_column(UtcDateTime)
 
 
+class RunThinRow(Base):
+    """A run thinned out to save space (see Store.thin_run): when, and how
+    many points per curve it kept. A table of its own, so older databases get
+    it without a migration."""
+
+    __tablename__ = "run_thin"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    at: Mapped[datetime] = mapped_column(UtcDateTime)
+    max_points: Mapped[int] = mapped_column(Integer)
+
+
 class SchemaVersionRow(Base):
     """Which migration the database is at (one row; see migrations.py)."""
 

@@ -125,6 +125,14 @@ class SettingsScreen extends ConsumerWidget {
                 'ntfy on the server (see the server README).',
               ),
             ),
+            if (ref.watch(serversProvider).connections.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.storage_outlined),
+                title: const Text('Storage'),
+                subtitle: const Text('How much space runs take on the server; thin out old ones.'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.go(AppRoutes.storage),
+              ),
             if (connection != null) ...[
               const _SectionHeader('Advanced security'),
               const JobTokenSection(),

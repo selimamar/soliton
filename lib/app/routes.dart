@@ -5,6 +5,9 @@ abstract final class AppRoutes {
   static const settings = '/settings';
   static const server = '/settings/server';
 
+  /// How much space runs take on the server, and thinning old ones.
+  static const storage = '/settings/storage';
+
   /// Runs of a project side by side by what they varied.
   static const sweep = '/sweep';
 

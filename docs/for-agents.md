@@ -144,7 +144,8 @@ table.to_csv("results.csv")                              # or .to_pandas()
 ```
 
 `run.config` has the settings, `run.summary[name]` a metric's count, first,
-final, min and max (with steps), `soliton.get_run(id)` one run. It needs the
+final, min and max (with steps), `soliton.get_run(id)` one run. A run with
+`thinned_at` set was thinned out on the server (1,000 points per curve). It needs the
 server's **main** token: the job token gets a `PermissionError` that says so.
 Run it on the user's machine, never in a job script, and never ask for the
 main token in the chat; if `SOLITON_TOKEN` there is the job token, ask the

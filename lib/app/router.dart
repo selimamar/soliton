@@ -13,6 +13,7 @@ import '../features/run_detail/run_detail_screen.dart';
 import '../features/runs_list/runs_list_screen.dart';
 import '../features/settings/server_screen.dart';
 import '../features/settings/settings_screen.dart';
+import '../features/settings/storage_screen.dart';
 import '../features/sweep/sweep_screen.dart';
 import 'sections_shell.dart';
 
@@ -26,6 +27,7 @@ import 'sections_shell.dart';
 ///   /farm                 runs as ducks (finished) and eggs (live)
 ///   /settings             settings
 ///   /settings/server      connect to a server
+///   /settings/storage     space runs take, thinning old ones
 ///   /compute              simulations
 ///   /compute/:id          a simulation; ?tab=diagnostics (or fields,
 ///                         system) opens on that tab
@@ -90,6 +92,11 @@ final routerProvider = Provider<GoRouter>((ref) {
                     parentNavigatorKey: root,
                     path: 'server',
                     builder: (context, state) => const ServerScreen(),
+                  ),
+                  GoRoute(
+                    parentNavigatorKey: root,
+                    path: 'storage',
+                    builder: (context, state) => const StorageScreen(),
                   ),
                 ],
               ),

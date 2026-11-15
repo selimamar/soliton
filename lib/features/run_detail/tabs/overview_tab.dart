@@ -56,6 +56,7 @@ class OverviewTab extends StatelessWidget {
         if (run.status == RunStatus.crashed) OutputCard(run: run),
         // What went wrong in training, before it shows in the numbers below.
         if (HealthCard.showsFor(run)) HealthCard(run: run),
+        if (thinnedNote(run) case final note?) StatusBanner(message: note, isError: false),
         if (run.latestLoss != null) _LossHero(run: run),
         // Ink says the progress in the loss sentence instead.
         if (AppTheme.styleOf(context) != AppStyle.ink || run.latestLoss == null)
@@ -479,3 +480,11 @@ class StatusBanner extends StatelessWidget {
     );
   }
 }
+
+/// For a run thinned out on the server to save space: what it kept.
+String? thinnedNote(Run run) => switch (run.thinnedAt) {
+  null => null,
+  final at =>
+    'Thinned out on ${formatShortDate(at)} to save space: each curve keeps '
+        '${formatInt(run.thinnedTo ?? 1000)} points and each field its latest snapshot.',
+};

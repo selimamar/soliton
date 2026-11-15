@@ -230,6 +230,10 @@ offline runs). The full logger API is in [logger/README.md](../logger/README.md)
   two hyperparameters, or one metric against another.
 - **Delete** runs, simulations or datasets from their page, or several at
   once after picking them.
+- **Keep storage in check**: Settings → Storage shows how much space each
+  run takes on the server. Thin out old ended runs there: they look the same
+  in the app (each curve keeps 1,000 points, each field its latest snapshot)
+  but take a fraction of the space. Then "Give back" returns it to the disk.
 - **Right-size the next job**: copy the options from an ended job's
   Resources card into the next sbatch.
 - **Stop a run cleanly**: the stop button on a live run's page. If its

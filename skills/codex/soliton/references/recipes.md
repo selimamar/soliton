@@ -119,7 +119,9 @@ table.to_csv("results.csv")                              # or .to_pandas()
 ```
 
 `run.config` holds the settings, `run.summary[name]` the first, final, min,
-max and best of a metric, `soliton.get_run(id)` one run. It needs the main
+max and best of a metric, `soliton.get_run(id)` one run. A run with `thinned_at`
+set was thinned out on the server (1,000 points per curve): say so if a
+figure needs every point. It needs the main
 token (the job token raises a `PermissionError` that says so): never put the
 main token in a job script or ask for it in the chat; if the shell has the
 job token, ask the user to run it where the main token is set.

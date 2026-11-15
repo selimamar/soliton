@@ -63,6 +63,10 @@ class Settings:
     max_body_bytes: int = 128 * 1024 * 1024
     """Larger request bodies are refused (413)."""
 
+    thin_after: timedelta | None = None
+    """Thin out runs this long after they end (see Store.thin_run), checked
+    hourly; None (the default) never does it by itself."""
+
     def __post_init__(self) -> None:
         check_token(self.token)
 
@@ -99,6 +103,8 @@ class Settings:
             not in ("0", "false", "no", "off"),
             data_dir=data_dir,
             max_body_bytes=int(float(env.get("SOLITON_MAX_BODY_MB", "128")) * 1024 * 1024),
+            thin_after=(timedelta(days=float(env["SOLITON_THIN_AFTER_DAYS"]))
+                        if env.get("SOLITON_THIN_AFTER_DAYS", "").strip() else None),
         )
 
 

@@ -202,6 +202,14 @@ What it does:
   everything it logged from the server; a run that is still running comes
   back with what it logs next. Deleting a dataset only forgets its
   description: the files aren't touched.
+- **Storage** (Settings → Storage): how much space the server's database
+  takes and each run's share, largest first. **Thin out** an ended run, or
+  every run that ended more than a week, a month or a year ago: each curve
+  keeps 1,000 points (as many as its charts show, spikes and NaN included)
+  and each field its latest snapshot, so it looks the same in the app but
+  takes a fraction of the space. **Give back** the freed space to the disk
+  (SQLite). The server can also thin runs by itself
+  (`SOLITON_THIN_AFTER_DAYS`). A thinned run says so on its Overview.
 - **Several servers**: Settings → Server keeps a list (a lab server, the
   Sherlock test server, a local one), each with its own token; tap one to
   show its runs, or **All servers** to see every server's runs together,
@@ -397,6 +405,8 @@ first start and deletes the old copy. Disconnecting deletes it everywhere.
     an alert when a queued job starts~~
 12. ~~Reading runs back into Python for analysis and figures
     (`soliton.runs(...)`: settings, full-resolution metrics, summary tables)~~
-13. Next ideas: logging images (a figure the job draws itself), accounts for
-    several people, native push (APNs/FCM), signing the Apple apps with a
-    developer team
+13. ~~Storage: each run's share of the database, thinning old runs, giving
+    the space back~~
+14. Next ideas: backing up the server's data, logging images (a figure the
+    job draws itself), accounts for several people, native push (APNs/FCM),
+    signing the Apple apps with a developer team

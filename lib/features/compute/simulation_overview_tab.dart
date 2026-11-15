@@ -12,7 +12,7 @@ import '../../shared/widgets/key_value_row.dart';
 import '../../shared/widgets/section_card.dart';
 import '../../shared/widgets/spaced_list_view.dart';
 import '../../shared/widgets/stat_tile.dart';
-import '../run_detail/tabs/overview_tab.dart' show CostStrip, StatusBanner;
+import '../run_detail/tabs/overview_tab.dart' show CostStrip, StatusBanner, thinnedNote;
 import '../run_detail/widgets/run_notes_card.dart';
 import 'simulation_text.dart';
 import '../run_detail/widgets/job_times.dart';
@@ -33,7 +33,12 @@ class SimulationOverviewTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final run = simulation;
     if (run.status == RunStatus.queued) {
-      return SpacedListView(children: [QueueCard(run: run), RunNotesCard(run: run)]);
+      return SpacedListView(
+        children: [
+          QueueCard(run: run),
+          RunNotesCard(run: run),
+        ],
+      );
     }
     return SpacedListView(
       children: [
@@ -42,6 +47,7 @@ class SimulationOverviewTab extends StatelessWidget {
         if (run.stopRequestedAt != null && run.status == RunStatus.live)
           StopRequestedBanner(run: run),
         if (run.status == RunStatus.crashed) OutputCard(run: run),
+        if (thinnedNote(run) case final note?) StatusBanner(message: note, isError: false),
         _Progress(simulation: run),
         _Timing(simulation: run),
         if (JobTimes.showsFor(run)) JobTimes(run: run),

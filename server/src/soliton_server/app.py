@@ -13,7 +13,7 @@ import time
 from collections import deque
 from collections.abc import Callable, Iterable
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated, Literal, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Path, Query, Request, WebSocket
@@ -35,6 +35,7 @@ from .store import (
     RUN_KEY_REFUSED,
     RunKeyRefused,
     RunNotFound,
+    RunNotEnded,
     RunNotLive,
     Store,
     utcnow,
@@ -44,6 +45,7 @@ log = logging.getLogger(__name__)
 
 RunId = Annotated[str, Path(pattern=RUN_ID_PATTERN)]
 MaxPoints = Annotated[int, Query(ge=4, le=20_000)]
+THIN_CHECK = timedelta(hours=1)  # How often automatic thinning looks for old runs.
 # Full-resolution reads (`soliton.runs()`), a page at a time.
 PageSize = Annotated[int, Query(ge=1, le=50_000)]
 # The key a logger made for its run (see Store._check_writer).
@@ -180,12 +182,18 @@ def create_app(
                 except Exception:
                     log.exception("Notification failed")
 
+    next_thin = [clock()]  # Automatic thinning (SOLITON_THIN_AFTER_DAYS), hourly.
+
     async def check_stale_runs() -> None:
         while True:
             await asyncio.sleep(stale_check_seconds)
             try:
                 publish(await run_in_threadpool(store.mark_stale, settings.stale_after))
                 publish(await run_in_threadpool(store.warn_time_limits))
+                if settings.thin_after is not None and clock() >= next_thin[0]:
+                    next_thin[0] = clock() + THIN_CHECK
+                    _, _, changes = await run_in_threadpool(store.thin_older, settings.thin_after)
+                    publish(changes)
             except Exception:
                 log.exception("Checking for stale runs failed")
 
@@ -391,6 +399,32 @@ def create_app(
             raise HTTPException(status_code=409, detail="Only a live run can be stopped")
         publish([change])
         return run
+
+    @app.post("/api/runs/{run_id}/thin", dependencies=auth)
+    def thin_run(run_id: RunId, maxPoints: MaxPoints = 1000):
+        """Thins out an ended run to save space (Store.thin_run)."""
+        try:
+            run, freed, change = store.thin_run(run_id, maxPoints)
+        except RunNotEnded:
+            raise HTTPException(status_code=409, detail="Only a run that has ended can be thinned")
+        publish([change])
+        return {"run": run, "freed": freed}
+
+    @app.get("/api/storage", dependencies=auth)
+    def storage():
+        return store.storage()
+
+    @app.post("/api/storage/thin", dependencies=auth)
+    def thin_older(olderThanDays: Annotated[float, Query(ge=0, le=36_500)],
+                   maxPoints: MaxPoints = 1000):
+        """Thins every run that ended more than olderThanDays ago."""
+        count, freed, changes = store.thin_older(timedelta(days=olderThanDays), maxPoints)
+        publish(changes)
+        return {"thinned": count, "freed": freed}
+
+    @app.post("/api/storage/compact", dependencies=auth)
+    async def compact():
+        return await run_in_threadpool(store.compact)
 
     @app.delete("/api/runs/{run_id}", dependencies=auth)
     def delete_run(run_id: RunId):
