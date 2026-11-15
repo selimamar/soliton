@@ -31,3 +31,15 @@ final notifyOnCrashProvider = NotifierProvider<Setting<bool>, bool>(
 final notifyOnTimeLimitProvider = NotifierProvider<Setting<bool>, bool>(
   () => Setting.boolean('notifyOnTimeLimit', true),
 );
+
+/// In-app alerts when the logger sees training go wrong: a NaN or
+/// diverging loss, exploding gradients.
+final notifyOnHealthProvider = NotifierProvider<Setting<bool>, bool>(
+  () => Setting.boolean('notifyOnHealth', true),
+);
+
+/// In-app alerts when a queued Slurm job starts (one queued with
+/// `soliton sbatch`, or one that waited at least 10 minutes).
+final notifyOnJobStartProvider = NotifierProvider<Setting<bool>, bool>(
+  () => Setting.boolean('notifyOnJobStart', true),
+);

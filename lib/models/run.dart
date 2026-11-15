@@ -1,3 +1,4 @@
+import 'health_warning.dart';
 import 'layer_info.dart';
 import 'model_flow.dart';
 import 'model_helpers.dart';
@@ -34,6 +35,7 @@ class Run {
     this.statusMessage,
     this.stopRequestedAt,
     this.jobs = const [],
+    this.health = const [],
     this.tags = const [],
     this.notes = '',
     this.system,
@@ -72,6 +74,11 @@ class Run {
     jobs: List.unmodifiable([
       for (final job in (json['jobs'] as List?) ?? const [])
         RunJob.fromJson(job as Map<String, Object?>),
+    ]),
+    // Older servers don't send it.
+    health: List.unmodifiable([
+      for (final warning in (json['health'] as List?) ?? const [])
+        ?HealthWarning.fromJson(warning as Map<String, Object?>),
     ]),
     // Older servers don't send these.
     tags: List.unmodifiable([for (final tag in (json['tags'] as List?) ?? const []) tag as String]),
@@ -132,6 +139,10 @@ class Run {
 
   /// The steps where a later job took over (marked on its charts).
   List<int> get jobStarts => [for (final job in jobs.skip(1)) job.startStep];
+
+  /// Training problems the logger saw (a NaN loss, a diverging loss,
+  /// exploding gradients), newest first. Empty from an older server.
+  final List<HealthWarning> health;
 
   /// When it was asked to stop from the app (its Stop button), while it
   /// runs; its script stops at its next `run.should_stop()` check.
@@ -262,6 +273,7 @@ class Run {
     'statusMessage': statusMessage,
     'stopRequestedAt': stopRequestedAt?.toIso8601String(),
     'jobs': [for (final job in jobs) job.toJson()],
+    'health': [for (final warning in health) warning.toJson()],
     'tags': tags,
     'notes': notes,
     'system': system?.toJson(),
@@ -291,6 +303,7 @@ class Run {
       other.statusMessage == statusMessage &&
       other.stopRequestedAt == stopRequestedAt &&
       deepListEquals(other.jobs, jobs) &&
+      deepListEquals(other.health, health) &&
       deepListEquals(other.tags, tags) &&
       other.notes == notes &&
       other.system == system &&
@@ -319,6 +332,7 @@ class Run {
     statusMessage,
     stopRequestedAt,
     Object.hashAll(jobs),
+    Object.hashAll(health),
     Object.hashAll(tags),
     notes,
     system,

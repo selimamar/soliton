@@ -243,6 +243,20 @@ def test_validation_sets_curves_and_spectra_reach_the_server(tmp_path, database_
         assert server.get(f"/api/runs/{run.id}")["hyperparameters"]["PDE"] == "Darcy 2D"
 
 
+def test_a_training_problem_reaches_the_server(tmp_path, database_url):
+    with LiveServer(database_url) as server:
+        run = soliton.init("tiny", server=server.url, token=TOKEN, dir=str(tmp_path),
+                           system_metrics=False, stop_on_divergence=True)
+        run.log({"train/loss": 0.7})
+        with pytest.raises(soliton.Diverged):
+            run.log({"train/loss": float("nan")})
+        stored = server.get(f"/api/runs/{run.id}")
+        assert stored["status"] == "crashed"
+        assert stored["statusMessage"] == "Diverged: train/loss is NaN at step 1"
+        assert [(h["kind"], h["step"], h["message"]) for h in stored["health"]] == [
+            ("nan", 1, "train/loss is NaN at step 1")]
+
+
 def test_a_simulation_reaches_the_server_and_diverges_there(tmp_path, database_url):
     np = pytest.importorskip("numpy")
     with LiveServer(database_url) as server:

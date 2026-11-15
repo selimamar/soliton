@@ -137,12 +137,13 @@ def test_an_offline_run_is_saved_to_disk(tmp_path):
     run.log({"train/loss": float("nan"), "bad": "text"})  # step 1; "bad" is skipped
     run.finish()
 
-    first, m0, m1, status = records(run)
+    first, m0, m1, health, status = [r for r in records(run) if r["type"] != "output"]
     assert first["type"] == "run" and first["id"] == run.id
     assert first["hyperparameters"] == {"lr": "0.1"}
     assert (first["totalSteps"], first["totalEpochs"], first["host"]) == (10, 2, "test")
     assert m0 == {"type": "metrics", "step": 0, "time": m0["time"], "values": {"train/loss": 1.0}, "epoch": 0}
     assert m1["step"] == 1 and m1["values"] == {"train/loss": "NaN"} and m1["epoch"] == 0
+    assert (health["type"], health["kind"], health["message"]) == ("health", "nan", "train/loss is NaN at step 1")
     assert status["type"] == "status" and status["status"] == "finished"
 
 

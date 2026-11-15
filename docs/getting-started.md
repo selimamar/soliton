@@ -202,11 +202,16 @@ offline runs). The full logger API is in [logger/README.md](../logger/README.md)
 - **Statuses**: Queued, Live, Finished, Crashed (with the reason: the
   error, "Diverged", "Stopped by its Slurm time limit", "Lost contact" when
   a job went silent for 10 minutes, or "Cancelled before it started").
-- **Alerts** while the app is open, when a run finishes or crashes, and
-  when a live run, at its pace, won't finish before its Slurm time limit
-  (once per job, while there's time to save a checkpoint). Each can be
-  turned off in Settings. Phone notifications when it's closed need ntfy on
-  the server ([server README](../server/README.md)).
+- **Training health**: a warning at the top of a run's Overview when its
+  loss turns NaN, its training loss climbs back up, or its gradient norm
+  (log `optim/grad_norm`) blows up, with what usually helps.
+- **Alerts** while the app is open, when a run finishes or crashes, when a
+  live run, at its pace, won't finish before its Slurm time limit (once per
+  job, while there's time to save a checkpoint), when training goes wrong,
+  and when a queued Slurm job starts (after `soliton sbatch`, or a wait of
+  10 minutes or more). Each can be turned off in Settings. Phone
+  notifications when it's closed need ntfy on the server
+  ([server README](../server/README.md)).
 
 ## 6. Everyday things
 
@@ -241,6 +246,7 @@ offline runs). The full logger API is in [logger/README.md](../logger/README.md)
 | "That's the job token" | The app needs the server's main token; the job token is for job scripts |
 | A queued job doesn't move on | What Slurm says is as of `soliton sbatch`, the last `soliton queue`, or the last Soliton job that started: run `soliton queue`. The wait itself counts up by itself |
 | "Asked to stop" stays | The script doesn't log often, or checks `run.should_stop()` rarely: it stops at its next check (or next log, for a script that never checks) |
+| A training-health warning you don't believe | The checks are deliberately loose (10 times the lowest loss, back to the starting loss, a gradient norm 10 times its usual size for 5 logs in a row), but a loss that can rise on purpose (a curriculum, a restart) may still set one off. `SOLITON_HEALTH=0` turns them off for a job |
 | No time-limit alert | It comes once the run has gone 10 minutes and 2% of the way, and only if it would miss the limit by more than 5 minutes; it needs `total_steps` (or a simulation's `t_end`) |
 | The server won't start: "the database is at version N, newer than this server knows" | A newer server already upgraded that database: update the server (`git pull`, then restart it) |
 | Reproduce says "Uncommitted changes" | The code wasn't committed when the run started, so its commit alone may not reproduce it: commit before long runs |

@@ -103,6 +103,28 @@ read with `.item()`), and may be NaN or infinite: that's what a diverging run
 logs, and the app shows it. Names starting with `system/` are the logger's
 own (below) and go to the System tab.
 
+### Training health
+
+The logger watches what you log and tells you when training goes wrong,
+while there's still time to act:
+
+- **NaN loss**: a loss (any name containing "loss") turns NaN or infinite.
+- **Diverging loss**: a training loss climbs back up, to 10 times its lowest
+  (smoothed) value, or back to where it started after having halved.
+  Validation losses don't count: rising can be overfitting.
+- **Exploding gradients**: a gradient norm (a name ending in `grad_norm`,
+  e.g. `optim/grad_norm`, what `clip_grad_norm_` returns) stays more than 10
+  times its usual size, or NaN, for 5 logs in a row. One-off spikes (clipped,
+  or skipped by a gradient scaler) don't count.
+
+Each is printed (`soliton: warning: train/loss is NaN at step 1,234`), shown
+at the top of the run's Overview with what usually helps, and sent as an
+alert (and through ntfy), once per kind and job. The run goes on: with
+`init(stop_on_divergence=True)`, a NaN or infinite loss also ends it as
+crashed ("Diverged: ...") and raises `soliton.Diverged`, to stop the script
+before it spends more GPU hours. Simulations have their own divergence check
+(below). `SOLITON_HEALTH=0` turns the checks off.
+
 ### System: what it trains on, and how busy it keeps it
 
 When a run starts, it records the machine: GPUs (model, memory, driver),
@@ -384,6 +406,7 @@ soliton data scan $SCRATCH/data          # each data file or folder of them in t
 | `capture_output` | `SOLITON_CAPTURE_OUTPUT`, else `True` | Send what the script prints (see Output, below) |
 | `capture_code` | `SOLITON_CAPTURE_CODE`, else `True` | Record what it takes to run it again: git commit and changed files, command line, job script, packages (see Reproducing a run, below) |
 | `price_per_hour` | `SOLITON_PRICE_PER_HOUR`, else estimated | What the machine costs in US dollars per hour (all its GPUs), for the app's rounded cost estimate. Without it, the app assumes a typical on-demand cloud price for the GPUs (e.g. about $4/h per H100, $2.50 per A100, $0.80 per L4) or $0.05 per CPU core. `0` hides the estimate (e.g. a cluster you don't pay by the hour for) |
+| `stop_on_divergence` | `False` | When a loss turns NaN or infinite, end the run as crashed and raise `soliton.Diverged` (see Training health); otherwise it only warns |
 | `tags`, `notes` | none | To organise runs in the app, e.g. `tags=["baseline"]`, `notes="first try with AdamW"`. Only the starting values: they're then edited in the app, and the logger never overwrites them |
 | `config` | none | Hyperparameters: a dict (nested is fine) or argparse namespace |
 | `train_samples`, `val_samples` | none | How many samples are trained and validated on: a number, a dataset, or a DataLoader (its dataset is counted, not its batches) |
@@ -552,7 +575,9 @@ fno-hires-3fa9c1 ...` shows that run as queued until it goes on.
 ones, and ends those that left the queue without starting, with what `sacct`
 says (cancelled, failed). It doesn't keep running: run it when you check.
 Slurm often has no start estimate ("Not estimated") until a job nears the
-front of the queue.
+front of the queue. When the job starts, the app (and ntfy) says so: "fno-hires
+started after 2 h 15 min in the queue". Any Slurm job that waited 10 minutes
+or more gets that alert too, `soliton sbatch` or not.
 
 Jobs also refresh the queue themselves: as a Slurm job starts logging, its
 logger does what `soliton queue` does once, in the background, for your other

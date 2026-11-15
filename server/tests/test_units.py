@@ -110,6 +110,29 @@ def test_ntfy_time_limit_messages_are_on_by_default():
     assert message["priority"] == 4
 
 
+def test_ntfy_health_and_job_started_messages_are_on_by_default():
+    notifier = NtfyNotifier("https://ntfy.sh/my-topic")
+    health = notifier.message_for(Change("r", "fno", "health", "live", message="train/loss is NaN at step 120"))
+    assert (health["title"], health["message"], health["priority"]) == (
+        "fno needs a look", "train/loss is NaN at step 120", 4)
+    started = notifier.message_for(Change("r", "fno", "job-started", "live",
+                                          message="Started after 2 h in the queue."))
+    assert (started["title"], started["message"]) == ("fno started", "Started after 2 h in the queue.")
+    assert "priority" not in started
+    brief = NtfyNotifier("https://ntfy.sh/my-topic", details=False)
+    assert brief.message_for(Change("r", "fno", "health", "live", message="x"))["title"] == "A run needs a look"
+    assert brief.message_for(Change("r", "fno", "job-started", "live"))["title"] == "A queued job started"
+
+
+def test_queue_waits_read_naturally():
+    from datetime import timedelta
+
+    from soliton_server.store import _duration
+
+    assert [_duration(timedelta(minutes=m)) for m in (0, 25, 60, 134, 24 * 60, 24 * 60 + 245)] == [
+        "0 min", "25 min", "1 h", "2 h 14 min", "1 d", "1 d 4 h"]
+
+
 def test_ntfy_needs_a_topic():
     with pytest.raises(ValueError):
         NtfyNotifier("https://ntfy.sh/")

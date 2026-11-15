@@ -25,6 +25,7 @@ from .db import (
     LayerPointRow,
     LayerRow,
     MetricPointRow,
+    RunHealthRow,
     RunItemRow,
     RunJobRow,
     RunKeyRow,
@@ -43,6 +44,7 @@ from .schemas import (
     DatasetIn,
     EvalEvent,
     FieldEvent,
+    HealthEvent,
     LayersEvent,
     MetricsEvent,
     OUTPUT_KEPT,
@@ -56,6 +58,13 @@ TRAIN_LOSS = "train/loss"
 SIM_TIME = "sim/t"  # A simulation's simulated time, logged as a metric.
 LOSS_PREVIEW_POINTS = 60
 _CHUNK = 500  # Rows per INSERT statement.
+# A job that waited at least this long in the queue gets a "job-started"
+# alert (one queued with `soliton sbatch` always does).
+QUEUE_WAIT_ALERT = timedelta(minutes=10)
+# Alerts only for what just happened, not for a run uploaded later
+# (`soliton sync`).
+RECENT = timedelta(minutes=15)
+HEALTH_SHOWN = 10  # The latest problems in a run's description.
 
 
 class RunNotFound(Exception):
@@ -96,7 +105,9 @@ class Change:
     """Something that happened to a run, for live updates and notifications.
 
     [event] is "created", "updated", "finished", "crashed", "revived" (data
-    arrived again after a lost contact) or "deleted".
+    arrived again after a lost contact) or "deleted"; for alerts only,
+    "time-limit", "health" (a training problem, see HealthEvent) and
+    "job-started" (its Slurm job left the queue).
     """
 
     run_id: str
@@ -391,11 +402,37 @@ class Store:
             session.flush()
             if event == "created" and run_key:
                 session.add(RunKeyRow(run_id=run_id, key_hash=run_key_hash(run_key)))
-            if (event in ("created", "started", "revived") and not body.queued) or new_job:
+            started_job = (event in ("created", "started", "revived") and not body.queued) or new_job
+            if started_job:
                 self._start_job(session, row, body.system)
             if event == "created" and not body.queued:
                 changes = self._take_over_queued(session, run_id, body.system)
+            if started_job:
+                was_queued = event == "started" or any(c.event == "deleted" for c in changes)
+                alert = self._job_started(session, row, was_queued, now)
+                if alert is not None:
+                    changes.append(alert)
             return self._run_json(session, row), [_change(row, event), *changes]
+
+    @staticmethod
+    def _job_started(session: Session, row: RunRow, was_queued: bool,
+                     now: datetime) -> Change | None:
+        """A "job-started" alert when [row]'s new job had waited in the queue:
+        queued with `soliton sbatch` ([was_queued]), or for at least
+        QUEUE_WAIT_ALERT by Slurm's submit time. Not for a job that started
+        long ago (a run uploaded later)."""
+        job = session.scalars(
+            select(RunJobRow).where(RunJobRow.run_id == row.id).order_by(RunJobRow.seq.desc())
+        ).first()
+        if job is None or _aware(now) - _aware(job.started_at) > RECENT:
+            return None
+        wait = (_aware(job.started_at) - _aware(job.submitted_at)
+                if job.submitted_at is not None else None)
+        if not was_queued and (wait is None or wait < QUEUE_WAIT_ALERT):
+            return None
+        message = (f"Started after {_duration(wait)} in the queue."
+                   if wait is not None and wait >= timedelta(minutes=1) else "Its job started.")
+        return replace(_change(row, "job-started"), message=message)
 
     def request_stop(self, run_id: str) -> tuple[dict, Change]:
         """Asks a live run to stop (from the app): its logger hears of it on
@@ -616,7 +653,8 @@ class Store:
             change = _change(row, "deleted")
             for table in (MetricPointRow, LayerPointRow, LayerRow, FieldRow, RunItemRow,
                           RunNotesRow, RunSystemRow, RunSimulationRow, DatasetUseRow,
-                          RunOutputRow, RunResumeRow, RunStopRow, RunJobRow, RunKeyRow):
+                          RunOutputRow, RunResumeRow, RunStopRow, RunJobRow, RunKeyRow,
+                          RunHealthRow):
                 session.execute(delete(table).where(table.run_id == run_id))
             session.delete(row)
             return change
@@ -668,7 +706,11 @@ class Store:
                     changes.append(_change(row, "revived"))
                 row.last_seen_at = max(row.last_seen_at, time)
 
-                if isinstance(event, MetricsEvent):
+                if isinstance(event, HealthEvent):
+                    change = self._store_health(session, row, event, time, now)
+                    if change is not None:
+                        changes.append(change)
+                elif isinstance(event, MetricsEvent):
                     for name, value in event.values.items():
                         stored, code = to_columns(value)
                         metric_rows.append(
@@ -708,6 +750,19 @@ class Store:
                 _upsert(session, FieldRow, [field_row], ("run_id", "name", "step"))
             changes.append(_change(row, "updated"))
         return changes
+
+    @staticmethod
+    def _store_health(session: Session, row: RunRow, event: HealthEvent, time: datetime,
+                      now: datetime) -> Change | None:
+        """Keeps a training problem; a "health" alert the first time it
+        arrives, while the run is live and it is recent."""
+        if session.get(RunHealthRow, (row.id, event.kind, event.step)) is not None:
+            return None  # Sent again (a retried upload, `soliton sync`).
+        session.add(RunHealthRow(run_id=row.id, kind=event.kind, step=event.step,
+                                 message=event.message, at=time))
+        if row.status != "live" or _aware(now) - _aware(time) > RECENT:
+            return None
+        return replace(_change(row, "health"), message=event.message)
 
     @staticmethod
     def _store_layer(run_id, step, position, layer, layers, session, point_rows) -> None:
@@ -1068,6 +1123,10 @@ class Store:
         jobs = session.scalars(
             select(RunJobRow).where(RunJobRow.run_id == row.id).order_by(RunJobRow.seq)
         ).all()
+        health = session.scalars(
+            select(RunHealthRow).where(RunHealthRow.run_id == row.id)
+            .order_by(RunHealthRow.at.desc(), RunHealthRow.step.desc()).limit(HEALTH_SHOWN)
+        ).all()
         return {
             "id": row.id,
             "name": row.name,
@@ -1094,6 +1153,11 @@ class Store:
                  "endedAt": iso(j.ended_at), "status": j.status, "message": j.message,
                  "startStep": j.start_step, "endStep": j.end_step}
                 for j in jobs
+            ],
+            # Training problems the logger saw, newest first.
+            "health": [
+                {"kind": h.kind, "step": h.step, "message": h.message, "at": iso(h.at)}
+                for h in health
             ],
             "tags": list(notes.tags) if notes else [],
             "notes": notes.notes if notes else "",
@@ -1177,3 +1241,15 @@ class Store:
         if full:
             result["previews"] = row.previews
         return result
+
+
+def _duration(value: timedelta) -> str:
+    """E.g. "25 min", "2 h 14 min", "3 d 4 h"."""
+    minutes = max(int(value.total_seconds() // 60), 0)
+    days, minutes = divmod(minutes, 24 * 60)
+    hours, minutes = divmod(minutes, 60)
+    if days:
+        return f"{days} d {hours} h" if hours else f"{days} d"
+    if hours:
+        return f"{hours} h {minutes} min" if minutes else f"{hours} h"
+    return f"{minutes} min"

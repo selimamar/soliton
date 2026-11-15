@@ -52,7 +52,7 @@ All from environment variables:
 | `SOLITON_NTFY_DETAILS` | `1` | `0`: notifications don't name the run or quote its error ("A run crashed"), for a topic others may read |
 | `SOLITON_TLS_CERT`, `SOLITON_TLS_KEY` | off | Serve https with this certificate and key (PEM; also `--tls-cert`, `--tls-key`) |
 | `SOLITON_MAX_BODY_MB` | `128` | Larger requests are refused (413) |
-| `SOLITON_NOTIFY_ON` | `finished,crashed,time-limit` | Which events send a push notification (`time-limit`: a live run that, at its pace, won't finish before its Slurm time limit; once per job) |
+| `SOLITON_NOTIFY_ON` | `finished,crashed,time-limit,health,job-started` | Which events send a push notification (`time-limit`: a live run that, at its pace, won't finish before its Slurm time limit, once per job; `health`: the logger saw training go wrong; `job-started`: a job queued with `soliton sbatch`, or one that waited 10 minutes or more, started) |
 
 ## Push notifications (ntfy)
 
@@ -195,7 +195,14 @@ Field names and shapes are exactly what the app's models read (`fromJson` in
 {"type": "status", "status": "crashed", "message": "RuntimeError: CUDA out of memory"}
 {"type": "status", "status": "crashed", "diverged": true,
  "message": "Diverged at t = 0.83: energy is NaN"}
+{"type": "health", "kind": "nan", "step": 1234,
+ "message": "train/loss is NaN at step 1,234"}
 ```
+
+`health` is a training problem the logger saw: `kind` is `nan` (a loss
+turned NaN or infinite), `divergence` (a training loss climbed back up) or
+`gradient` (the gradient norm blew up). Kept once per kind and step; the
+first time, while the run is live, it raises a `health` alert.
 
 **Simulations** (`soliton.simulate`) are runs whose description has a
 `simulation` entry: `{"tEnd": 10, "cflLimit": 1, "monitor": "energy"}`
@@ -278,13 +285,18 @@ up in logs), get `{"type": "ready"}`, then one message per change:
 
 `event` is `created`, `updated`, `started` (a queued job's run began),
 `finished`, `crashed`, `revived`, `time-limit` (won't finish before its Slurm
-time limit) or `deleted`; `"notify": false` marks one not to alert about (a
-queued job you cancelled).
+time limit), `health` (a training problem, the message says which),
+`job-started` (its job left the queue: queued with `soliton sbatch`, or after
+waiting 10 minutes or more; the message says how long) or `deleted`;
+`"notify": false` marks one not to alert about (a queued job you cancelled).
+Alerts are only raised for what just happened, not for a run uploaded later
+(`soliton sync`).
 
 Besides what the logger sent, a run's JSON has `jobs` (each process that ran
 it: `jobId`, `submittedAt`, `startedAt`, `endedAt`, `status`, `message`,
-`startStep`, `endStep`), `resumedAtStep` (where its latest process took over)
-and `stopRequestedAt` (the app's Stop button, until it ends).
+`startStep`, `endStep`), `resumedAtStep` (where its latest process took over),
+`stopRequestedAt` (the app's Stop button, until it ends) and `health` (the
+latest 10 training problems, newest first: `kind`, `step`, `message`, `at`).
 The server sends `{"type": "ping"}` when idle, to keep proxies from closing
 the connection. Interactive API docs are at `/docs` while the server runs.
 

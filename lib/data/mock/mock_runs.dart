@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../../models/health_warning.dart';
 import '../../models/layer_info.dart';
 import '../../models/layer_stats.dart';
 import '../../models/metric_series.dart';
@@ -185,6 +186,16 @@ List<MockRun> buildMockRuns(DateTime now) => [
     statusMessage:
         'Loss became NaN at step 3,412. '
         'The learning rate may be too high.',
+    health: const [
+      HealthWarning(kind: HealthKind.nan, step: 3412, message: 'train/loss is NaN at step 3,412'),
+      HealthWarning(
+        kind: HealthKind.gradient,
+        step: 3380,
+        message:
+            'optim/grad_norm blew up: 214 at step 3,380, more than 10 times its usual 0.92 '
+            'since step 3,340',
+      ),
+    ],
     seed: 3,
   ),
   _buildRun(
@@ -510,6 +521,7 @@ MockRun _buildRun({
   double? finalAccuracy,
   required double peakLearningRate,
   String? statusMessage,
+  List<HealthWarning> health = const [],
   List<String> tags = const [],
   List<MockField> Function(int currentStep, int totalSteps, int seed)? fields,
   MockExtras Function(
@@ -600,6 +612,7 @@ MockRun _buildRun({
     system: system,
     lossPreview: [for (final p in trainLoss.downsampled(40).points) p.value],
     statusMessage: statusMessage,
+    health: health,
     tags: tags,
   );
 

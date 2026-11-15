@@ -294,6 +294,22 @@ class RunJobRow(Base):
     end_step: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
+class RunHealthRow(Base):
+    """A training problem the logger reported (see HealthEvent), at most one
+    per kind and step. A table of its own, so older databases get it without
+    a migration."""
+
+    __tablename__ = "run_health"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    kind: Mapped[str] = mapped_column(String(16), primary_key=True)
+    step: Mapped[int] = mapped_column(Integer, primary_key=True)
+    message: Mapped[str] = mapped_column(Text)
+    at: Mapped[datetime] = mapped_column(UtcDateTime)
+
+
 class SchemaVersionRow(Base):
     """Which migration the database is at (one row; see migrations.py)."""
 

@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:soliton/data/services/live_updates.dart';
 import 'package:soliton/data/services/settings_store.dart';
-import 'package:soliton/models/run.dart';
 import 'package:soliton/shared/widgets/line_chart_card.dart';
 
 import 'test_app.dart';
@@ -103,7 +102,7 @@ void main() {
     RunAlert crash() => const RunAlert(
       runId: 'unet-seg',
       name: 'unet-seg',
-      status: RunStatus.crashed,
+      kind: AlertKind.crashed,
       message: 'Loss became NaN',
     );
 
@@ -132,9 +131,8 @@ void main() {
       const alert = RunAlert(
         runId: 'resnet50-cifar',
         name: 'resnet50-cifar',
-        status: RunStatus.live,
+        kind: AlertKind.timeLimit,
         message: 'At this pace it needs about 5h more',
-        timeLimit: true,
       );
       await openApp(tester);
       containerOf(tester).read(runAlertsProvider.notifier).show(alert);
@@ -144,14 +142,66 @@ void main() {
 
     testWidgets('the time-limit alert can be turned off', (tester) async {
       await openApp(tester, '/', MemorySettingsStore({'notifyOnTimeLimit': false}));
-      containerOf(tester).read(runAlertsProvider.notifier).show(
-        const RunAlert(
-          runId: 'resnet50-cifar',
-          name: 'resnet50-cifar',
-          status: RunStatus.live,
-          timeLimit: true,
-        ),
+      containerOf(tester)
+          .read(runAlertsProvider.notifier)
+          .show(
+            const RunAlert(
+              runId: 'resnet50-cifar',
+              name: 'resnet50-cifar',
+              kind: AlertKind.timeLimit,
+            ),
+          );
+      await tester.pump();
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
+    testWidgets('a training problem shows an alert', (tester) async {
+      await openApp(tester);
+      containerOf(tester)
+          .read(runAlertsProvider.notifier)
+          .show(
+            const RunAlert(
+              runId: 'resnet50-cifar',
+              name: 'resnet50-cifar',
+              kind: AlertKind.health,
+              message: 'train/loss is NaN at step 1,200',
+            ),
+          );
+      await tester.pumpAndSettle();
+      expect(
+        find.text('resnet50-cifar needs a look: train/loss is NaN at step 1,200'),
+        findsOneWidget,
       );
+    });
+
+    testWidgets('a queued job starting shows an alert, unless turned off', (tester) async {
+      const started = RunAlert(
+        runId: 'resnet50-cifar',
+        name: 'resnet50-cifar',
+        kind: AlertKind.jobStarted,
+        message: 'Started after 2 h 15 min in the queue.',
+      );
+      await openApp(tester);
+      containerOf(tester).read(runAlertsProvider.notifier).show(started);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('resnet50-cifar started. Started after 2 h 15 min in the queue.'),
+        findsNothing,
+        reason: 'not said twice',
+      );
+      expect(find.text('resnet50-cifar started after 2 h 15 min in the queue'), findsOneWidget);
+    });
+
+    testWidgets('the health and job-start alerts can be turned off', (tester) async {
+      await openApp(
+        tester,
+        '/',
+        MemorySettingsStore({'notifyOnHealth': false, 'notifyOnJobStart': false}),
+      );
+      final alerts = containerOf(tester).read(runAlertsProvider.notifier);
+      alerts.show(const RunAlert(runId: 'a', name: 'a', kind: AlertKind.health));
+      await tester.pump();
+      alerts.show(const RunAlert(runId: 'b', name: 'b', kind: AlertKind.jobStarted));
       await tester.pump();
       expect(find.byType(SnackBar), findsNothing);
     });

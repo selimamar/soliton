@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
+from ._health import Diverged, HealthCheck
+from ._health import enabled as _health_enabled
 from ._fields import (
     DEFAULT_POINTS,
     capture,
@@ -81,6 +83,7 @@ class Run:
         capture_output: Optional[bool] = None,
         capture_code: Optional[bool] = None,
         price_per_hour: Optional[float] = None,
+        stop_on_divergence: bool = False,
         total_steps: int = 0,
         total_epochs: int = 0,
         host: Optional[str] = None,
@@ -136,6 +139,10 @@ class Run:
             ][:20]
         # Added to the final status record, e.g. that a simulation diverged.
         self._status_extra: dict = {}
+        self._stop_on_divergence = bool(stop_on_divergence)
+        # Training problems (see _health.py); simulations check for divergence
+        # their own way.
+        self._health = HealthCheck() if _simulation is None and _health_enabled() else None
         # Asked from the app to stop (see should_stop()).
         self._stop = threading.Event()
         self._checks_stop = False
@@ -225,11 +232,13 @@ class Run:
             if epoch is not None:
                 self._epoch = int(epoch)
             values = {}
+            numbers = {}
             for key, value in metrics.items():
                 number = to_float(value)
                 if number is None:
                     self._warn_once(f"type:{key}", f"skipping {key!r}: not a number ({type(value).__name__})")
                     continue
+                numbers[str(key)[:200]] = number
                 values[str(key)[:200]] = encode_float(number)
             now = utc_now_iso()
             if values:
@@ -241,6 +250,24 @@ class Run:
                 layers = self._watcher.collect()
                 if layers:
                     self._files.append({"type": "layers", "step": step, "time": now, "layers": layers})
+            diverged = self._check_health(numbers, step, now)
+        if diverged is not None:
+            self.finish("crashed", diverged)
+            raise Diverged(diverged)
+
+    def _check_health(self, numbers: Mapping[str, float], step: int, now: str) -> Optional[str]:
+        """Records the training problems [numbers] show (see _health.py);
+        under the lock. Returns the crash message if the run should stop."""
+        if self._health is None or not numbers:
+            return None
+        stop = None
+        for kind, message in self._health.check(numbers, step):
+            self._files.append({"type": "health", "kind": kind, "step": step, "time": now,
+                                "message": message[:500]})
+            _say(f"warning: {message}")
+            if kind == "nan" and self._stop_on_divergence:
+                stop = f"Diverged: {message}"
+        return stop
 
     def log_field(self, name: str, prediction: Any, target: Any = None,
                   step: Optional[int] = None, *, max_size: Optional[int] = None,

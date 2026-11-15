@@ -9,7 +9,8 @@
 
 Watch your deep learning training runs from your phone: loss curves,
 hyperparameters, architecture, gradient norms and per-layer activation
-statistics, updating live, with an alert when a run finishes or crashes.
+statistics, updating live, with an alert when a run finishes, crashes or
+starts to go wrong.
 
 It has three parts:
 
@@ -207,10 +208,18 @@ What it does:
   the server README.
 - **Chart options**: log scale (loss, learning rate, gradient norm), and
   steps or epochs on the x-axis. Saved, like all settings.
-- **Alerts** while the app is open when a run finishes or crashes, or when a
+- **Training health**: the logger watches what a run logs and says when
+  training goes wrong: a loss turns NaN or infinite, a training loss climbs
+  back up (diverges), or the gradient norm blows up. Each shows at the top of
+  the run's Overview, with what usually helps, and sends an alert, once per
+  job. `init(stop_on_divergence=True)` also ends a run whose loss turned NaN.
+- **Alerts** while the app is open when a run finishes or crashes, when a
   live run, at its pace, won't finish before its Slurm time limit (once per
-  job, while there's still time to save a checkpoint). For notifications when
-  it is closed, set up ntfy on the server: it sends all three.
+  job, while there's still time to save a checkpoint), when training goes
+  wrong (above), and when a queued Slurm job starts (one queued with
+  `soliton sbatch`, or any that waited 10 minutes or more), so you can check
+  its first minutes. Each can be turned off in Settings. For notifications
+  when the app is closed, set up ntfy on the server: it sends all five.
 
 Phones need `https://` for a server on the internet. Plain `http://` works for
 a server on your own network (debug builds on Android, any build on iOS,
@@ -367,5 +376,9 @@ first start and deletes the old copy. Disconnecting deletes it everywhere.
    main token, database migrations, deleting runs~~
 10. ~~Several servers, and all of them in one list; the settings that differ
     in Compare; Reproduce (code version, command, job script)~~
-11. Next ideas: training-health alerts, accounts for several people, native
-    push (APNs/FCM), signing the Apple apps with a developer team
+11. ~~Training-health alerts (NaN or diverging loss, exploding gradients) and
+    an alert when a queued job starts~~
+12. Next ideas: reading runs back into Python for paper figures
+    (`soliton.runs(project=...)` → metrics, settings, summaries), accounts for
+    several people, native push (APNs/FCM), signing the Apple apps with a
+    developer team

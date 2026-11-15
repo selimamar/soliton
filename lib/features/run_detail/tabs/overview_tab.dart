@@ -18,6 +18,7 @@ import '../../../shared/widgets/sparkline.dart';
 import '../../../shared/widgets/stat_tile.dart';
 import '../../../shared/widgets/style_decor.dart';
 import '../widgets/architecture_tree.dart';
+import '../widgets/health_card.dart';
 import '../widgets/network_diagram.dart';
 import '../widgets/run_notes_card.dart';
 import '../widgets/job_times.dart';
@@ -53,6 +54,8 @@ class OverviewTab extends StatelessWidget {
           StopRequestedBanner(run: run),
         // A crashed run's traceback first: it's why it stopped.
         if (run.status == RunStatus.crashed) OutputCard(run: run),
+        // What went wrong in training, before it shows in the numbers below.
+        if (HealthCard.showsFor(run)) HealthCard(run: run),
         if (run.latestLoss != null) _LossHero(run: run),
         // Ink says the progress in the loss sentence instead.
         if (AppTheme.styleOf(context) != AppStyle.ink || run.latestLoss == null)

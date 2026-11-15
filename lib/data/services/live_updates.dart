@@ -5,7 +5,6 @@ import 'dart:math' as math;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
-import '../../models/run.dart';
 import '../providers.dart';
 import 'server_connection.dart';
 
@@ -51,22 +50,42 @@ enum LiveStatus {
   rejected,
 }
 
-/// A run finished or crashed, or won't finish before its Slurm time limit
-/// ([timeLimit], while still live), for an in-app alert.
+/// What an in-app alert is about.
+enum AlertKind {
+  finished('finished'),
+  crashed('crashed'),
+
+  /// A live run that, at its pace, won't finish before its Slurm time limit.
+  timeLimit('time-limit'),
+
+  /// A training problem the logger saw: a NaN loss, a diverging loss,
+  /// exploding gradients.
+  health('health'),
+
+  /// Its Slurm job left the queue (one queued with `soliton sbatch`, or
+  /// one that waited a while).
+  jobStarted('job-started');
+
+  const AlertKind(this.event);
+
+  /// The server's name for it in live updates.
+  final String event;
+
+  static final _byEvent = {for (final kind in values) kind.event: kind};
+
+  static AlertKind? ofEvent(Object? event) => _byEvent[event];
+}
+
+/// Something about a run worth an in-app alert.
 class RunAlert {
-  const RunAlert({
-    required this.runId,
-    required this.name,
-    required this.status,
-    this.message,
-    this.timeLimit = false,
-  });
+  const RunAlert({required this.runId, required this.name, required this.kind, this.message});
 
   final String runId;
   final String name;
-  final RunStatus status;
+  final AlertKind kind;
+
+  /// Why it crashed, what went wrong in training, how long it was queued.
   final String? message;
-  final bool timeLimit;
 }
 
 /// The latest [RunAlert]. The app shows each one (see `RunAlertListener`).
@@ -225,23 +244,17 @@ class LiveUpdates extends Notifier<LiveStatus> {
     // Datasets list the runs that used them.
     if (message['event'] == 'deleted') ref.invalidate(datasetsProvider);
 
-    final status = switch (message['event']) {
-      'finished' => RunStatus.finished,
-      'crashed' => RunStatus.crashed,
-      'time-limit' => RunStatus.live,
-      _ => null,
-    };
+    final kind = AlertKind.ofEvent(message['event']);
     // Nothing to alert about, e.g. a queued job you cancelled yourself.
-    if (status != null && message['notify'] != false) {
+    if (kind != null && message['notify'] != false) {
       ref
           .read(runAlertsProvider.notifier)
           .show(
             RunAlert(
               runId: runId,
               name: message['name'] as String? ?? raw,
-              status: status,
+              kind: kind,
               message: message['statusMessage'] as String?,
-              timeLimit: message['event'] == 'time-limit',
             ),
           );
     }

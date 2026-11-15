@@ -22,7 +22,8 @@ log = logging.getLogger(__name__)
 
 class NtfyNotifier:
     def __init__(self, topic_url: str, token: str | None = None,
-                 events=("finished", "crashed", "time-limit"), details: bool = True):
+                 events=("finished", "crashed", "time-limit", "health", "job-started"),
+                 details: bool = True):
         parts = urlsplit(topic_url.rstrip("/"))
         base_path, _, topic = parts.path.rpartition("/")
         if not topic:
@@ -64,6 +65,21 @@ class NtfyNotifier:
                 "tags": ["hourglass_flowing_sand"],
                 "priority": 4,
             }
+        if change.event == "health":
+            return {
+                "topic": self._topic,
+                "title": f"{change.name} needs a look",
+                "message": change.message or "Its training looks unhealthy.",
+                "tags": ["warning"],
+                "priority": 4,
+            }
+        if change.event == "job-started":
+            return {
+                "topic": self._topic,
+                "title": f"{change.name} started",
+                "message": change.message or "Its job started.",
+                "tags": ["arrow_forward"],
+            }
         return None
 
     def _brief(self, change: Change) -> dict | None:
@@ -73,6 +89,9 @@ class NtfyNotifier:
             "crashed": ("A run crashed", "Open Soliton for details.", ["rotating_light"], 4),
             "time-limit": ("A run won't finish before its time limit",
                            "Open Soliton for details.", ["hourglass_flowing_sand"], 4),
+            "health": ("A run needs a look", "Open Soliton for details.", ["warning"], 4),
+            "job-started": ("A queued job started", "Open Soliton for details.",
+                            ["arrow_forward"], None),
         }.get(change.event)
         if brief is None:
             return None

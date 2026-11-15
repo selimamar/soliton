@@ -12,7 +12,7 @@ RUN_KEYS = {
     "id", "name", "project", "host", "status", "startedAt", "endedAt", "currentStep",
     "totalSteps", "currentEpoch", "totalEpochs", "hyperparameters", "architecture",
     "lossPreview", "statusMessage", "tags", "notes", "system", "simulation",
-    "datasets", "resumedAtStep", "stopRequestedAt", "jobs",
+    "datasets", "resumedAtStep", "stopRequestedAt", "jobs", "health",
 }
 LAYER_KEYS = {
     "layerName", "activationMean", "activationStd", "gradNorm", "activationHistogram",
@@ -863,6 +863,73 @@ def test_a_queued_job_with_the_runs_own_id_becomes_the_run(client, notifications
     assert run["hyperparameters"] == HYPERPARAMETERS
     assert "started" in [c.event for c in notifications]
     assert queue_job(client, "tiny-1")["status"] == "live", "a late `soliton queue` changes nothing"
+
+
+def started_alerts(notifications):
+    return [(c.run_id, c.message) for c in notifications if c.event == "job-started"]
+
+
+def test_a_queued_job_that_starts_alerts_with_its_wait(client, notifications):
+    queue_job(client)
+    create_run(client, system={"slurm": {"jobId": "555", "submitTime": "2026-11-12T06:45:00Z"}})
+    assert started_alerts(notifications) == [("tiny-1", "Started after 2 h 15 min in the queue.")]
+
+
+def test_a_queued_job_with_the_runs_own_id_alerts_when_it_starts(client, notifications):
+    queue_job(client, "tiny-1")
+    create_run(client, startedAt="2026-11-12T09:00:00Z", system={"slurm": {"jobId": "555"}})
+    assert started_alerts(notifications) == [("tiny-1", "Its job started.")]
+
+
+def test_any_slurm_job_that_waited_long_alerts_when_it_starts(client, notifications):
+    create_run(client, "waited", system={"slurm": {"jobId": "7", "submitTime": "2026-11-12T08:20:00Z"}})
+    create_run(client, "quick", system={"slurm": {"jobId": "8", "submitTime": "2026-11-12T08:58:00Z"}})
+    create_run(client, "laptop")
+    assert started_alerts(notifications) == [("waited", "Started after 40 min in the queue.")]
+
+
+def test_a_run_uploaded_long_after_its_job_started_doesnt_alert(client, notifications):
+    create_run(client, startedAt="2026-11-10T09:00:00Z",
+               system={"slurm": {"jobId": "7", "submitTime": "2026-11-10T06:00:00Z"}})
+    assert started_alerts(notifications) == []
+
+
+def health(kind="nan", step=120, message="train/loss is NaN at step 120"):
+    return {"type": "health", "kind": kind, "step": step, "message": message}
+
+
+def test_a_training_problem_alerts_once_and_shows_on_the_run(client, notifications):
+    create_run(client)
+    send(client, [metrics(120, train__loss="NaN"), health()])
+    send(client, [health()])  # Sent again (a retried upload): no second alert.
+    send(client, [health("gradient", 300, "optim/grad_norm blew up")])
+    alerts = [(c.run_id, c.message) for c in notifications if c.event == "health"]
+    assert alerts == [("tiny-1", "train/loss is NaN at step 120"), ("tiny-1", "optim/grad_norm blew up")]
+    shown = client.get("/api/runs/tiny-1").json()["health"]
+    assert [(h["kind"], h["step"]) for h in shown] == [("gradient", 300), ("nan", 120)]
+    assert shown[1]["message"] == "train/loss is NaN at step 120"
+
+
+def test_a_training_problem_of_an_ended_run_is_kept_without_an_alert(client, notifications):
+    create_run(client)
+    send(client, [{"type": "status", "status": "finished"}])
+    send(client, [health()])
+    assert [c for c in notifications if c.event == "health"] == []
+    assert len(client.get("/api/runs/tiny-1").json()["health"]) == 1
+
+
+def test_an_unknown_kind_of_training_problem_is_refused(client):
+    create_run(client)
+    response = client.post("/api/runs/tiny-1/events", json={"events": [health("bored")]})
+    assert response.status_code == 422
+
+
+def test_deleting_a_run_deletes_its_training_problems(client):
+    create_run(client)
+    send(client, [health()])
+    client.delete("/api/runs/tiny-1")
+    create_run(client)
+    assert client.get("/api/runs/tiny-1").json()["health"] == []
 
 
 def test_a_job_continuing_an_ended_run_queues_it_and_keeps_what_it_logged(client):

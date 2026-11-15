@@ -49,7 +49,7 @@ class Settings:
     """Access token, for a protected (e.g. self-hosted) ntfy topic."""
 
     notify_on: frozenset[str] = field(
-        default_factory=lambda: frozenset({"finished", "crashed", "time-limit"})
+        default_factory=lambda: frozenset({"finished", "crashed", "time-limit", "health", "job-started"})
     )
 
     ntfy_details: bool = True
@@ -83,7 +83,7 @@ class Settings:
         )
         notify_on = frozenset(
             e.strip()
-            for e in env.get("SOLITON_NOTIFY_ON", "finished,crashed,time-limit").split(",")
+            for e in env.get("SOLITON_NOTIFY_ON", "finished,crashed,time-limit,health,job-started").split(",")
             if e.strip()
         )
         return cls(

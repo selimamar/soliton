@@ -36,6 +36,13 @@ with soliton.init(
   as `loss/<term>`; field errors as `val/rel_l2` and `val/rel_l2/<variable>`;
   `perf/inference_s`, `perf/solver_s`. Anything else shows under "Other
   metrics".
+- **Training health** comes free from those names: the logger warns (in
+  the app, with an alert) when a loss turns NaN, a training loss climbs back
+  up, or `optim/grad_norm` blows up. So log the gradient norm when the
+  script clips gradients. For long or costly runs, suggest
+  `init(stop_on_divergence=True)`: a NaN loss then ends the run and raises
+  `soliton.Diverged` (save nothing after it); don't add it unasked to a script
+  that handles NaN itself (e.g. a gradient scaler).
 - `step` is the global optimizer step: it never resets. Resuming from a
   checkpoint: save `run.id` in the checkpoint and pass `id=` to `init`.
   The app then shows the run's jobs (one per restart) and marks where each

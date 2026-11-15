@@ -14,17 +14,13 @@ import math
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from ._fields import DEFAULT_POINTS, _numpy, to_array
+from ._health import Diverged
 from ._run import Run, _field_name
 from ._util import to_float
 
 # The simulated time and time step, logged as metrics with these names.
 TIME = "sim/t"
 TIME_STEP = "sim/dt"
-
-
-class Diverged(RuntimeError):
-    """Raised by `Simulation.log` when a value turns NaN or infinite, if the
-    simulation was started with `stop_on_divergence=True`."""
 
 
 class Simulation(Run):
@@ -69,7 +65,6 @@ class Simulation(Run):
             info["monitor"] = str(monitor)[:200]
         if int(max_iterations) < 0:
             raise ValueError("max_iterations must be 0 or more")
-        self._stop_on_divergence = bool(stop_on_divergence)
         self._t: Optional[float] = None
         super().__init__(
             name,
@@ -82,6 +77,7 @@ class Simulation(Run):
             capture_output=capture_output,
             capture_code=capture_code,
             price_per_hour=price_per_hour,
+            stop_on_divergence=stop_on_divergence,
             total_steps=int(max_iterations),
             host=host,
             id=id,

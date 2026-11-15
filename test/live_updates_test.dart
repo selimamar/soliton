@@ -124,8 +124,8 @@ void main() {
 
     final alert = container.read(runAlertsProvider)!;
     expect(
-      (alert.runId, alert.status, alert.message),
-      ('unet-seg', RunStatus.crashed, 'Loss became NaN'),
+      (alert.runId, alert.kind, alert.message),
+      ('unet-seg', AlertKind.crashed, 'Loss became NaN'),
     );
     socket.push(change('resnet50-cifar', 'updated'));
     await tester.pump();
@@ -142,7 +142,13 @@ void main() {
     final socket = sockets.opened.single..push({'type': 'ready'});
     socket.push({...change('resnet50-cifar', 'time-limit'), 'status': 'live'});
     await tester.pump();
-    expect(container.read(runAlertsProvider)!.timeLimit, isTrue);
+    expect(container.read(runAlertsProvider)!.kind, AlertKind.timeLimit);
+    socket.push({...change('resnet50-cifar', 'health'), 'status': 'live'});
+    await tester.pump();
+    expect(container.read(runAlertsProvider)!.kind, AlertKind.health);
+    socket.push({...change('resnet50-cifar', 'job-started'), 'status': 'live'});
+    await tester.pump();
+    expect(container.read(runAlertsProvider)!.kind, AlertKind.jobStarted);
     socket.push({...change('queued-1', 'crashed'), 'notify': false});
     await tester.pump();
     expect(container.read(runAlertsProvider)!.runId, 'resnet50-cifar');

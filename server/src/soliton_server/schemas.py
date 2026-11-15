@@ -392,6 +392,18 @@ class StatusEvent(_In):
     notify: bool = True
 
 
+class HealthEvent(_In):
+    """A problem the logger saw in training (once per kind and job): the
+    loss turned NaN or infinite ("nan"), climbed back up ("divergence"), or
+    the gradient norm blew up ("gradient")."""
+
+    type: Literal["health"]
+    kind: Literal["nan", "divergence", "gradient"]
+    step: int = Field(ge=0)
+    message: str = Field(min_length=1, max_length=500)
+    time: Time = None
+
+
 OUTPUT_KEPT = 1000  # Lines of a run's output the server keeps (the latest).
 OutputLine = Annotated[str, StringConstraints(max_length=2000)]
 
@@ -407,7 +419,8 @@ class OutputEvent(_In):
 
 
 Event = Annotated[
-    Union[MetricsEvent, LayersEvent, FieldEvent, EvalEvent, CurveEvent, StatusEvent, OutputEvent],
+    Union[MetricsEvent, LayersEvent, FieldEvent, EvalEvent, CurveEvent, StatusEvent, OutputEvent,
+          HealthEvent],
     Field(discriminator="type"),
 ]
 

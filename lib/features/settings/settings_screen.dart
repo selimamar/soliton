@@ -101,6 +101,20 @@ class SettingsScreen extends ConsumerWidget {
               value: ref.watch(notifyOnTimeLimitProvider),
               onChanged: (v) => ref.read(notifyOnTimeLimitProvider.notifier).set(v),
             ),
+            SwitchListTile(
+              secondary: const Icon(Icons.warning_amber_rounded),
+              title: const Text('When training goes wrong'),
+              subtitle: const Text('A loss turns NaN or climbs back up, or gradients blow up.'),
+              value: ref.watch(notifyOnHealthProvider),
+              onChanged: (v) => ref.read(notifyOnHealthProvider.notifier).set(v),
+            ),
+            SwitchListTile(
+              secondary: const Icon(Icons.play_circle_outline),
+              title: const Text('When a queued job starts'),
+              subtitle: const Text('After waiting in Slurm\'s queue.'),
+              value: ref.watch(notifyOnJobStartProvider),
+              onChanged: (v) => ref.read(notifyOnJobStartProvider.notifier).set(v),
+            ),
             const Padding(
               padding: EdgeInsets.fromLTRB(72, 0, 16, 8),
               child: Text(

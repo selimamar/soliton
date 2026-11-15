@@ -137,7 +137,9 @@ polls Slurm from the login node; each Soliton job also refreshes your other
 queued jobs once, from its compute node, as it starts. A live run's Stop
 button in the app stops it cleanly if the script checks `run.should_stop()`
 (see the logger README), without `scancel`. A live run that, at its pace, won't finish
-before its time limit sends an alert once (also through ntfy), and when a
+before its time limit sends an alert once (also through ntfy), so does a
+job that waited in the queue when it starts (so you can watch its first
+minutes), and when a
 job ends its Overview compares what it used with what it asked for, with the
 `--mem`, `-c`, `-G` and `--time` to ask for next time.
 

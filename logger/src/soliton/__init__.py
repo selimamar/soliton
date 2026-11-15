@@ -62,6 +62,7 @@ def init(
     capture_output: Optional[bool] = None,
     capture_code: Optional[bool] = None,
     price_per_hour: Optional[float] = None,
+    stop_on_divergence: bool = False,
     total_steps: int = 0,
     total_epochs: int = 0,
     host: Optional[str] = None,
@@ -96,7 +97,14 @@ def init(
     SOLITON_CAPTURE_CODE=0. price_per_hour:
     what the machine costs in US dollars per hour, for the app's cost
     estimate (default SOLITON_PRICE_PER_HOUR, else the app assumes a
-    typical cloud price for the GPUs; 0 hides the estimate). total_steps,
+    typical cloud price for the GPUs; 0 hides the estimate).
+    Training health: the run is watched for a loss turning NaN or infinite,
+    a training loss climbing back up, and a gradient norm (a metric named
+    like "optim/grad_norm") blowing up; each is printed, shown on the run
+    and sent as an alert, once (off with SOLITON_HEALTH=0).
+    stop_on_divergence: when a loss turns NaN or infinite, also end the run
+    as crashed and raise `soliton.Diverged`, to stop the script (save
+    nothing more); default False: only warn. total_steps,
     total_epochs: for the progress bar and time estimate. host: where it runs (default: detected,
     e.g. "Sherlock"). id: reuse an id to continue a run (default: new).
     server, token: default SOLITON_SERVER, SOLITON_TOKEN. mode: "online"
@@ -120,6 +128,7 @@ def init(
         capture_output=capture_output,
         capture_code=capture_code,
         price_per_hour=price_per_hour,
+        stop_on_divergence=stop_on_divergence,
         total_steps=total_steps,
         total_epochs=total_epochs,
         host=host,
