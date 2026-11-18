@@ -79,8 +79,12 @@ def main(argv: list[str] | None = None) -> None:
         print("  Token:    soliton-server --show-token", file=sys.stderr)
     if settings.ntfy_url:
         print("  Push notifications: on (ntfy)", file=sys.stderr)
+    # One process, always: live updates are pushed from memory, so a second
+    # worker wouldn't see the first one's changes. Saying so also keeps
+    # uvicorn from taking a worker count from WEB_CONCURRENCY, which Heroku
+    # sets (to 2 on a Basic dyno) and which would make it exit at startup.
     uvicorn.run(create_app(settings), host=args.host, port=args.port, log_level="info",
-                ssl_certfile=args.tls_cert, ssl_keyfile=args.tls_key)
+                ssl_certfile=args.tls_cert, ssl_keyfile=args.tls_key, workers=1)
 
 
 def cors_note(env=os.environ) -> str:

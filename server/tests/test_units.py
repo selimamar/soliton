@@ -246,3 +246,21 @@ def test_which_web_pages_may_read_the_api(tmp_path):
     assert allowed(site, "https://soliton.example.com") == "https://soliton.example.com"
     assert allowed(site, "http://localhost:8787") is None, "the list replaces the default"
     assert allowed({"SOLITON_CORS_ORIGINS": "*"}, "https://evil.example") == "*"
+
+
+def test_the_server_runs_one_process_whatever_web_concurrency_says(tmp_path, monkeypatch):
+    # Heroku sets WEB_CONCURRENCY (2 on a Basic dyno); uvicorn would take it
+    # as a worker count and exit, since the app isn't given as an import string.
+    import uvicorn
+
+    from soliton_server import cli
+
+    started = {}
+    monkeypatch.setattr(uvicorn, "run", lambda app, **options: started.update(options))
+    monkeypatch.setenv("WEB_CONCURRENCY", "2")
+    monkeypatch.setenv("SOLITON_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("SOLITON_TOKEN", "a-token-long-enough-1234")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("SOLITON_DATABASE_URL", raising=False)
+    cli.main(["--port", "8123"])
+    assert started["workers"] == 1 and started["port"] == 8123
