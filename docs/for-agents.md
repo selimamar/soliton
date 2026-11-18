@@ -93,7 +93,8 @@ use that address only if the user confirms it is their server.
 
 Where the server is depends on the user's setup:
 
-- **A public server** (HTTPS, e.g. a small cloud VM): reachable from
+- **A public server** (HTTPS, e.g. Heroku or a small cloud VM;
+  [hosting.md](hosting.md) sets one up): reachable from
   everywhere, including Modal and cloud machines. Its address and token are
   in `~/.soliton_env` on machines that use it.
 - **The test server on Sherlock**: a job in the `service` partition

@@ -2,6 +2,23 @@
 # (server/). Both are installed, editable, into .venv:
 #
 #   source env.sh && uv sync --all-packages
+#
+# The [project] below is only for hosting platforms that install from the
+# repository's root with `uv sync` (Heroku): it pulls in the server with its
+# PostgreSQL driver, and nothing else. It isn't a package of its own.
+# docs/hosting.md has the Heroku steps; Procfile says how the server starts.
+[project]
+name = "soliton-workspace"
+version = "0"
+requires-python = ">=3.10"
+dependencies = ["soliton-server[postgres]"]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+soliton-server = { workspace = true }
+
 [tool.uv.workspace]
 members = ["logger", "server"]
 

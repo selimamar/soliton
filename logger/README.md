@@ -505,8 +505,8 @@ on the machine you analyse on, never in job scripts. Metrics come a page of
 
 The logger only needs Python and outgoing HTTPS to the server, so jobs on
 any of them report to the same server, next to your Sherlock runs. The server
-must be reachable from the internet (not the test server inside Sherlock).
-The host is detected (table above), and memory and CPU are measured against
+must be reachable from the internet (not the test server inside Sherlock):
+[docs/hosting.md](../docs/hosting.md) sets one up. The host is detected (table above), and memory and CPU are measured against
 the container's own limits.
 
 On [Modal](https://modal.com/docs), keep the address and token in a secret

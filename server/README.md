@@ -149,26 +149,33 @@ the app closed. For privacy, run your own ntfy server and set
 ## Putting it on the internet
 
 The logger on a cluster and the app on your phone both need to reach the
-server, so it has to run somewhere public, with HTTPS. Two common ways:
+server, so it has to run somewhere public, with HTTPS.
+[docs/hosting.md](../docs/hosting.md) walks through each option step by
+step (Heroku, Oracle, Azure, AWS, Google Cloud, your own computer) and
+compares their costs. In short:
 
-- **A small cloud VM** (any provider): install uv, copy this repository,
-  `uv sync --package soliton-server --extra postgres` (or keep SQLite), set
+- **A small cloud VM** (any provider):
+  `uv tool install "git+https://github.com/selimamar/soliton#subdirectory=server"`
+  (for PostgreSQL rather than SQLite:
+  `uv tool install "soliton-server[postgres] @ git+https://github.com/selimamar/soliton#subdirectory=server"`), set
   `SOLITON_TOKEN` to a long random string, run
-  `soliton-server --host 127.0.0.1`, and put [Caddy](https://caddyserver.com)
-  in front for automatic HTTPS (`reverse_proxy 127.0.0.1:8000`; it forwards
-  WebSockets as is).
+  `soliton-server --host 127.0.0.1` as a service, and put
+  [Caddy](https://caddyserver.com) in front for automatic HTTPS
+  (`reverse_proxy 127.0.0.1:8000`; it forwards WebSockets as is).
 - **A hosting platform** that runs Python apps: start command
   `soliton-server --host 0.0.0.0` (it reads `PORT`), and a managed
   PostgreSQL in `DATABASE_URL` (`postgres://` URLs are accepted). Set
   `SOLITON_TOKEN`; don't rely on the generated one, as the disk may not
-  persist.
+  persist. **Heroku** works with the repository as it is: the root
+  `Procfile` has the start command, and Heroku installs the server and its
+  PostgreSQL driver from the root `pyproject.toml` and `uv.lock` (the
+  `soliton-workspace` project there exists for this), with the Python
+  version in `.python-version` and the app's files left out by
+  `.slugignore`.
 
 Run a single process: live updates are pushed from memory, so several
-workers wouldn't see each other's changes. Tables are created on startup.
-There are no migrations yet, so after an upgrade that changes an existing
-table, start from a fresh database. (New tables, like `run_notes` for tags
-and notes or `run_system` for what a run trains on, are added to an
-existing database on startup.)
+workers wouldn't see each other's changes. Tables are created, and existing
+databases upgraded, on startup ([Database migrations](#database-migrations)).
 
 ### CORS
 

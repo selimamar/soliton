@@ -1,0 +1,17 @@
+# Left out of the Heroku build, which only needs the server (and logger/,
+# as a member of the uv workspace). Keeps the deployed slug small.
+/android
+/ios
+/macos
+/web
+/lib
+/test
+/assets
+/packaging
+/tool
+/docs
+/skills
+/.github
+/pubspec.yaml
+/pubspec.lock
+/analysis_options.yaml

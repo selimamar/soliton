@@ -11,17 +11,7 @@ resolution-markers = [
 members = [
     "soliton",
     "soliton-server",
-]
-
-[manifest.dependency-groups]
-dev = [
-    { name = "httpx2", specifier = ">=2.14.0" },
-    { name = "numpy", specifier = ">=2.2.6" },
-    { name = "pgserver", specifier = ">=0.1" },
-    { name = "pillow", specifier = ">=12.3.0" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
-    { name = "pytest", specifier = ">=8" },
-    { name = "torch", specifier = ">=2.4" },
+    "soliton-workspace",
 ]
 
 [[package]]
@@ -2094,6 +2084,44 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
 ]
 provides-extras = ["postgres"]
+
+[[package]]
+name = "soliton-workspace"
+version = "0"
+source = { virtual = "." }
+dependencies = [
+    { name = "soliton-server", extra = ["postgres"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "httpx2", version = "2.14.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "httpx2", version = "2.16.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pgserver" },
+    { name = "pillow", version = "12.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "pillow", version = "13.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "pytest" },
+    { name = "torch", version = "2.14.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "torch", version = "2.15.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "soliton-server", extras = ["postgres"], editable = "server" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "httpx2", specifier = ">=2.14.0" },
+    { name = "numpy", specifier = ">=2.2.6" },
+    { name = "pgserver", specifier = ">=0.1" },
+    { name = "pillow", specifier = ">=12.3.0" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
+    { name = "pytest", specifier = ">=8" },
+    { name = "torch", specifier = ">=2.4" },
+]
 
 [[package]]
 name = "sqlalchemy"

@@ -78,7 +78,7 @@ Then pick where it runs:
 |---|---|---|
 | On your computer | Trying it; runs on your computer | `soliton-server` (address `http://127.0.0.1:8000`, token from `soliton-server --show-token`) |
 | A test server on Sherlock | Sherlock jobs, followed from your computer | A job in Sherlock's `service` partition, reached through an SSH tunnel: [Sherlock guide](sherlock.md#a-server-on-sherlock-for-testing) |
-| A public server | Everything, including your phone and Modal or cloud jobs | A small cloud machine with HTTPS: [server README](../server/README.md#putting-it-on-the-internet) |
+| A public server | Everything, including your phone and Modal or cloud jobs | Heroku, a small cloud VM with HTTPS, or your own computer: [Hosting the server](hosting.md) |
 
 The Sherlock test server in short: start it with
 `sbatch $HOME/soliton-server/sherlock-server.sbatch` from

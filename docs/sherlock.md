@@ -14,7 +14,8 @@ Sherlock's nodes "are not directly accessible from the outside"
 ([Concepts](https://www.sherlock.stanford.edu/docs/concepts/)), so they
 can't host a server your phone could reach. Run `soliton-server` on a
 small cloud VM or hosting platform instead, with HTTPS: see
-[server/README.md](../server/README.md#putting-it-on-the-internet).
+[Hosting the server](hosting.md) (Heroku, Oracle, Azure, AWS, Google Cloud,
+or your own computer in Stanford housing).
 
 To try it out first, the server can run as a job inside Sherlock, and the app
 on your computer reaches it through an SSH tunnel: see

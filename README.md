@@ -2,6 +2,7 @@
 
 **[Getting started](docs/getting-started.md)** ·
 [On Sherlock](docs/sherlock.md) ·
+[Hosting the server](docs/hosting.md) ·
 [For coding agents](docs/for-agents.md) ·
 [Logger](logger/README.md) ·
 [Server](server/README.md) ·
@@ -228,6 +229,10 @@ What it does:
   Sherlock test server, a local one), each with its own token; tap one to
   show its runs, or **All servers** to see every server's runs together,
   live, each marked with its server's name.
+- **Hosting**: the repository deploys to Heroku as it is (`Procfile`,
+  PostgreSQL), and [docs/hosting.md](docs/hosting.md) sets the server up
+  there, on a free or cheap VM (Oracle, Azure, AWS, Google Cloud) with
+  HTTPS, or on your own computer.
 - **`soliton setup`**: once per machine or cluster, saves the server's address
   and a token where jobs read them (`~/.soliton_env`), asking for the token
   without showing it and checking it with the server first. Agents run it
@@ -428,7 +433,9 @@ first start and deletes the old copy. Disconnecting deletes it everywhere.
 14. ~~Logging pictures the job draws (`run.log_image`)~~
 15. ~~Backing up the server's data (`soliton-server --backup`, Download a
     backup)~~
-16. Next ideas: accounts for several people,
+16. ~~Hosting: ready for Heroku, and a guide for VMs (Oracle, Azure, AWS,
+    Google Cloud) and your own computer~~
+17. Next ideas: accounts for several people,
     native push (APNs/FCM), signing the Apple apps with a developer team
 
 ## License
