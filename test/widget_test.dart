@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:soliton/app/constants.dart';
 import 'package:soliton/app/theme.dart';
 import 'package:soliton/data/mock/mock_run_repository.dart';
 import 'package:soliton/features/runs_list/widgets/run_card.dart';
@@ -231,7 +232,7 @@ void main() {
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
     expect(locationOf(tester), '/settings');
-    await tester.scrollUntilVisible(find.text('Version 0.2.0'), 300, scrollable: visibleList());
-    expect(find.text('Version 0.2.0'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Version $appVersion'), 300, scrollable: visibleList());
+    expect(find.text('Version $appVersion'), findsOneWidget);
   });
 }

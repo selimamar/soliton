@@ -9,11 +9,23 @@ import '../browser_hint.dart';
 /// Renders an [AsyncValue] with consistent loading and error states, so
 /// screens only have to describe the "data" case.
 class AsyncValueView<T> extends StatelessWidget {
-  const AsyncValueView({super.key, required this.value, required this.data, this.onRetry});
+  const AsyncValueView({
+    super.key,
+    required this.value,
+    required this.data,
+    this.onRetry,
+    this.keepDataWhileReloading = false,
+  });
 
   final AsyncValue<T> value;
   final Widget Function(T data) data;
   final VoidCallback? onRetry;
+
+  /// Keep showing the data while a provider it depends on reloads, rather
+  /// than a spinner. For lists derived from another provider (runsProvider
+  /// from allRunsProvider): a live update refreshes the source, which makes
+  /// the derived list "reload", and a spinner there flashed at every update.
+  final bool keepDataWhileReloading;
 
   @override
   Widget build(BuildContext context) {
@@ -23,6 +35,7 @@ class AsyncValueView<T> extends StatelessWidget {
     if (value.isLoading && value.hasError) return const _Loading();
 
     return value.when(
+      skipLoadingOnReload: keepDataWhileReloading,
       data: data,
       loading: () => const _Loading(),
       error: (error, _) => _ErrorView(error: error, onRetry: onRetry),

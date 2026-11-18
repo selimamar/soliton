@@ -66,6 +66,9 @@ class RunsListScreen extends ConsumerWidget {
       appBar: picked == null ? _appBar(context, ref) : _pickingAppBar(context, ref, picked),
       body: AsyncValueView(
         value: ref.watch(runsProvider),
+        // A live update refreshes the list in place; a spinner only when
+        // the list itself is replaced (another server).
+        keepDataWhileReloading: !ref.watch(allRunsProvider).isReloading,
         onRetry: () => ref.invalidate(allRunsProvider),
         data: (runs) => _RunsList(runs: runs),
       ),

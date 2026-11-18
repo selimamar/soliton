@@ -63,6 +63,7 @@ class _SweepScreenState extends ConsumerState<SweepScreen> {
       appBar: AppBar(title: const Text('Sweep')),
       body: AsyncValueView(
         value: ref.watch(runsProvider),
+        keepDataWhileReloading: !ref.watch(allRunsProvider).isReloading,
         onRetry: () => ref.invalidate(allRunsProvider),
         data: (runs) {
           final projects = _projects(runs);

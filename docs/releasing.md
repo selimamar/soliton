@@ -122,9 +122,11 @@ the Apple Developer Program first. See
 
 ## 4. Every release after the first
 
-1. Raise `version` in `pubspec.yaml` (`0.2.0+2` now: the part after `+` is
-   the build number, which must go up for Android to accept the update).
-2. Commit, then tag and push: `git tag v0.3.0 && git push origin main v0.3.0`.
+1. Raise `version` in `pubspec.yaml` (`0.3.0+3` now: the part after `+` is
+   the build number, which must go up for Android to accept the update),
+   and `appVersion` in `lib/app/constants.dart` to match (the version
+   Settings shows; `test/app_version_test.dart` fails until they agree).
+2. Commit, then tag and push, e.g. `git tag v0.3.1 && git push origin main v0.3.1`.
 3. The workflow builds the Mac zip, publishes the release and updates the
    cask. Attach the APK, unless the workflow builds it too.
 

@@ -42,6 +42,7 @@ class SimulationsScreen extends ConsumerWidget {
       appBar: picked == null ? _appBar(context, ref) : _pickingAppBar(context, ref, picked),
       body: AsyncValueView(
         value: ref.watch(simulationsProvider),
+        keepDataWhileReloading: !ref.watch(allRunsProvider).isReloading,
         onRetry: () => ref.invalidate(allRunsProvider),
         data: (simulations) => _SimulationsList(simulations: simulations),
       ),

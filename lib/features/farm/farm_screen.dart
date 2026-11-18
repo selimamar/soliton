@@ -131,6 +131,7 @@ class _FarmScreenState extends ConsumerState<FarmScreen> with SingleTickerProvid
     ),
     body: AsyncValueView(
       value: ref.watch(runsProvider),
+      keepDataWhileReloading: !ref.watch(allRunsProvider).isReloading,
       onRetry: () => ref.invalidate(allRunsProvider),
       data: _farm,
     ),
