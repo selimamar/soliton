@@ -1071,6 +1071,35 @@ def test_a_run_starting_in_a_queued_job_takes_its_place(client, notifications):
     assert client.get("/api/runs/tiny-1").json()["status"] == "live"
 
 
+def test_tags_and_a_note_written_while_a_job_waits_move_to_its_run(client):
+    queue_job(client)
+    client.patch("/api/runs/queued-555", json={"tags": ["baseline"], "notes": "Try lr 3e-4 next"})
+    create_run(client, system={"slurm": {"jobId": "555", "submitTime": "2026-11-12T08:30:00Z"}})
+    run = client.get("/api/runs/tiny-1").json()
+    assert (run["tags"], run["notes"]) == (["baseline"], "Try lr 3e-4 next")
+
+
+def test_a_run_with_its_own_tags_keeps_them_and_the_waiting_ones(client):
+    queue_job(client)
+    client.patch("/api/runs/queued-555", json={"tags": ["baseline", "fast"], "notes": "Waiting"})
+    create_run(client, system={"slurm": {"jobId": "555", "submitTime": "2026-11-12T08:30:00Z"}},
+               tags=["fast", "sweep"], notes="From the script")
+    run = client.get("/api/runs/tiny-1").json()
+    assert run["tags"] == ["baseline", "fast", "sweep"]
+    assert run["notes"] == "Waiting\n\nFrom the script"
+
+
+def test_board_cards_linked_to_a_waiting_job_follow_it_to_its_run(client):
+    queue_job(client)
+    card = {"title": "Baseline", "links": [{"kind": "run", "id": "queued-555"},
+                                           {"kind": "run", "id": "queued-555", "server": "https://other"}]}
+    assert client.put("/api/board/c1", json=card).status_code == 200
+    create_run(client, system={"slurm": {"jobId": "555", "submitTime": "2026-11-12T08:30:00Z"}})
+    links = client.get("/api/board").json()[0]["links"]
+    assert {"kind": "run", "id": "tiny-1", "server": ""} in links
+    assert {"kind": "run", "id": "queued-555", "server": "https://other"} in links, "another server's"
+
+
 def test_a_queued_job_with_the_runs_own_id_becomes_the_run(client, notifications):
     """`soliton sbatch --id tiny-1` for a script that calls init(id="tiny-1")."""
     queue_job(client, "tiny-1")

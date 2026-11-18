@@ -226,7 +226,8 @@ offline runs). The full logger API is in [logger/README.md](../logger/README.md)
 - **A queued job** (from `soliton sbatch`): how long it has waited, why in
   plain words (Priority, Resources, a limit), when Slurm expects to start it
   ("Not estimated" until it's near the front), and what it asked for. It
-  turns into the run when its script starts logging.
+  turns into the run when its script starts logging, keeping the tags and
+  note you gave it while it waited, and the board cards linked to it.
 - **A run's page**: Overview (progress, time left, queue wait and time
   limit for Slurm jobs, cost estimate, hyperparameters, tags and notes, what
   it printed), Metrics, Layers, Fields (with any pictures the script drew,

@@ -53,7 +53,8 @@ exec python3 train.py                    # exec: Python must be the job script t
   with `PYTHONPATH` set and the server's env sourced: soliton's options
   first, then sbatch's, unchanged (`python3 -m soliton sbatch --name
   fno-hires -p gpu -G 1 train.sbatch`). The job shows as Queued in the app
-  while it waits, and the run its script starts takes its place. A job
+  while it waits, and the run its script starts takes its place (with any
+  tags, note and board links the user gave it meanwhile). A job
   continuing a run passes that run's id first: `soliton sbatch --id <run
   id> ...`. `python3 -m soliton queue` updates what Slurm says of queued
   jobs: run it once when you check, never in a loop or `watch`. Each

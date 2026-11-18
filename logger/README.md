@@ -659,7 +659,8 @@ soliton queue      # later: update what Slurm says of every queued job
 ```
 
 When the job starts and its script calls `soliton.init()`, the new run takes
-the queued one's place (the server matches the Slurm job id). For a job
+the queued one's place (the server matches the Slurm job id), with the tags
+and note given to the queued job in the app and its board-card links. For a job
 continuing a run (`init(id=...)`), pass that id: `soliton sbatch --id
 fno-hires-3fa9c1 ...` shows that run as queued until it goes on.
 

@@ -307,6 +307,12 @@ def _slurm_of(system: object) -> dict:
     return slurm if isinstance(slurm, dict) else {}
 
 
+def _links_to(link: object, run_id: str) -> bool:
+    """Whether a board card's link points at [run_id] on this server."""
+    return (isinstance(link, dict) and link.get("kind") == "run" and link.get("id") == run_id
+            and not link.get("server"))
+
+
 def _parse_time(text: object) -> datetime | None:
     """"2026-11-14T18:32:22Z" as an aware datetime, or None."""
     if not isinstance(text, str):
@@ -584,7 +590,9 @@ class Store:
     def _take_over_queued(self, session: Session, run_id: str,
                           system: dict | None) -> list[Change]:
         """Deletes the queued placeholders (`soliton sbatch`) of the Slurm job
-        a new run started in: the run takes their place."""
+        a new run started in: the run takes their place, with the tags and
+        note written on them while the job waited, and the board cards that
+        linked to them."""
         slurm = _slurm_of(system)
         jobs = {str(slurm[key]) for key in ("jobId", "arrayJobId") if slurm.get(key)}
         if not jobs:
@@ -597,10 +605,43 @@ class Store:
             if theirs.get("cluster") and slurm.get("cluster") and theirs["cluster"] != slurm["cluster"]:
                 continue
             changes.append(_change(queued, "deleted"))
+            self._carry_notes(session, queued.id, run_id)
+            self._relink_board(session, queued.id, run_id)
             for table in (RunNotesRow, RunSystemRow, RunSimulationRow, DatasetUseRow, RunKeyRow):
                 session.execute(delete(table).where(table.run_id == queued.id))
             session.delete(queued)
         return changes
+
+    @staticmethod
+    def _carry_notes(session: Session, old_id: str, new_id: str) -> None:
+        """Moves the tags and note of [old_id] (a queued placeholder) to
+        [new_id], the run taking its place. If the run brought tags or a note
+        of its own (from its logger), the tags are pooled and the notes kept
+        both, the one written while it waited first."""
+        old = session.get(RunNotesRow, old_id)
+        if old is None or (not old.tags and not old.notes):
+            return
+        new = session.get(RunNotesRow, new_id)
+        if new is None:
+            session.add(RunNotesRow(run_id=new_id, tags=list(old.tags), notes=old.notes,
+                                    updated_at=old.updated_at))
+            return
+        new.tags = list(dict.fromkeys([*old.tags, *new.tags]))
+        new.notes = "\n\n".join(note for note in (old.notes, new.notes) if note)
+        new.updated_at = max(_aware(old.updated_at), _aware(new.updated_at))
+
+    @staticmethod
+    def _relink_board(session: Session, old_id: str, new_id: str) -> None:
+        """Points this server's board cards that link to [old_id] at
+        [new_id] instead."""
+        for card in session.scalars(select(BoardCardRow)).all():
+            links = (card.info or {}).get("links") or []
+            if not any(_links_to(link, old_id) for link in links):
+                continue
+            moved = [{**link, "id": new_id} if _links_to(link, old_id) else link for link in links]
+            # A new dict, so SQLAlchemy sees the JSON column change.
+            card.info = {**card.info, "links": list({(l["kind"], l["id"], l.get("server", "")): l
+                                                     for l in moved}.values())}
 
     def update_notes(self, run_id: str, body: RunNotesIn) -> tuple[dict, Change]:
         """Sets a run's tags and/or note (from the app)."""

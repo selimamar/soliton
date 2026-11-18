@@ -224,7 +224,8 @@ look. Without the key, a job token gets 403. Exceptions: `soliton queue` may
 update what Slurm says of a queued job, and end one that left the queue;
 a run logged before keys (no key stored) may be changed while it is queued
 or live, and the first key sent becomes its key; a new run that started in
-a queued run's Slurm job takes its place. The main token may change any
+a queued run's Slurm job takes its place (and its tags, note and board-card
+links). The main token may change any
 run. Put it in
 place of `SOLITON_TOKEN` on your clusters and keep the main token on your
 own devices. The server keeps only its SHA-256 hash (in the database, so

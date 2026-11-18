@@ -397,6 +397,10 @@ def create_app(
         """With the job token, an existing run only with its key (X-Run-Key)."""
         run, changes = store.put_run(run_id, body, role, x_run_key)
         publish(changes)
+        if any(change.event == "deleted" for change in changes):
+            # The run took the place of its queued job, whose board links
+            # now point at it: have the app reload the board.
+            broadcaster.publish({"type": "board", "event": "updated"})
         return run
 
     @app.patch("/api/runs/{run_id}", dependencies=auth)
