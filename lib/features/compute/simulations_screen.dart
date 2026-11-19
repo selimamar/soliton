@@ -12,10 +12,13 @@ import '../../shared/selection.dart';
 import '../../shared/widgets/async_value_view.dart';
 import '../../shared/widgets/connection_banner.dart';
 import '../../shared/widgets/delete_dialog.dart';
+import '../../shared/widgets/group_order.dart';
 import '../../shared/widgets/picking_app_bar.dart';
 import '../../shared/widgets/sparkline.dart';
 import '../../shared/widgets/status_chip.dart';
+import '../runs_list/run_groups.dart';
 import '../runs_list/runs_list_screen.dart' show StatusFilterBar, searchRuns;
+import 'simulation_order.dart';
 import 'simulation_text.dart';
 
 /// The status the simulations list is filtered to (null: all).
@@ -80,6 +83,17 @@ class SimulationsScreen extends ConsumerWidget {
         ],
       ),
       actions: [
+        GroupOrderButton<RunGrouping, SimulationOrder>(
+          tooltip: 'Group and order simulations',
+          groupings: simulationGroupings,
+          grouping: ref.watch(simulationGroupingProvider),
+          groupingLabel: (g) => g == RunGrouping.none ? g.label : groupByLabel(g.label),
+          onGrouping: ref.read(simulationGroupingProvider.notifier).set,
+          orders: SimulationOrder.values,
+          order: ref.watch(simulationOrderProvider),
+          orderLabel: (o) => o.label,
+          onOrder: ref.read(simulationOrderProvider.notifier).set,
+        ),
         IconButton(
           icon: const Icon(Icons.checklist),
           tooltip: 'Pick simulations to delete',
@@ -126,10 +140,23 @@ class _SimulationsList extends ConsumerWidget {
     final picked = ref.watch(simulationSelectionProvider);
     final query = ref.watch(simulationSearchProvider);
     final found = searchRuns(simulations, query);
-    final shown = [
-      for (final s in found)
-        if (filter == null || s.status == filter) s,
-    ];
+    final order = ref.watch(simulationOrderProvider);
+    // The clock only matters for "longest running" (live ones keep going).
+    final now = order == SimulationOrder.longest ? ref.watch(clockProvider) : DateTime.now();
+    final shown = orderSimulations(
+      [
+        for (final s in found)
+          if (filter == null || s.status == filter) s,
+      ],
+      order,
+      now,
+    );
+    final grouping = ref.watch(simulationGroupingProvider);
+    final collapsed = ref.watch(collapsedSimulationGroupsProvider);
+    Widget card(Run s) => Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: SimulationCard(simulation: s, selected: picked?.contains(s.id)),
+    );
     return RefreshIndicator(
       onRefresh: () => ref.refresh(allRunsProvider.future),
       child: ListView(
@@ -154,10 +181,23 @@ class _SimulationsList extends ConsumerWidget {
                   if (picked == null) const ConnectionBanner(),
                   const SizedBox(height: 12),
                   if (shown.isEmpty) _NoMatch(query: query),
-                  for (final s in shown) ...[
-                    SimulationCard(simulation: s, selected: picked?.contains(s.id)),
-                    const SizedBox(height: 10),
-                  ],
+                  if (grouping == RunGrouping.none)
+                    for (final s in shown) card(s)
+                  else
+                    for (final group in groupRuns(shown, grouping)) ...[
+                      GroupHeader(
+                        label: group.label,
+                        count: countOf(group.runs.length, 'simulation', 'simulations'),
+                        isRest: group.isRest,
+                        collapsed: collapsed.contains(CollapsedGroups.keyOf(grouping, group.label)),
+                        onTap: () => ref
+                            .read(collapsedSimulationGroupsProvider.notifier)
+                            .toggle(CollapsedGroups.keyOf(grouping, group.label)),
+                      ),
+                      const SizedBox(height: 8),
+                      if (!collapsed.contains(CollapsedGroups.keyOf(grouping, group.label)))
+                        for (final s in group.runs) card(s),
+                    ],
                 ],
               ),
             ),

@@ -12,8 +12,10 @@ import '../../shared/selection.dart';
 import '../../shared/widgets/async_value_view.dart';
 import '../../shared/widgets/connection_banner.dart';
 import '../../shared/widgets/delete_dialog.dart';
+import '../../shared/widgets/group_order.dart';
 import '../../shared/widgets/picking_app_bar.dart';
 import '../../shared/widgets/stat_tile.dart';
+import 'dataset_order.dart';
 
 /// The Data section: every dataset the server knows about, with its size,
 /// where it is, and who made and used it.
@@ -59,6 +61,17 @@ class DataScreen extends ConsumerWidget {
         ],
       ),
       actions: [
+        GroupOrderButton<DatasetGrouping, DatasetOrder>(
+          tooltip: 'Group and order datasets',
+          groupings: DatasetGrouping.values,
+          grouping: ref.watch(datasetGroupingProvider),
+          groupingLabel: (g) => g == DatasetGrouping.none ? g.label : groupByLabel(g.label),
+          onGrouping: ref.read(datasetGroupingProvider.notifier).set,
+          orders: DatasetOrder.values,
+          order: ref.watch(datasetOrderProvider),
+          orderLabel: (o) => o.label,
+          onOrder: ref.read(datasetOrderProvider.notifier).set,
+        ),
         IconButton(
           icon: const Icon(Icons.checklist),
           tooltip: 'Pick datasets to delete',
@@ -106,6 +119,13 @@ class _DatasetsList extends ConsumerWidget {
     final query = ref.watch(datasetSearchProvider);
     // The totals are of the datasets that match the search.
     final found = searchDatasets(datasets, query);
+    final grouping = ref.watch(datasetGroupingProvider);
+    final ordered = orderDatasets(found, ref.watch(datasetOrderProvider));
+    final collapsed = ref.watch(collapsedDatasetGroupsProvider);
+    Widget card(Dataset d) => Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: DatasetCard(dataset: d, selected: picked?.contains(d.id)),
+    );
     final bytes = found.fold<int>(0, (sum, d) => sum + (d.sizeBytes ?? 0));
     final hosts = {
       for (final d in found)
@@ -144,10 +164,23 @@ class _DatasetsList extends ConsumerWidget {
                         textAlign: TextAlign.center,
                       ),
                     ),
-                  for (final d in found) ...[
-                    DatasetCard(dataset: d, selected: picked?.contains(d.id)),
-                    const SizedBox(height: 10),
-                  ],
+                  if (grouping == DatasetGrouping.none)
+                    for (final d in ordered) card(d)
+                  else
+                    for (final group in groupDatasets(ordered, grouping)) ...[
+                      GroupHeader(
+                        label: group.label,
+                        count: countOf(group.items.length, 'dataset', 'datasets'),
+                        isRest: group.isRest,
+                        collapsed: collapsed.contains(CollapsedGroups.keyOf(grouping, group.label)),
+                        onTap: () => ref
+                            .read(collapsedDatasetGroupsProvider.notifier)
+                            .toggle(CollapsedGroups.keyOf(grouping, group.label)),
+                      ),
+                      const SizedBox(height: 8),
+                      if (!collapsed.contains(CollapsedGroups.keyOf(grouping, group.label)))
+                        for (final d in group.items) card(d),
+                    ],
                 ],
               ),
             ),

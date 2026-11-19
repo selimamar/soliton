@@ -5,6 +5,7 @@ import '../../models/metric_series.dart';
 import '../../models/run.dart';
 import '../../models/run_insights.dart';
 import '../../shared/formatters.dart';
+import '../../shared/widgets/group_order.dart';
 
 /// What the runs list is grouped by, saved on the device.
 enum RunGrouping {
@@ -42,24 +43,9 @@ class RunGroup {
 /// several tags is in each of their groups.
 List<RunGroup> groupRuns(List<Run> runs, RunGrouping by) {
   if (by == RunGrouping.none) return [RunGroup(label: '', runs: runs)];
-
-  // Keyed ignoring case; shown as first written.
-  final labels = <String, String>{};
-  final members = <String, List<Run>>{};
-  final rest = <Run>[];
-  for (final run in runs) {
-    final keys = _keysOf(run, by);
-    if (keys.isEmpty) rest.add(run);
-    for (final key in keys) {
-      final id = key.toLowerCase();
-      labels.putIfAbsent(id, () => key);
-      (members[id] ??= []).add(run);
-    }
-  }
-  final ids = members.keys.toList()..sort((a, b) => labels[a]!.compareTo(labels[b]!));
   return [
-    for (final id in ids) RunGroup(label: labels[id]!, runs: members[id]!),
-    if (rest.isNotEmpty) RunGroup(label: _restLabel(by), runs: rest, isRest: true),
+    for (final group in groupItems(runs, (run) => _keysOf(run, by), _restLabel(by)))
+      RunGroup(label: group.label, runs: group.items, isRest: group.isRest),
   ];
 }
 

@@ -11,6 +11,7 @@ import '../../shared/search.dart';
 import '../../shared/selection.dart';
 import '../../shared/widgets/async_value_view.dart';
 import '../../shared/widgets/connection_banner.dart';
+import '../../shared/widgets/group_order.dart';
 import '../../shared/widgets/delete_dialog.dart';
 import '../../shared/widgets/picking_app_bar.dart';
 import '../../shared/widgets/spaced_list_view.dart';
@@ -28,18 +29,8 @@ class RunFilter extends Notifier<RunStatus?> {
   void select(RunStatus? status) => state = status;
 }
 
-/// Groups folded away, as `grouping:label` (until the app restarts).
+/// Runs groups folded away (see [CollapsedGroups]).
 final collapsedGroupsProvider = NotifierProvider<CollapsedGroups, Set<String>>(CollapsedGroups.new);
-
-class CollapsedGroups extends Notifier<Set<String>> {
-  @override
-  Set<String> build() => const {};
-
-  static String keyOf(RunGrouping grouping, RunGroup group) => '${grouping.name}:${group.label}';
-
-  void toggle(String key) =>
-      state = state.contains(key) ? ({...state}..remove(key)) : {...state, key};
-}
 
 /// The runs whose name, project, host, tags, notes, model, dataset or PDE
 /// match [query] (see [matchesSearch]).
@@ -262,67 +253,20 @@ class _RunsList extends ConsumerWidget {
             for (final entry in ranked(visibleRuns)) card(entry)
           else
             for (final group in groupRuns(visibleRuns, grouping)) ...[
-              _GroupHeader(
-                group: group,
-                collapsed: collapsed.contains(CollapsedGroups.keyOf(grouping, group)),
+              GroupHeader(
+                label: group.label,
+                count: countOf(group.runs.length, 'run', 'runs'),
+                isRest: group.isRest,
+                collapsed: collapsed.contains(CollapsedGroups.keyOf(grouping, group.label)),
                 onTap: () => ref
                     .read(collapsedGroupsProvider.notifier)
-                    .toggle(CollapsedGroups.keyOf(grouping, group)),
+                    .toggle(CollapsedGroups.keyOf(grouping, group.label)),
               ),
-              if (!collapsed.contains(CollapsedGroups.keyOf(grouping, group)))
+              if (!collapsed.contains(CollapsedGroups.keyOf(grouping, group.label)))
                 for (final entry in ranked(group.runs)) card(entry),
             ],
           if (journal && visibleRuns.isNotEmpty) _TableFooter(runs: visibleRuns),
         ],
-      ),
-    );
-  }
-}
-
-/// A group's name and size; tap to fold it away.
-class _GroupHeader extends StatelessWidget {
-  const _GroupHeader({required this.group, required this.collapsed, required this.onTap});
-
-  final RunGroup group;
-  final bool collapsed;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final count = group.runs.length;
-    return Semantics(
-      button: true,
-      expanded: !collapsed,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(4, 12, 4, 0),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  group.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: group.isRest ? theme.colorScheme.onSurfaceVariant : null,
-                  ),
-                ),
-              ),
-              Text(
-                count == 1 ? '1 run' : '$count runs',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(width: 4),
-              ExcludeSemantics(child: Icon(collapsed ? Icons.expand_more : Icons.expand_less)),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -334,44 +278,18 @@ class _GroupingButton extends ConsumerWidget {
   const _GroupingButton();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final current = ref.watch(runGroupingProvider);
-    final order = ref.watch(runOrderProvider);
-    final heading = Theme.of(context).textTheme.labelMedium
-        ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant);
-    return PopupMenuButton<Enum>(
-      icon: const Icon(Icons.workspaces_outline),
-      tooltip: 'Group and order runs',
-      onSelected: (choice) => switch (choice) {
-        final RunGrouping grouping => ref.read(runGroupingProvider.notifier).set(grouping),
-        final RunOrder order => ref.read(runOrderProvider.notifier).set(order),
-        _ => null,
-      },
-      itemBuilder: (context) => [
-        PopupMenuItem(enabled: false, height: 32, child: Text('Group', style: heading)),
-        for (final grouping in RunGrouping.values)
-          CheckedPopupMenuItem(
-            value: grouping,
-            checked: grouping == current,
-            child: Text(
-              grouping == RunGrouping.none ? grouping.label : 'By ${grouping.label.toLowerCase()}',
-            ),
-          ),
-        const PopupMenuDivider(),
-        PopupMenuItem(enabled: false, height: 32, child: Text('Order', style: heading)),
-        for (final option in RunOrder.values)
-          CheckedPopupMenuItem(
-            value: option,
-            checked: option == order,
-            child: Text(
-              option.metric == null
-                  ? option.label
-                  : '${option.label}, ${option.lowerIsBetter ? 'lowest' : 'highest'} first',
-            ),
-          ),
-      ],
-    );
-  }
+  Widget build(BuildContext context, WidgetRef ref) => GroupOrderButton<RunGrouping, RunOrder>(
+    tooltip: 'Group and order runs',
+    groupings: RunGrouping.values,
+    grouping: ref.watch(runGroupingProvider),
+    groupingLabel: (g) => g == RunGrouping.none ? g.label : groupByLabel(g.label),
+    onGrouping: ref.read(runGroupingProvider.notifier).set,
+    orders: RunOrder.values,
+    order: ref.watch(runOrderProvider),
+    orderLabel: (o) =>
+        o.metric == null ? o.label : '${o.label}, ${o.lowerIsBetter ? 'lowest' : 'highest'} first',
+    onOrder: ref.read(runOrderProvider.notifier).set,
+  );
 }
 
 class _EmptyState extends StatelessWidget {

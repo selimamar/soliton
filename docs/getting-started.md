@@ -266,7 +266,10 @@ offline runs). The full logger API is in [logger/README.md](../logger/README.md)
   long press) and open Compare: their curves together, and "Settings that
   differ", only the hyperparameters that changed between them.
 - **Organize**: tag runs and write notes on their Overview; group the list
-  by project, model, dataset, tag or host; order it by a metric.
+  by project, model, dataset, PDE, tag or host; order it by a metric. The
+  same button (top right) groups and orders Compute (by project, host…;
+  newest, longest running, furthest along) and Data (by project, host or
+  format; newest, name, largest or most used).
 - **Keep a to-do board**: the Board section has a lane per project across
   Ideas, To do, Running and Done. A card holds notes, a checklist and a due
   date, and links to runs, simulations and datasets, showing how they are

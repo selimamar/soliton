@@ -100,11 +100,15 @@ Studio (or the Android SDK and a JDK). `flutter doctor` says what's missing.
 What it does:
 
 - **Runs list** with status filters, live progress and a loss sparkline per run.
-- **Organizing**: group the list by project, model, dataset, tag or host
-  (folding groups away), order it by a metric such as validation loss, best
-  first (within each group, a small leaderboard), tag runs (e.g. `baseline`,
-  `best`) and leave a note on each. Tags and notes are saved on the server, so every device
-  sees them; the logger can set the first ones.
+- **Organizing**: group the list by project, model, dataset, PDE, tag or
+  host (folding groups away), order it by a metric such as validation loss,
+  best first (within each group, a small leaderboard), tag runs (e.g.
+  `baseline`, `best`) and leave a note on each. Tags and notes are saved on the server, so every device
+  sees them; the logger can set the first ones. Compute and Data have the
+  same "Group and order" button (top right): simulations by project, PDE,
+  tag or host, newest, by name, longest running or furthest along first;
+  datasets by the project that made or used them, host or format, newest,
+  by name, largest or most used first. Each list remembers its choice.
 - **Farm** (the egg button on the runs list): the runs as a cartoon farm
   seen from above. Each finished run is an animal as big as its model,
   walking about: a duck, or a moose, goose, beaver or bear for the model
